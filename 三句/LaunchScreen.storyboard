@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="13142" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" launchScreen="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="01J-lp-oVM">
+    <dependencies>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="12042"/>
+        <capability name="Constraints with non-1.0 multipliers" minToolsVersion="5.1"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="EHf-IW-A2E">
+            <objects>
+                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
+                        <rect key="frame" x="0.0" y="0.0" width="375" height="667"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <imageView opaque="NO" clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleAspectFit" image="LaunchLogoRounded" translatesAutoresizingMaskIntoConstraints="NO" id="Y2S-y9-Vdr">
+                                <rect key="frame" x="129.5" y="240" width="116" height="116"/>
+                                <constraints>
+                                    <constraint firstAttribute="width" constant="116" id="4cA-5L-dQ4"/>
+                                    <constraint firstAttribute="height" constant="116" id="s0Q-gm-lhW"/>
+                                </constraints>
+                            </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="用三句描述每个瞬间" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="l8U-fx-8uh">
+                                <rect key="frame" x="0.0" y="376" width="375" height="26"/>
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="19"/>
+                                <color key="textColor" red="0.90196078431372551" green="0.61176470588235299" blue="0.1803921568627451" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
+                        <color key="backgroundColor" red="0.96862745098039216" green="0.94509803921568625" blue="0.90588235294117647" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="Bcu-3y-fUS" firstAttribute="centerX" secondItem="Y2S-y9-Vdr" secondAttribute="centerX" id="2Ki-dQ-b9f"/>
+                            <constraint firstItem="l8U-fx-8uh" firstAttribute="top" secondItem="Y2S-y9-Vdr" secondAttribute="bottom" constant="20" id="5vV-Jd-TNv"/>
+                            <constraint firstItem="Bcu-3y-fUS" firstAttribute="centerX" secondItem="l8U-fx-8uh" secondAttribute="centerX" id="I7b-z0-vxJ"/>
+                            <constraint firstItem="Y2S-y9-Vdr" firstAttribute="centerY" secondItem="Ze5-6b-2t3" secondAttribute="centerY" constant="-38" id="nR5-SL-MxO"/>
+                            <constraint firstItem="l8U-fx-8uh" firstAttribute="leading" secondItem="Bcu-3y-fUS" secondAttribute="leading" id="oD9-YM-Z4M"/>
+                            <constraint firstAttribute="trailing" secondItem="l8U-fx-8uh" secondAttribute="trailing" id="qJf-Gq-F76"/>
+                        </constraints>
+                        <viewLayoutGuide key="safeArea" id="Bcu-3y-fUS"/>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="LaunchLogoRounded" width="1024" height="1024"/>
+    </resources>
+</document>

@@ -1,0 +1,84 @@
+# 三句 API 入口反向代理示例
+#
+# 用法：
+# 1. 把 server_name 改成你的 API 子域名，例如 api.example.com
+# 2. 把证书路径改成你的实际证书路径
+# 3. 确认上游地址仍然是当前阿里云 RDS Supabase 域名
+# 4. 挂到 /etc/nginx/conf.d/ 或 sites-enabled 后重载 Nginx
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+upstream sanju_supabase_backend {
+    server spb-bp103246ivn7q0nl.supabase.opentrust.net:443;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.example.com;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name api.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/api.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.example.com/privkey.pem;
+
+    # 基础 TLS 配置
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    # 入口层不要成为上传瓶颈
+    client_max_body_size 25m;
+    keepalive_timeout 65s;
+
+    # 通用代理头
+    proxy_http_version 1.1;
+    proxy_set_header Host spb-bp103246ivn7q0nl.supabase.opentrust.net;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+
+    proxy_ssl_server_name on;
+    proxy_ssl_name spb-bp103246ivn7q0nl.supabase.opentrust.net;
+
+    proxy_connect_timeout 15s;
+    proxy_send_timeout 180s;
+    proxy_read_timeout 180s;
+    send_timeout 180s;
+
+    # Auth / REST 默认反代
+    location / {
+        proxy_pass https://sanju_supabase_backend;
+    }
+
+    # Functions 请求耗时通常更长，单独放宽超时
+    location ^~ /functions/v1/ {
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass https://sanju_supabase_backend;
+    }
+
+    # Storage 需要兼顾上传和下载，关闭缓冲避免大对象拖慢入口层
+    location ^~ /storage/v1/ {
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+        proxy_pass https://sanju_supabase_backend;
+    }
+}

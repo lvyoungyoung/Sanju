@@ -8,14 +8,246 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var appModel = AppModel()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var signInSheetHeight: CGFloat = 380
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        ZStack {
+            MainTabView()
+                .environmentObject(appModel)
+            if appModel.isDeletingAccount {
+                GlobalBlockingLoadingOverlay(title: "正在删除账号，请勿关闭应用")
+            }
         }
-        .padding()
+        .alert("提示", isPresented: credentialWarningAlertBinding) {
+            Button("知道了", role: .cancel) {
+                appModel.credentialWarningMessage = nil
+            }
+        } message: {
+            Text(appModel.credentialWarningMessage ?? "")
+        }
+        .sheet(isPresented: $appModel.isShowingSignInSheet) {
+            SignInView(preferredSheetHeight: $signInSheetHeight)
+                .environmentObject(appModel)
+                .presentationDetents([.height(signInSheetHeight)])
+                .presentationBackground(Color(red: 0.98, green: 0.95, blue: 0.91))
+                .presentationDragIndicator(.visible)
+        }
+        .onOpenURL { url in
+            appModel.handleIncomingURL(url)
+        }
+        .onAppear {
+            openFavoritesIfNeededFromLearningReminder()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: LearningReminderNotificationRoute.didRequestOpenFavorites)) { _ in
+            openFavoritesIfNeededFromLearningReminder()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active else { return }
+            openFavoritesIfNeededFromLearningReminder()
+            appModel.syncOnForegroundIfNeeded()
+        }
+    }
+
+    private func openFavoritesIfNeededFromLearningReminder() {
+        guard LearningReminderNotificationRoute.consumeOpenFavoritesRequest() else {
+            return
+        }
+
+        appModel.selectedTab = .favorites
+    }
+
+    private var credentialWarningAlertBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.credentialWarningMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    appModel.credentialWarningMessage = nil
+                }
+            }
+        )
+    }
+}
+
+struct SyncLoadingState: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: AppSpacing.large) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    .fill(Color.white.opacity(0.88))
+                    .frame(width: 86, height: 86)
+                    .appHeroShadow()
+
+                ThinkingIndicator()
+                    .scaleEffect(1.15)
+            }
+
+            Text(title)
+                .font(.system(size: AppFontSize.field, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+
+            Text(subtitle)
+                .font(.system(size: AppFontSize.sectionLabel))
+                .foregroundStyle(AppTextColor.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct GlobalBlockingLoadingOverlay: View {
+    let title: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.18)
+                .ignoresSafeArea()
+
+            VStack(spacing: AppSpacing.large) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                        .fill(Color.white.opacity(0.94))
+                        .frame(width: 86, height: 86)
+                        .appHeroShadow()
+
+                    ThinkingIndicator()
+                        .scaleEffect(1.15)
+                }
+
+                Text(title)
+                    .font(.system(size: AppFontSize.field, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
+            }
+            .padding(.horizontal, AppSpacing.xxLarge)
+            .padding(.vertical, AppSpacing.section)
+            .background(
+                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    .fill(Color.white.opacity(0.96))
+            )
+            .appCardShadow()
+            .padding(.horizontal, AppSpacing.xxxLarge)
+        }
+        .transition(.opacity)
+    }
+}
+
+struct ContentFooterHint: View {
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: AppSpacing.small) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+
+            Text(isLoading ? "正在同步，请稍后" : "已显示全部内容")
+                .font(.system(size: AppFontSize.metadata))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 6)
+    }
+}
+
+struct SentenceSkeletonSection: View {
+    @State private var phase: CGFloat = -0.35
+
+    var body: some View {
+        VStack(spacing: AppSpacing.medium) {
+            ForEach(0..<3, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                    .fill(Color.gray.opacity(0.14))
+                    .frame(height: 66)
+                    .overlay {
+                        GeometryReader { proxy in
+                            LinearGradient(
+                                colors: [
+                                    Color.clear,
+                                    Color.white.opacity(0.28),
+                                    Color.clear
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: proxy.size.width * 0.32)
+                            .offset(x: proxy.size.width * phase)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+                        .allowsHitTesting(false)
+                    }
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 1.25).repeatForever(autoreverses: false)) {
+                phase = 1.05
+            }
+        }
+    }
+}
+
+struct GenerationProgressCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let title: String
+
+    var body: some View {
+        HStack(spacing: AppSpacing.medium) {
+            ThinkingIndicator()
+
+            Text(title)
+                .font(.system(.body, design: .rounded))
+                .foregroundStyle(colorScheme == .dark ? .white : .primary)
+        }
+        .padding(.horizontal, AppSpacing.large)
+        .padding(.vertical, AppSpacing.medium)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .background(
+            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                .fill(colorScheme == .dark ? Color(red: 0.18, green: 0.18, blue: 0.20) : .white)
+        )
+    }
+}
+
+struct ThinkingIndicator: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: AppSpacing.xSmall) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Color.orange.opacity(0.82))
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(isAnimating ? 1 : 0.52)
+                    .opacity(isAnimating ? 1 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.6)
+                        .repeatForever()
+                        .delay(Double(index) * 0.18),
+                        value: isAnimating
+                    )
+            }
+        }
+        .frame(width: 26, height: 14)
+        .onAppear {
+            isAnimating = true
+        }
+    }
+}
+
+struct EmptyStateView: View {
+    let title: String
+    let subtitle: String
+    var systemImage: String = "rectangle.stack.badge.person.crop"
+
+    var body: some View {
+        ContentUnavailableView {
+            Label(title, systemImage: systemImage)
+        } description: {
+            Text(subtitle)
+        }
     }
 }
 
