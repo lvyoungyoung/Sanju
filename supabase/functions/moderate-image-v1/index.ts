@@ -462,12 +462,8 @@ function normalizeAliyunImageModerationResponse(response: any): ImageModerationR
   const labels = extractImageModerationLabels(data)
   const labelRiskLevels = labels.map((label) => label.riskLevel)
   const hasHighRisk = topRiskLevel === "high" || labelRiskLevels.includes("high")
-  const hasMediumRisk = topRiskLevel === "medium" || labelRiskLevels.includes("medium")
   const hasSevereLabel = labels.some((label) => isSevereImageModerationLabel(label))
-  const shouldBlockMediumRisk = isEnabledEnvFlag(
-    Deno.env.get("IMAGE_MODERATION_BLOCK_MEDIUM")
-  )
-  const shouldBlock = hasHighRisk || hasSevereLabel || (shouldBlockMediumRisk && hasMediumRisk)
+  const shouldBlock = hasHighRisk || hasSevereLabel
 
   if (!shouldBlock) {
     return { allowed: true }
