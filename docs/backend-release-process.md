@@ -44,10 +44,10 @@
 
 GitHub Actions 需要在仓库的 `Settings` -> `Secrets and variables` -> `Actions` 中配置：
 
-- `SUPABASE_ACCESS_TOKEN`
-- `SUPABASE_PROJECT_REF`，当前项目为 `spb-bp103246ivn7q0nl`
+- `SUPABASE_API_URL`，当前项目为 `https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
+- `SUPABASE_API_KEY`，填写阿里云 Supabase 的 `service_role` key
 
-`scripts/deploy-edge-functions.sh` 会固定按 `scripts/edge-functions.txt` 中的清单部署，避免误部署临时目录。`delete-account` 会自动带上 `--no-verify-jwt`，保持当前线上配置。
+`scripts/deploy-edge-functions.sh` 会固定按 `scripts/edge-functions.txt` 中的清单部署，避免误部署临时目录。脚本使用阿里云 AnalyticDB Supabase 的 `functions-cli` 发布；`delete-account` 会自动带上 `--no-verify-jwt`，保持当前线上配置。
 
 ### 兜底手动发布
 

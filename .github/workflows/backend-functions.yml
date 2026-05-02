@@ -60,13 +60,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
         with:
-          version: latest
+          deno-version: v2.x
+
+      - name: Install Aliyun Supabase functions-cli
+        run: |
+          curl -L https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/en-US/20260317/sqcxei/functions-cli-linux-amd64 -o /tmp/functions-cli
+          chmod +x /tmp/functions-cli
 
       - name: Deploy selected function
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          FUNCTIONS_CLI_BIN: /tmp/functions-cli
+          SUPABASE_API_URL: ${{ secrets.SUPABASE_API_URL }}
+          SUPABASE_API_KEY: ${{ secrets.SUPABASE_API_KEY }}
         run: bash scripts/deploy-edge-functions.sh "${{ inputs.function_name }}"

@@ -4,16 +4,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FUNCTION_LIST="${ROOT_DIR}/scripts/edge-functions.txt"
 TARGET_FUNCTION="${1:-all}"
+FUNCTIONS_CLI_BIN="${FUNCTIONS_CLI_BIN:-functions-cli}"
 
-if [[ -z "${SUPABASE_PROJECT_REF:-}" ]]; then
-  echo "SUPABASE_PROJECT_REF is required." >&2
+if [[ -z "${SUPABASE_API_URL:-}" ]]; then
+  echo "SUPABASE_API_URL is required." >&2
+  exit 1
+fi
+
+if [[ -z "${SUPABASE_API_KEY:-}" ]]; then
+  echo "SUPABASE_API_KEY is required." >&2
   exit 1
 fi
 
 deploy_function() {
   local function_name="$1"
   local function_dir="${ROOT_DIR}/supabase/functions/${function_name}"
-  local deploy_flags=("--project-ref" "${SUPABASE_PROJECT_REF}" "--use-api")
+  local deploy_flags=()
 
   if [[ ! -f "${function_dir}/index.ts" ]]; then
     echo "Missing Edge Function entrypoint: ${function_dir}/index.ts" >&2
@@ -27,7 +33,10 @@ deploy_function() {
   esac
 
   echo "Deploying ${function_name}"
-  supabase functions deploy "${function_name}" "${deploy_flags[@]}"
+  (
+    cd "${ROOT_DIR}"
+    "${FUNCTIONS_CLI_BIN}" deploy "${function_name}" "${deploy_flags[@]}"
+  )
 }
 
 if [[ "${TARGET_FUNCTION}" == "all" ]]; then
