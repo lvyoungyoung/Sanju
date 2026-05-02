@@ -276,7 +276,7 @@ enum SupabaseServiceError: LocalizedError {
             }
             if normalized.contains("generation_policy_violation") ||
                 normalized.contains("这张图片暂时无法生成") {
-                return "这张图片暂时无法生成，请更换图片后再试。"
+                return "这张图片暂时无法生成，请更换图片后再试。请勿发送色情、裸露、涉政等图片，否则可能导致临时禁用或账号永久封禁。"
             }
             if normalized.contains("image_moderation_unavailable") ||
                 normalized.contains("图片安全检查失败") {
