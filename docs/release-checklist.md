@@ -1,5 +1,9 @@
 # 发布检查清单
 
+## 后端发布
+
+- 后端 Edge Function 和 SQL 发布前，先按 `docs/backend-release-process.md` 确认本地、GitHub、阿里云 Supabase 三者版本一致。
+
 ## 后端环境变量
 
 - 正式环境确认 `GENERATION_VIOLATION_BAN_ENABLED=true`，开启“连续违规图片会临时禁用生成”的保护。代码默认开启；只有显式设为 `false` 才会关闭。
