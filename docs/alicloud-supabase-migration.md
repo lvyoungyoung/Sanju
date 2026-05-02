@@ -75,7 +75,7 @@
 - `IMAGE_MODERATION_ENABLED=true`
 - `IMAGE_MODERATION_DEBUG=false`
 - `IMAGE_MODERATION_FUNCTION_URL=`（可留空，默认使用 `SUPABASE_URL/functions/v1/moderate-image-v1`）
-- `GENERATION_VIOLATION_BAN_ENABLED=false`（测试期建议关闭；上线后如需连续违规封禁再改为 `true`）
+- `GENERATION_VIOLATION_BAN_ENABLED=true`（正式环境开启连续违规封禁；测试时如需临时关闭可改为 `false`）
 - `ALIYUN_IMAGE_MODERATION_ENDPOINT=https://green-cip.cn-shanghai.aliyuncs.com`
 - `ALIYUN_IMAGE_MODERATION_SERVICE=baselineCheck`
 

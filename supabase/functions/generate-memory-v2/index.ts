@@ -345,10 +345,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "No credits left" }, 403)
     }
 
-    if (
-      isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
-      isFutureTimestamp(profile.generation_banned_until)
-    ) {
+    if (isGenerationViolationBanEnabled() && isFutureTimestamp(profile.generation_banned_until)) {
       return jsonResponse(
         {
           error: "当前账号暂时无法生成，请稍后再试。",
@@ -526,10 +523,7 @@ Deno.serve(async (req) => {
       console.error("[generate-memory-v2]", serializedError)
 
       let violationRecord: GenerationViolationRecord | null = null
-      if (
-        isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
-        moderationResult.countedViolation
-      ) {
+      if (isGenerationViolationBanEnabled() && moderationResult.countedViolation) {
         violationRecord = await recordGenerationViolation(adminClient, user.id)
       }
 
@@ -577,10 +571,7 @@ Deno.serve(async (req) => {
       console.error("[generate-memory-v2]", serializedError)
 
       let violationRecord: GenerationViolationRecord | null = null
-      if (
-        isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
-        completionResult.policyViolation
-      ) {
+      if (isGenerationViolationBanEnabled() && completionResult.policyViolation) {
         violationRecord = await recordGenerationViolation(adminClient, user.id)
       }
 
@@ -1539,6 +1530,14 @@ async function removeStoragePathQuietly(adminClient: any, path: string): Promise
 
 function isEnabledEnvFlag(value: string | undefined | null): boolean {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "")
+}
+
+function isGenerationViolationBanEnabled(): boolean {
+  const value = Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")?.trim().toLowerCase()
+  if (!value) {
+    return true
+  }
+  return !["0", "false", "no", "off"].includes(value)
 }
 
 function isFutureTimestamp(value: unknown): boolean {
