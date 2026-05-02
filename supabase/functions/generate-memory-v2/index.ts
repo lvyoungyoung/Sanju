@@ -274,7 +274,7 @@ const GENERATION_SLOT_TTL_SECONDS = 180
 const GENERATION_VIOLATION_WINDOW_SECONDS = 24 * 60 * 60
 const GENERATION_VIOLATION_LIMIT = 20
 const GENERATION_VIOLATION_BAN_SECONDS = 24 * 60 * 60
-const IMAGE_MODERATION_FUNCTION_TIMEOUT_MS = 20000
+const IMAGE_MODERATION_FUNCTION_TIMEOUT_MS = 10000
 
 Deno.serve(async (req) => {
   let adminClient: any = null
@@ -1433,10 +1433,26 @@ async function moderateImageBeforeGeneration(args: {
 
     return normalizeModerationFunctionResult(data, rawText)
   } catch (error) {
+    if (isTimeoutError(error)) {
+      console.warn(
+        "[generate-memory-v2]",
+        serializeGenerationError({
+          code: "image_moderation_timeout_allow",
+          statusCode: 200,
+          internalError: "image moderation did not return within 10s; allowing generation",
+        })
+      )
+      return { allowed: true }
+    }
+
     return buildImageModerationUnavailableResult(
       error instanceof Error ? error.message : String(error)
     )
   }
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError"
 }
 
 function buildModerationFunctionURL(): string | null {

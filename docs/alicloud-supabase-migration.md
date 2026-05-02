@@ -82,6 +82,7 @@
 `ALIBABA_CLOUD_ACCESS_KEY_ID` 和 `ALIBABA_CLOUD_ACCESS_KEY_SECRET` 建议使用只授权内容安全图片审核的 RAM 用户，不要使用主账号 AccessKey。
 如果线上临时排查 `image_moderation_unavailable`，可以短暂把 `IMAGE_MODERATION_DEBUG` 设为 `true`，客户端响应会带上阿里云调用失败详情；排查完成后请改回 `false`。
 图片审核现在拆成独立 Edge Function：请先部署 `moderate-image-v1`，再部署 `generate-memory-v2`。
+`generate-memory-v2` 最多等待图片审核 10 秒；如果审核函数超时未返回，会记录后端日志并放行生成，已明确返回高风险的图片仍会被拦截。
 连续违规封禁策略目前是：24 小时内 20 次高风险图片审核不通过，会临时禁用生成 24 小时。
 
 ### Storage
