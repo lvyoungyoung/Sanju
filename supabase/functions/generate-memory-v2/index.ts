@@ -1632,6 +1632,7 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
   const publicError: Record<string, unknown> = {
     error: "图片安全检查失败，请稍后再试。",
     code: "image_moderation_unavailable",
+    debugVersion: "2026-05-02-moderation-debug-v2",
   }
 
   if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
