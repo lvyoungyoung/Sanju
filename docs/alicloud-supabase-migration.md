@@ -59,6 +59,7 @@
 - `KIMI_BASE_URL`
 - `IMAGE_MODERATION_ENABLED`
 - `IMAGE_MODERATION_DEBUG`
+- `IMAGE_MODERATION_FUNCTION_URL`
 - `ALIBABA_CLOUD_ACCESS_KEY_ID`
 - `ALIBABA_CLOUD_ACCESS_KEY_SECRET`
 - `ALIYUN_IMAGE_MODERATION_ENDPOINT`
@@ -72,11 +73,13 @@
 
 - `IMAGE_MODERATION_ENABLED=true`
 - `IMAGE_MODERATION_DEBUG=false`
+- `IMAGE_MODERATION_FUNCTION_URL=`（可留空，默认使用 `SUPABASE_URL/functions/v1/moderate-image-v1`）
 - `ALIYUN_IMAGE_MODERATION_ENDPOINT=https://green-cip.cn-shanghai.aliyuncs.com`
 - `ALIYUN_IMAGE_MODERATION_SERVICE=baselineCheck`
 
 `ALIBABA_CLOUD_ACCESS_KEY_ID` 和 `ALIBABA_CLOUD_ACCESS_KEY_SECRET` 建议使用只授权内容安全图片审核的 RAM 用户，不要使用主账号 AccessKey。
 如果线上临时排查 `image_moderation_unavailable`，可以短暂把 `IMAGE_MODERATION_DEBUG` 设为 `true`，客户端响应会带上阿里云调用失败详情；排查完成后请改回 `false`。
+图片审核现在拆成独立 Edge Function：请先部署 `moderate-image-v1`，再部署 `generate-memory-v2`。
 
 ### Storage
 

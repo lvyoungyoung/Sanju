@@ -274,8 +274,7 @@ const GENERATION_SLOT_TTL_SECONDS = 180
 const GENERATION_VIOLATION_WINDOW_SECONDS = 24 * 60 * 60
 const GENERATION_VIOLATION_LIMIT = 3
 const GENERATION_VIOLATION_BAN_SECONDS = 24 * 60 * 60
-const IMAGE_MODERATION_TIMEOUT_MS = 10000
-const IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS = 60
+const IMAGE_MODERATION_FUNCTION_TIMEOUT_MS = 20000
 
 Deno.serve(async (req) => {
   let adminClient: any = null
@@ -508,9 +507,8 @@ Deno.serve(async (req) => {
     }
 
     const moderationResult = await moderateImageBeforeGeneration({
-      adminClient,
       userID: user.id,
-      imageBytes,
+      imageBase64,
       existingImagePath: isAnonymous ? guestImagePath : null,
       requestID: generationSlotRequestID,
     })
@@ -1383,9 +1381,8 @@ type GenerationViolationRecord = {
 }
 
 async function moderateImageBeforeGeneration(args: {
-  adminClient: any
   userID: string
-  imageBytes: Uint8Array
+  imageBase64: string
   existingImagePath: string | null
   requestID: string
 }): Promise<ImageModerationResult> {
@@ -1393,347 +1390,114 @@ async function moderateImageBeforeGeneration(args: {
     return { allowed: true }
   }
 
-  let moderationImagePath = args.existingImagePath
-  let shouldRemoveModerationImage = false
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim()
+  const functionURL = buildModerationFunctionURL()
+
+  if (!serviceRoleKey || !functionURL) {
+    return buildImageModerationUnavailableResult("missing moderation function configuration")
+  }
+
+  const requestBody: Record<string, unknown> = {
+    userID: args.userID,
+    requestID: args.requestID,
+    existingImagePath: args.existingImagePath,
+  }
+  if (!args.existingImagePath) {
+    requestBody.imageBase64 = args.imageBase64
+  }
 
   try {
-    if (!moderationImagePath) {
-      moderationImagePath = `${args.userID}/moderation/${args.requestID}.jpg`
-      const { error: uploadError } = await args.adminClient.storage
-        .from("memories")
-        .upload(moderationImagePath, args.imageBytes, {
-          contentType: "image/jpeg",
-          upsert: false,
-        })
-
-      if (uploadError) {
-        return buildImageModerationUnavailableResult(
-          `upload moderation image failed: ${uploadError.message}`
-        )
-      }
-
-      shouldRemoveModerationImage = true
+    const response = await fetchWithTimeout(
+      functionURL,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${serviceRoleKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      },
+      IMAGE_MODERATION_FUNCTION_TIMEOUT_MS
+    )
+    const rawText = await response.text()
+    let data: unknown = null
+    try {
+      data = rawText ? JSON.parse(rawText) : null
+    } catch {
+      data = null
     }
 
-    const { data: signedURLData, error: signedURLError } = await args.adminClient.storage
-      .from("memories")
-      .createSignedUrl(moderationImagePath, IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS)
-
-    if (signedURLError || !signedURLData?.signedUrl) {
+    if (!response.ok) {
       return buildImageModerationUnavailableResult(
-        `create moderation signed url failed: ${signedURLError?.message ?? "missing signed url"}`
+        `moderation function HTTP ${response.status}: ${rawText.slice(0, 1000)}`
       )
     }
 
-    return await requestAliyunImageModeration({
-      imageURL: signedURLData.signedUrl,
-      dataID: args.requestID,
-    })
-  } finally {
-    if (shouldRemoveModerationImage && moderationImagePath) {
-      await removeStoragePathQuietly(args.adminClient, moderationImagePath)
-    }
-  }
-}
-
-async function requestAliyunImageModeration(args: {
-  imageURL: string
-  dataID: string
-}): Promise<ImageModerationResult> {
-  const accessKeyID = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_ID")?.trim()
-  const accessKeySecret = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")?.trim()
-  const endpoint = normalizeAliyunEndpoint(Deno.env.get("ALIYUN_IMAGE_MODERATION_ENDPOINT"))
-  const service = normalizeImageModerationService(
-    Deno.env.get("ALIYUN_IMAGE_MODERATION_SERVICE")
-  )
-
-  if (!accessKeyID || !accessKeySecret || !endpoint) {
-    return buildImageModerationUnavailableResult("missing aliyun image moderation configuration")
-  }
-
-  const fallbackEndpoint = normalizeAliyunEndpoint("green-cip.cn-beijing.aliyuncs.com")
-
-  let primaryResponse: any
-
-  try {
-    primaryResponse = await requestAliyunImageModerationOnce({
-      accessKeyID,
-      accessKeySecret,
-      endpoint,
-      service,
-      imageURL: args.imageURL,
-      dataID: args.dataID,
-    })
-
-    if (shouldRetryAliyunImageModeration(primaryResponse) && endpoint !== fallbackEndpoint) {
-      const fallbackResponse = await requestAliyunImageModerationOnce({
-        accessKeyID,
-        accessKeySecret,
-        endpoint: fallbackEndpoint,
-        service,
-        imageURL: args.imageURL,
-        dataID: args.dataID,
-      })
-      return normalizeAliyunImageModerationResponse(fallbackResponse)
-    }
-
-    return normalizeAliyunImageModerationResponse(primaryResponse)
+    return normalizeModerationFunctionResult(data, rawText)
   } catch (error) {
-    if (endpoint !== fallbackEndpoint) {
-      try {
-        const fallbackResponse = await requestAliyunImageModerationOnce({
-          accessKeyID,
-          accessKeySecret,
-          endpoint: fallbackEndpoint,
-          service,
-          imageURL: args.imageURL,
-          dataID: args.dataID,
-        })
-        return normalizeAliyunImageModerationResponse(fallbackResponse)
-      } catch (fallbackError) {
-        return buildImageModerationUnavailableResult(
-          `primary=${error instanceof Error ? error.message : String(error)}; fallback=${
-            fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-          }`
-        )
-      }
-    }
-
     return buildImageModerationUnavailableResult(
       error instanceof Error ? error.message : String(error)
     )
   }
 }
 
-async function requestAliyunImageModerationOnce(args: {
-  accessKeyID: string
-  accessKeySecret: string
-  endpoint: string
-  service: string
-  imageURL: string
-  dataID: string
-}): Promise<any> {
-  return await callAliyunRPC({
-    accessKeyID: args.accessKeyID,
-    accessKeySecret: args.accessKeySecret,
-    endpoint: args.endpoint,
-    action: "ImageModeration",
-    version: "2022-03-02",
-    timeoutMs: IMAGE_MODERATION_TIMEOUT_MS,
-    params: {
-      Service: args.service,
-      ServiceParameters: JSON.stringify({
-        imageUrl: args.imageURL,
-        dataId: args.dataID,
-      }),
-    },
-  })
+function buildModerationFunctionURL(): string | null {
+  const configuredURL = Deno.env.get("IMAGE_MODERATION_FUNCTION_URL")?.trim()
+  if (configuredURL) {
+    return configuredURL
+  }
+
+  const supabaseURL = Deno.env.get("SUPABASE_URL")?.trim()
+  if (!supabaseURL) {
+    return null
+  }
+  return `${supabaseURL.replace(/\/$/, "")}/functions/v1/moderate-image-v1`
 }
 
-async function callAliyunRPC(args: {
-  accessKeyID: string
-  accessKeySecret: string
-  endpoint: string
-  action: string
-  version: string
-  timeoutMs: number
-  params: Record<string, string>
-}): Promise<any> {
-  const commonParams: Record<string, string> = {
-    Format: "JSON",
-    Version: args.version,
-    AccessKeyId: args.accessKeyID,
-    SignatureMethod: "HMAC-SHA1",
-    Timestamp: formatAliyunTimestamp(new Date()),
-    SignatureVersion: "1.0",
-    SignatureNonce: crypto.randomUUID(),
-    Action: args.action,
-    ...args.params,
-  }
-  const signature = await signAliyunRPCParams("POST", commonParams, args.accessKeySecret)
-  const body = formEncode({
-    ...commonParams,
-    Signature: signature,
-  })
+function normalizeModerationFunctionResult(
+  data: unknown,
+  rawText: string
+): ImageModerationResult {
+  if (typeof data === "object" && data !== null && "allowed" in data) {
+    const result = data as Record<string, unknown>
+    if (result.allowed === true) {
+      return { allowed: true }
+    }
 
-  const response = await fetchWithTimeout(
-    args.endpoint,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-      },
-      body,
-    },
-    args.timeoutMs
+    if (result.allowed === false) {
+      const publicError =
+        typeof result.publicError === "object" && result.publicError !== null
+          ? (result.publicError as Record<string, unknown>)
+          : {
+              error: "图片安全检查失败，请稍后再试。",
+              code: "image_moderation_unavailable",
+            }
+
+      return {
+        allowed: false,
+        code: String(result.code ?? "image_moderation_unavailable"),
+        policyViolation: result.policyViolation === true,
+        countedViolation: result.countedViolation === true,
+        statusCode:
+          typeof result.statusCode === "number" && Number.isFinite(result.statusCode)
+            ? result.statusCode
+            : 503,
+        internalError: String(result.internalError ?? "missing moderation internal error"),
+        publicError,
+      }
+    }
+  }
+
+  return buildImageModerationUnavailableResult(
+    `invalid moderation function response: ${rawText.slice(0, 1000)}`
   )
-  const rawText = await response.text()
-  let data: any = null
-  try {
-    data = rawText ? JSON.parse(rawText) : null
-  } catch {
-    data = null
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      `Aliyun RPC HTTP ${response.status} ${response.statusText}: ${rawText.slice(0, 1000)}`
-    )
-  }
-
-  return data ?? {
-    Code: response.status,
-    Message: rawText || "empty aliyun rpc response",
-  }
-}
-
-async function signAliyunRPCParams(
-  method: "POST" | "GET",
-  params: Record<string, string>,
-  accessKeySecret: string
-): Promise<string> {
-  const canonicalizedQueryString = Object.keys(params)
-    .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
-    .join("&")
-  const stringToSign = `${method}&${percentEncode("/")}&${percentEncode(
-    canonicalizedQueryString
-  )}`
-  const key = `${accessKeySecret}&`
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(key),
-    {
-      name: "HMAC",
-      hash: "SHA-1",
-    },
-    false,
-    ["sign"]
-  )
-  const signature = await crypto.subtle.sign(
-    "HMAC",
-    cryptoKey,
-    new TextEncoder().encode(stringToSign)
-  )
-  return base64Encode(signature)
-}
-
-function formEncode(params: Record<string, string>): string {
-  return Object.keys(params)
-    .sort()
-    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
-    .join("&")
-}
-
-function percentEncode(value: string): string {
-  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
-    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
-  )
-}
-
-function base64Encode(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  let binary = ""
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  return btoa(binary)
-}
-
-function formatAliyunTimestamp(date: Date): string {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z")
-}
-
-function shouldRetryAliyunImageModeration(response: any): boolean {
-  return Number(response?.Code ?? response?.code ?? 0) === 500
-}
-
-function normalizeAliyunImageModerationResponse(response: any): ImageModerationResult {
-  const code = Number(response?.Code ?? response?.code ?? 0)
-  if (code !== 200) {
-    return buildImageModerationUnavailableResult(
-      `Aliyun image moderation returned non-200 code: ${JSON.stringify(response)}`
-    )
-  }
-
-  const data = response?.Data ?? response?.data ?? {}
-  const topRiskLevel = normalizeRiskLevel(data?.RiskLevel ?? data?.riskLevel)
-  const labels = extractImageModerationLabels(data)
-  const labelRiskLevels = labels.map((label) => label.riskLevel)
-  const hasHighRisk = topRiskLevel === "high" || labelRiskLevels.includes("high")
-  const hasMediumRisk = topRiskLevel === "medium" || labelRiskLevels.includes("medium")
-  const hasSevereLabel = labels.some((label) => isSevereImageModerationLabel(label))
-
-  if (!hasHighRisk && !hasMediumRisk && !hasSevereLabel) {
-    return { allowed: true }
-  }
-
-  const countedViolation = hasHighRisk || hasSevereLabel
-  return {
-    allowed: false,
-    code: "generation_policy_violation",
-    policyViolation: true,
-    countedViolation,
-    statusCode: 403,
-    internalError: `image moderation blocked: ${JSON.stringify({
-      riskLevel: topRiskLevel,
-      labels,
-    })}`,
-    publicError: {
-      error: "这张图片暂时无法生成，请更换图片后再试。",
-      code: "generation_policy_violation",
-    },
-  }
-}
-
-function extractImageModerationLabels(data: any): Array<{
-  label: string
-  riskLevel: string
-  confidence: number
-}> {
-  const rawResults = Array.isArray(data?.Result)
-    ? data.Result
-    : Array.isArray(data?.result)
-      ? data.result
-      : []
-
-  return rawResults.map((item: any) => ({
-    label: String(item?.Label ?? item?.label ?? "").trim(),
-    riskLevel: normalizeRiskLevel(item?.RiskLevel ?? item?.riskLevel),
-    confidence: normalizeNumber(item?.Confidence ?? item?.confidence),
-  }))
-}
-
-function isSevereImageModerationLabel(label: {
-  label: string
-  riskLevel: string
-  confidence: number
-}): boolean {
-  if (label.riskLevel !== "high") {
-    return false
-  }
-
-  const normalizedLabel = label.label.toLowerCase()
-  const severePrefixes = [
-    "pornographic",
-    "sexual",
-    "political",
-    "violent",
-    "terror",
-    "contraband",
-    "abuse",
-    "insult",
-    "religion",
-  ]
-
-  return severePrefixes.some((prefix) => normalizedLabel.startsWith(prefix))
 }
 
 function buildImageModerationUnavailableResult(internalError: string): ImageModerationResult {
   const publicError: Record<string, unknown> = {
     error: "图片安全检查失败，请稍后再试。",
     code: "image_moderation_unavailable",
-    debugVersion: "2026-05-02-moderation-direct-rpc-v3",
+    debugVersion: "2026-05-02-generate-moderation-caller-v1",
   }
 
   if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
@@ -1764,51 +1528,6 @@ async function removeStoragePathQuietly(adminClient: any, path: string): Promise
       })
     )
   }
-}
-
-async function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string
-): Promise<T> {
-  let timeoutID: number | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutID = setTimeout(() => reject(new Error(message)), timeoutMs)
-  })
-
-  try {
-    return await Promise.race([promise, timeout])
-  } finally {
-    if (timeoutID !== undefined) {
-      clearTimeout(timeoutID)
-    }
-  }
-}
-
-function normalizeImageModerationService(value: string | undefined | null): string {
-  const service = value?.trim()
-  return service || "baselineCheck"
-}
-
-function normalizeAliyunEndpoint(value: string | undefined | null): string {
-  const endpoint = value?.trim() || "green-cip.cn-shanghai.aliyuncs.com"
-  if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
-    return endpoint
-  }
-  return `https://${endpoint}`
-}
-
-function normalizeRiskLevel(value: unknown): string {
-  return String(value ?? "none").trim().toLowerCase()
-}
-
-function normalizeNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value
-  }
-
-  const parsed = Number.parseFloat(String(value ?? "0"))
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function isEnabledEnvFlag(value: string | undefined | null): boolean {
