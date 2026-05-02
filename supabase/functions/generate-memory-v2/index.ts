@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import RPCClient from "npm:@alicloud/pop-core"
 
 interface Sentence {
   english: string
@@ -274,6 +275,8 @@ const GENERATION_SLOT_TTL_SECONDS = 180
 const GENERATION_VIOLATION_WINDOW_SECONDS = 24 * 60 * 60
 const GENERATION_VIOLATION_LIMIT = 3
 const GENERATION_VIOLATION_BAN_SECONDS = 24 * 60 * 60
+const IMAGE_MODERATION_TIMEOUT_MS = 10000
+const IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS = 60
 
 Deno.serve(async (req) => {
   let adminClient: any = null
@@ -362,6 +365,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "imageBase64 is required" }, 400)
     }
 
+    const imageBytes = decodeBase64(imageBase64)
     const englishLevel = body.englishLevel ?? "中等"
     const languageStyle = body.languageStyle ?? "平铺直叙"
     const isAnonymous = user.is_anonymous === true
@@ -433,7 +437,6 @@ Deno.serve(async (req) => {
           )
         }
 
-        const imageBytes = decodeBase64(imageBase64)
         const { error: uploadError } = await adminClient.storage
           .from("memories")
           .upload(guestImagePath, imageBytes, {
@@ -503,6 +506,50 @@ Deno.serve(async (req) => {
           guestJobID,
         })
       }
+    }
+
+    const moderationResult = await moderateImageBeforeGeneration({
+      adminClient,
+      userID: user.id,
+      imageBytes,
+      existingImagePath: isAnonymous ? guestImagePath : null,
+      requestID: generationSlotRequestID,
+    })
+
+    if (!moderationResult.allowed) {
+      const serializedError = serializeGenerationError({
+        code: moderationResult.code,
+        statusCode: moderationResult.statusCode,
+        internalError: moderationResult.internalError,
+      })
+
+      console.error("[generate-memory-v2]", serializedError)
+
+      let violationRecord: GenerationViolationRecord | null = null
+      if (moderationResult.countedViolation) {
+        violationRecord = await recordGenerationViolation(adminClient, user.id)
+      }
+
+      if (guestJobID) {
+        await adminClient
+          .from("guest_generation_jobs")
+          .update({
+            status: "failed",
+            error_message: serializedError,
+          })
+          .eq("id", guestJobID)
+      }
+
+      if (guestImagePath) {
+        await removeStoragePathQuietly(adminClient, guestImagePath)
+      }
+
+      return jsonResponse(
+        moderationResult.policyViolation
+          ? buildGenerationPolicyViolationError(violationRecord)
+          : moderationResult.publicError,
+        moderationResult.statusCode
+      )
     }
 
     const promptText = buildPromptText(englishLevel, languageStyle)
@@ -609,7 +656,6 @@ Deno.serve(async (req) => {
 
     const memoryID = crypto.randomUUID()
     const imagePath = `${user.id}/${crypto.randomUUID().toLowerCase()}.jpg`
-    const imageBytes = decodeBase64(imageBase64)
 
     const { error: uploadError } = await adminClient.storage
       .from("memories")
@@ -1320,9 +1366,279 @@ function normalizeRPCInteger(value: unknown): number {
   throw new Error(`Unexpected RPC integer result: ${JSON.stringify(value)}`)
 }
 
+type ImageModerationResult =
+  | { allowed: true }
+  | {
+      allowed: false
+      code: string
+      policyViolation: boolean
+      countedViolation: boolean
+      statusCode: number
+      internalError: string
+      publicError: Record<string, unknown>
+    }
+
 type GenerationViolationRecord = {
   violationCount: number
   bannedUntil: string | null
+}
+
+async function moderateImageBeforeGeneration(args: {
+  adminClient: any
+  userID: string
+  imageBytes: Uint8Array
+  existingImagePath: string | null
+  requestID: string
+}): Promise<ImageModerationResult> {
+  if (!isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_ENABLED"))) {
+    return { allowed: true }
+  }
+
+  let moderationImagePath = args.existingImagePath
+  let shouldRemoveModerationImage = false
+
+  try {
+    if (!moderationImagePath) {
+      moderationImagePath = `${args.userID}/moderation/${args.requestID}.jpg`
+      const { error: uploadError } = await args.adminClient.storage
+        .from("memories")
+        .upload(moderationImagePath, args.imageBytes, {
+          contentType: "image/jpeg",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        return buildImageModerationUnavailableResult(
+          `upload moderation image failed: ${uploadError.message}`
+        )
+      }
+
+      shouldRemoveModerationImage = true
+    }
+
+    const { data: signedURLData, error: signedURLError } = await args.adminClient.storage
+      .from("memories")
+      .createSignedUrl(moderationImagePath, IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS)
+
+    if (signedURLError || !signedURLData?.signedUrl) {
+      return buildImageModerationUnavailableResult(
+        `create moderation signed url failed: ${signedURLError?.message ?? "missing signed url"}`
+      )
+    }
+
+    return await requestAliyunImageModeration({
+      imageURL: signedURLData.signedUrl,
+      dataID: args.requestID,
+    })
+  } finally {
+    if (shouldRemoveModerationImage && moderationImagePath) {
+      await removeStoragePathQuietly(args.adminClient, moderationImagePath)
+    }
+  }
+}
+
+async function requestAliyunImageModeration(args: {
+  imageURL: string
+  dataID: string
+}): Promise<ImageModerationResult> {
+  const accessKeyID = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_ID")?.trim()
+  const accessKeySecret = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")?.trim()
+  const endpoint = Deno.env.get("ALIYUN_IMAGE_MODERATION_ENDPOINT")?.trim()
+  const service = normalizeImageModerationService(
+    Deno.env.get("ALIYUN_IMAGE_MODERATION_SERVICE")
+  )
+
+  if (!accessKeyID || !accessKeySecret || !endpoint) {
+    return buildImageModerationUnavailableResult("missing aliyun image moderation configuration")
+  }
+
+  const client = new RPCClient({
+    accessKeyId: accessKeyID,
+    accessKeySecret,
+    endpoint,
+    apiVersion: "2022-03-02",
+  })
+
+  try {
+    const response = await withTimeout(
+      client.request(
+        "ImageModeration",
+        {
+          Service: service,
+          ServiceParameters: JSON.stringify({
+            imageUrl: args.imageURL,
+            dataId: args.dataID,
+          }),
+        },
+        {
+          method: "POST",
+        }
+      ),
+      IMAGE_MODERATION_TIMEOUT_MS,
+      "Aliyun image moderation timeout"
+    )
+
+    return normalizeAliyunImageModerationResponse(response)
+  } catch (error) {
+    return buildImageModerationUnavailableResult(
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+}
+
+function normalizeAliyunImageModerationResponse(response: any): ImageModerationResult {
+  const code = Number(response?.Code ?? response?.code ?? 0)
+  if (code !== 200) {
+    return buildImageModerationUnavailableResult(
+      `Aliyun image moderation returned non-200 code: ${JSON.stringify(response)}`
+    )
+  }
+
+  const data = response?.Data ?? response?.data ?? {}
+  const topRiskLevel = normalizeRiskLevel(data?.RiskLevel ?? data?.riskLevel)
+  const labels = extractImageModerationLabels(data)
+  const labelRiskLevels = labels.map((label) => label.riskLevel)
+  const hasHighRisk = topRiskLevel === "high" || labelRiskLevels.includes("high")
+  const hasMediumRisk = topRiskLevel === "medium" || labelRiskLevels.includes("medium")
+  const hasSevereLabel = labels.some((label) => isSevereImageModerationLabel(label))
+
+  if (!hasHighRisk && !hasMediumRisk && !hasSevereLabel) {
+    return { allowed: true }
+  }
+
+  const countedViolation = hasHighRisk || hasSevereLabel
+  return {
+    allowed: false,
+    code: "generation_policy_violation",
+    policyViolation: true,
+    countedViolation,
+    statusCode: 403,
+    internalError: `image moderation blocked: ${JSON.stringify({
+      riskLevel: topRiskLevel,
+      labels,
+    })}`,
+    publicError: {
+      error: "这张图片暂时无法生成，请更换图片后再试。",
+      code: "generation_policy_violation",
+    },
+  }
+}
+
+function extractImageModerationLabels(data: any): Array<{
+  label: string
+  riskLevel: string
+  confidence: number
+}> {
+  const rawResults = Array.isArray(data?.Result)
+    ? data.Result
+    : Array.isArray(data?.result)
+      ? data.result
+      : []
+
+  return rawResults.map((item: any) => ({
+    label: String(item?.Label ?? item?.label ?? "").trim(),
+    riskLevel: normalizeRiskLevel(item?.RiskLevel ?? item?.riskLevel),
+    confidence: normalizeNumber(item?.Confidence ?? item?.confidence),
+  }))
+}
+
+function isSevereImageModerationLabel(label: {
+  label: string
+  riskLevel: string
+  confidence: number
+}): boolean {
+  if (label.riskLevel !== "high") {
+    return false
+  }
+
+  const normalizedLabel = label.label.toLowerCase()
+  const severePrefixes = [
+    "pornographic",
+    "sexual",
+    "political",
+    "violent",
+    "terror",
+    "contraband",
+    "abuse",
+    "insult",
+    "religion",
+  ]
+
+  return severePrefixes.some((prefix) => normalizedLabel.startsWith(prefix))
+}
+
+function buildImageModerationUnavailableResult(internalError: string): ImageModerationResult {
+  return {
+    allowed: false,
+    code: "image_moderation_unavailable",
+    policyViolation: false,
+    countedViolation: false,
+    statusCode: 503,
+    internalError,
+    publicError: {
+      error: "图片安全检查失败，请稍后再试。",
+      code: "image_moderation_unavailable",
+    },
+  }
+}
+
+async function removeStoragePathQuietly(adminClient: any, path: string): Promise<void> {
+  try {
+    await adminClient.storage.from("memories").remove([path])
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2]",
+      serializeGenerationError({
+        code: "storage_cleanup_failed",
+        statusCode: 500,
+        internalError: error instanceof Error ? error.message : String(error),
+      })
+    )
+  }
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string
+): Promise<T> {
+  let timeoutID: number | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutID = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timeoutID !== undefined) {
+      clearTimeout(timeoutID)
+    }
+  }
+}
+
+function normalizeImageModerationService(value: string | undefined | null): string {
+  const service = value?.trim()
+  if (!service || service === "baselineCheck") {
+    return "baselineCheckByVL"
+  }
+  return service
+}
+
+function normalizeRiskLevel(value: unknown): string {
+  return String(value ?? "none").trim().toLowerCase()
+}
+
+function normalizeNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value
+  }
+
+  const parsed = Number.parseFloat(String(value ?? "0"))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function isEnabledEnvFlag(value: string | undefined | null): boolean {
+  return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "")
 }
 
 function isFutureTimestamp(value: unknown): boolean {

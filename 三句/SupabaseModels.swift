@@ -278,6 +278,10 @@ enum SupabaseServiceError: LocalizedError {
                 normalized.contains("这张图片暂时无法生成") {
                 return "这张图片暂时无法生成，请更换图片后再试。"
             }
+            if normalized.contains("image_moderation_unavailable") ||
+                normalized.contains("图片安全检查失败") {
+                return "图片安全检查失败，请稍后再试。"
+            }
             if normalized.contains("too many requests") ||
                 normalized.contains("rate limit") ||
                 normalized.contains("rate_limit") ||
