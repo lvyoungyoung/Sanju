@@ -1,5 +1,3 @@
-import { createClient } from "npm:@supabase/supabase-js@2"
-
 type ImageModerationResult =
   | { allowed: true }
   | {
@@ -16,11 +14,10 @@ interface ModerateImageRequestBody {
   userID?: string
   requestID?: string
   imageBase64?: string
-  existingImagePath?: string | null
 }
 
 const IMAGE_MODERATION_TIMEOUT_MS = 10000
-const IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS = 60
+const ALIYUN_OSS_UPLOAD_TIMEOUT_MS = 15000
 
 Deno.serve(async (req) => {
   try {
@@ -42,18 +39,9 @@ Deno.serve(async (req) => {
       return jsonResponse({ allowed: true })
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim()
-    if (!supabaseUrl) {
-      return jsonResponse(
-        buildImageModerationUnavailableResult("missing supabase url"),
-        200
-      )
-    }
-
     const body = (await req.json()) as ModerateImageRequestBody
     const userID = body.userID?.trim()
     const requestID = body.requestID?.trim() || crypto.randomUUID()
-    const existingImagePath = body.existingImagePath?.trim() || null
     const imageBase64 = body.imageBase64?.replace(/\s+/g, "").trim()
 
     if (!userID) {
@@ -63,20 +51,16 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (!existingImagePath && !imageBase64) {
+    if (!imageBase64) {
       return jsonResponse(
         buildImageModerationUnavailableResult("missing image input"),
         200
       )
     }
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey)
     const result = await moderateImage({
-      adminClient,
-      userID,
       requestID,
-      imageBase64,
-      existingImagePath,
+      imageBytes: decodeBase64(imageBase64),
     })
 
     return jsonResponse(result)
@@ -91,58 +75,178 @@ Deno.serve(async (req) => {
 })
 
 async function moderateImage(args: {
-  adminClient: any
-  userID: string
   requestID: string
-  imageBase64?: string
-  existingImagePath: string | null
+  imageBytes: Uint8Array
 }): Promise<ImageModerationResult> {
-  let moderationImagePath = args.existingImagePath
-  let shouldRemoveModerationImage = false
-
   try {
-    if (!moderationImagePath) {
-      moderationImagePath = `${args.userID}/moderation/${args.requestID}.jpg`
-      const imageBytes = decodeBase64(args.imageBase64 ?? "")
-      const { error: uploadError } = await args.adminClient.storage
-        .from("memories")
-        .upload(moderationImagePath, imageBytes, {
-          contentType: "image/jpeg",
-          upsert: false,
-        })
-
-      if (uploadError) {
-        return buildImageModerationUnavailableResult(
-          `upload moderation image failed: ${uploadError.message}`
-        )
-      }
-
-      shouldRemoveModerationImage = true
-    }
-
-    const { data: signedURLData, error: signedURLError } = await args.adminClient.storage
-      .from("memories")
-      .createSignedUrl(moderationImagePath, IMAGE_MODERATION_SIGNED_URL_EXPIRES_SECONDS)
-
-    if (signedURLError || !signedURLData?.signedUrl) {
-      return buildImageModerationUnavailableResult(
-        `create moderation signed url failed: ${signedURLError?.message ?? "missing signed url"}`
-      )
-    }
-
-    return await requestAliyunImageModeration({
-      imageURL: signedURLData.signedUrl,
+    const uploadTarget = await uploadImageForAliyunModeration({
+      imageBytes: args.imageBytes,
       dataID: args.requestID,
     })
-  } finally {
-    if (shouldRemoveModerationImage && moderationImagePath) {
-      await removeStoragePathQuietly(args.adminClient, moderationImagePath)
-    }
+
+    return await requestAliyunImageModeration({
+      ossBucketName: uploadTarget.bucketName,
+      ossObjectName: uploadTarget.objectName,
+      dataID: args.requestID,
+    })
+  } catch (error) {
+    return buildImageModerationUnavailableResult(
+      error instanceof Error ? error.message : String(error)
+    )
   }
 }
 
+type AliyunModerationUploadToken = {
+  accessKeyID: string
+  accessKeySecret: string
+  securityToken: string
+  bucketName: string
+  objectPrefix: string
+  ossEndpoint: string
+}
+
+async function uploadImageForAliyunModeration(args: {
+  imageBytes: Uint8Array
+  dataID: string
+}): Promise<{ bucketName: string; objectName: string }> {
+  const accessKeyID = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_ID")?.trim()
+  const accessKeySecret = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")?.trim()
+  const endpoint = normalizeAliyunEndpoint(Deno.env.get("ALIYUN_IMAGE_MODERATION_ENDPOINT"))
+
+  if (!accessKeyID || !accessKeySecret || !endpoint) {
+    throw new Error("missing aliyun image moderation configuration")
+  }
+
+  const uploadTokenResponse = await callAliyunRPC({
+    accessKeyID,
+    accessKeySecret,
+    endpoint,
+    action: "DescribeUploadToken",
+    version: "2022-03-02",
+    timeoutMs: IMAGE_MODERATION_TIMEOUT_MS,
+    params: {},
+  })
+  const uploadToken = normalizeAliyunModerationUploadToken(uploadTokenResponse)
+  const objectName = `${uploadToken.objectPrefix}${args.dataID}.jpg`
+
+  await uploadToAliyunOSS({
+    uploadToken,
+    objectName,
+    imageBytes: args.imageBytes,
+  })
+
+  return {
+    bucketName: uploadToken.bucketName,
+    objectName,
+  }
+}
+
+function normalizeAliyunModerationUploadToken(response: any): AliyunModerationUploadToken {
+  const code = Number(response?.Code ?? response?.code ?? 0)
+  if (code !== 200) {
+    throw new Error(`DescribeUploadToken returned non-200 code: ${JSON.stringify(response)}`)
+  }
+
+  const data = response?.Data ?? response?.data ?? {}
+  const accessKeyID = String(data.AccessKeyId ?? data.accessKeyId ?? "").trim()
+  const accessKeySecret = String(data.AccessKeySecret ?? data.accessKeySecret ?? "").trim()
+  const securityToken = String(data.SecurityToken ?? data.securityToken ?? "").trim()
+  const bucketName = String(data.BucketName ?? data.bucketName ?? "").trim()
+  const objectPrefix = String(data.FileNamePrefix ?? data.fileNamePrefix ?? "").trim()
+  const ossEndpoint = String(
+    data.OssInternetEndPoint ?? data.ossInternetEndPoint ?? data.OssEndpoint ??
+      data.ossEndpoint ?? ""
+  ).trim()
+
+  if (!accessKeyID || !accessKeySecret || !securityToken || !bucketName || !ossEndpoint) {
+    throw new Error(`DescribeUploadToken response missing fields: ${JSON.stringify(response)}`)
+  }
+
+  return {
+    accessKeyID,
+    accessKeySecret,
+    securityToken,
+    bucketName,
+    objectPrefix,
+    ossEndpoint,
+  }
+}
+
+async function uploadToAliyunOSS(args: {
+  uploadToken: AliyunModerationUploadToken
+  objectName: string
+  imageBytes: Uint8Array
+}): Promise<void> {
+  const contentType = "image/jpeg"
+  const date = new Date().toUTCString()
+  const canonicalizedOSSHeaders = `x-oss-security-token:${args.uploadToken.securityToken}\n`
+  const canonicalizedResource = `/${args.uploadToken.bucketName}/${args.objectName}`
+  const stringToSign = [
+    "PUT",
+    "",
+    contentType,
+    date,
+    `${canonicalizedOSSHeaders}${canonicalizedResource}`,
+  ].join("\n")
+  const signature = await hmacSHA1Base64(args.uploadToken.accessKeySecret, stringToSign)
+  const uploadURL = buildAliyunOSSUploadURL({
+    bucketName: args.uploadToken.bucketName,
+    endpoint: args.uploadToken.ossEndpoint,
+    objectName: args.objectName,
+  })
+  const uploadBody = toArrayBuffer(args.imageBytes)
+
+  const response = await fetchWithTimeout(
+    uploadURL,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `OSS ${args.uploadToken.accessKeyID}:${signature}`,
+        Date: date,
+        "Content-Type": contentType,
+        "x-oss-security-token": args.uploadToken.securityToken,
+      },
+      body: uploadBody,
+    },
+    ALIYUN_OSS_UPLOAD_TIMEOUT_MS
+  )
+
+  if (!response.ok) {
+    const rawText = await response.text()
+    throw new Error(
+      `Aliyun OSS upload failed HTTP ${response.status} ${response.statusText}: ${rawText.slice(
+        0,
+        1000
+      )}`
+    )
+  }
+}
+
+function buildAliyunOSSUploadURL(args: {
+  bucketName: string
+  endpoint: string
+  objectName: string
+}): string {
+  const normalizedEndpoint = normalizeOSSInternetEndpoint(args.endpoint)
+  const endpointURL = new URL(normalizedEndpoint)
+  const objectPath = args.objectName
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")
+  return `${endpointURL.protocol}//${args.bucketName}.${endpointURL.host}/${objectPath}`
+}
+
+function normalizeOSSInternetEndpoint(value: string): string {
+  const endpoint = value.trim()
+  if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+    return endpoint
+  }
+  return `https://${endpoint}`
+}
+
 async function requestAliyunImageModeration(args: {
-  imageURL: string
+  ossBucketName: string
+  ossObjectName: string
   dataID: string
 }): Promise<ImageModerationResult> {
   const accessKeyID = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_ID")?.trim()
@@ -164,7 +268,8 @@ async function requestAliyunImageModeration(args: {
       accessKeySecret,
       endpoint,
       service,
-      imageURL: args.imageURL,
+      ossBucketName: args.ossBucketName,
+      ossObjectName: args.ossObjectName,
       dataID: args.dataID,
     })
 
@@ -174,7 +279,8 @@ async function requestAliyunImageModeration(args: {
         accessKeySecret,
         endpoint: fallbackEndpoint,
         service,
-        imageURL: args.imageURL,
+        ossBucketName: args.ossBucketName,
+        ossObjectName: args.ossObjectName,
         dataID: args.dataID,
       })
       return normalizeAliyunImageModerationResponse(fallbackResponse)
@@ -189,7 +295,8 @@ async function requestAliyunImageModeration(args: {
           accessKeySecret,
           endpoint: fallbackEndpoint,
           service,
-          imageURL: args.imageURL,
+          ossBucketName: args.ossBucketName,
+          ossObjectName: args.ossObjectName,
           dataID: args.dataID,
         })
         return normalizeAliyunImageModerationResponse(fallbackResponse)
@@ -213,7 +320,8 @@ async function requestAliyunImageModerationOnce(args: {
   accessKeySecret: string
   endpoint: string
   service: string
-  imageURL: string
+  ossBucketName: string
+  ossObjectName: string
   dataID: string
 }): Promise<any> {
   return await callAliyunRPC({
@@ -226,7 +334,8 @@ async function requestAliyunImageModerationOnce(args: {
     params: {
       Service: args.service,
       ServiceParameters: JSON.stringify({
-        imageUrl: args.imageURL,
+        ossBucketName: args.ossBucketName,
+        ossObjectName: args.ossObjectName,
         dataId: args.dataID,
       }),
     },
@@ -321,6 +430,25 @@ async function signAliyunRPCParams(
   return base64Encode(signature)
 }
 
+async function hmacSHA1Base64(secret: string, value: string): Promise<string> {
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    {
+      name: "HMAC",
+      hash: "SHA-1",
+    },
+    false,
+    ["sign"]
+  )
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    new TextEncoder().encode(value)
+  )
+  return base64Encode(signature)
+}
+
 function normalizeAliyunImageModerationResponse(response: any): ImageModerationResult {
   const code = Number(response?.Code ?? response?.code ?? 0)
   if (code !== 200) {
@@ -406,7 +534,7 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
   const publicError: Record<string, unknown> = {
     error: "图片安全检查失败，请稍后再试。",
     code: "image_moderation_unavailable",
-    debugVersion: "2026-05-02-moderate-image-v1-direct-rpc",
+    debugVersion: "2026-05-02-moderate-image-v1-oss-upload",
   }
 
   if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
@@ -421,21 +549,6 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
     statusCode: 503,
     internalError,
     publicError,
-  }
-}
-
-async function removeStoragePathQuietly(adminClient: any, path: string): Promise<void> {
-  try {
-    await adminClient.storage.from("memories").remove([path])
-  } catch (error) {
-    console.error(
-      "[moderate-image-v1]",
-      JSON.stringify({
-        code: "storage_cleanup_failed",
-        internalError: error instanceof Error ? error.message : String(error),
-        at: new Date().toISOString(),
-      })
-    )
   }
 }
 
@@ -464,6 +577,12 @@ function decodeBase64(base64: string): Uint8Array {
     bytes[index] = binary.charCodeAt(index)
   }
   return bytes
+}
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  return copy.buffer
 }
 
 function jsonResponse(data: unknown, status = 200) {

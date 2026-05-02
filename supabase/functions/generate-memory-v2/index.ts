@@ -1401,9 +1401,7 @@ async function moderateImageBeforeGeneration(args: {
     userID: args.userID,
     requestID: args.requestID,
     existingImagePath: args.existingImagePath,
-  }
-  if (!args.existingImagePath) {
-    requestBody.imageBase64 = args.imageBase64
+    imageBase64: args.imageBase64,
   }
 
   try {
