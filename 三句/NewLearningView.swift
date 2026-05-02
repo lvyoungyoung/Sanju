@@ -626,10 +626,7 @@ struct NewLearningView: View {
 
     private func isTransientGenerationError(_ message: String) -> Bool {
         let normalized = message.lowercased()
-        return normalized.contains("当前排队人数过多") ||
-            normalized.contains("当前使用人数过多") ||
-            normalized.contains("当前生成服务较忙") ||
-            normalized.contains("网关") ||
+        return normalized.contains("网关") ||
             normalized.contains("gateway") ||
             normalized.contains("timeout") ||
             normalized.contains("timed out")
