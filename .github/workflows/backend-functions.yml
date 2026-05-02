@@ -67,8 +67,9 @@ jobs:
 
       - name: Install Aliyun Supabase functions-cli
         run: |
-          curl -L https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/en-US/20260317/sqcxei/functions-cli-linux-amd64 -o /tmp/functions-cli
+          curl -L https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20260319/yaruon/functions-cli-linux-amd64-2026-03-17 -o /tmp/functions-cli
           chmod +x /tmp/functions-cli
+          file /tmp/functions-cli
 
       - name: Deploy selected function
         env:
