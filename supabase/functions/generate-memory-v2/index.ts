@@ -345,7 +345,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "No credits left" }, 403)
     }
 
-    if (isFutureTimestamp(profile.generation_banned_until)) {
+    if (
+      isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
+      isFutureTimestamp(profile.generation_banned_until)
+    ) {
       return jsonResponse(
         {
           error: "当前账号暂时无法生成，请稍后再试。",
@@ -523,7 +526,10 @@ Deno.serve(async (req) => {
       console.error("[generate-memory-v2]", serializedError)
 
       let violationRecord: GenerationViolationRecord | null = null
-      if (moderationResult.countedViolation) {
+      if (
+        isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
+        moderationResult.countedViolation
+      ) {
         violationRecord = await recordGenerationViolation(adminClient, user.id)
       }
 
@@ -571,7 +577,10 @@ Deno.serve(async (req) => {
       console.error("[generate-memory-v2]", serializedError)
 
       let violationRecord: GenerationViolationRecord | null = null
-      if (completionResult.policyViolation) {
+      if (
+        isEnabledEnvFlag(Deno.env.get("GENERATION_VIOLATION_BAN_ENABLED")) &&
+        completionResult.policyViolation
+      ) {
         violationRecord = await recordGenerationViolation(adminClient, user.id)
       }
 
