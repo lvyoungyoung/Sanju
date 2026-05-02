@@ -48,8 +48,8 @@ extension AppModel {
 
         var errorDescription: String? {
             switch self {
-            case .generation(let retryAfter):
-                return "生成过于频繁，请\(Self.retryAfterDescription(retryAfter))后再试。当前限制为 1 分钟最多 10 次、1 小时最多 100 次。"
+            case .generation:
+                return "操作频繁，请稍后再试。"
             case .passwordReset:
                 return "操作频繁，请稍后再试。"
             case .emailSignIn:
@@ -57,15 +57,6 @@ extension AppModel {
             }
         }
 
-        private static func retryAfterDescription(_ retryAfter: TimeInterval) -> String {
-            let seconds = max(Int(ceil(retryAfter)), 1)
-            if seconds < 60 {
-                return "\(seconds) 秒"
-            }
-
-            let minutes = Int(ceil(Double(seconds) / 60.0))
-            return "\(minutes) 分钟"
-        }
     }
 
     func consumeGenerationAttemptIfAllowed() throws {
