@@ -1443,7 +1443,7 @@ async function requestAliyunImageModeration(args: {
 }): Promise<ImageModerationResult> {
   const accessKeyID = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_ID")?.trim()
   const accessKeySecret = Deno.env.get("ALIBABA_CLOUD_ACCESS_KEY_SECRET")?.trim()
-  const endpoint = Deno.env.get("ALIYUN_IMAGE_MODERATION_ENDPOINT")?.trim()
+  const endpoint = normalizeAliyunEndpoint(Deno.env.get("ALIYUN_IMAGE_MODERATION_ENDPOINT"))
   const service = normalizeImageModerationService(
     Deno.env.get("ALIYUN_IMAGE_MODERATION_SERVICE")
   )
@@ -1452,6 +1452,9 @@ async function requestAliyunImageModeration(args: {
     return buildImageModerationUnavailableResult("missing aliyun image moderation configuration")
   }
 
+  const fallbackEndpoint = normalizeAliyunEndpoint("green-cip.cn-beijing.aliyuncs.com")
+
+  let primaryResponse: any
   const client = new RPCClient({
     accessKeyId: accessKeyID,
     accessKeySecret,
@@ -1460,30 +1463,88 @@ async function requestAliyunImageModeration(args: {
   })
 
   try {
-    const response = await withTimeout(
-      client.request(
-        "ImageModeration",
-        {
-          Service: service,
-          ServiceParameters: JSON.stringify({
-            imageUrl: args.imageURL,
-            dataId: args.dataID,
-          }),
-        },
-        {
-          method: "POST",
-        }
-      ),
-      IMAGE_MODERATION_TIMEOUT_MS,
-      "Aliyun image moderation timeout"
-    )
+    primaryResponse = await requestAliyunImageModerationOnce(client, {
+      service,
+      imageURL: args.imageURL,
+      dataID: args.dataID,
+    })
 
-    return normalizeAliyunImageModerationResponse(response)
+    if (shouldRetryAliyunImageModeration(primaryResponse) && endpoint !== fallbackEndpoint) {
+      const fallbackClient = new RPCClient({
+        accessKeyId: accessKeyID,
+        accessKeySecret,
+        endpoint: fallbackEndpoint,
+        apiVersion: "2022-03-02",
+      })
+      const fallbackResponse = await requestAliyunImageModerationOnce(fallbackClient, {
+        service,
+        imageURL: args.imageURL,
+        dataID: args.dataID,
+      })
+      return normalizeAliyunImageModerationResponse(fallbackResponse)
+    }
+
+    return normalizeAliyunImageModerationResponse(primaryResponse)
   } catch (error) {
+    if (endpoint !== fallbackEndpoint) {
+      try {
+        const fallbackClient = new RPCClient({
+          accessKeyId: accessKeyID,
+          accessKeySecret,
+          endpoint: fallbackEndpoint,
+          apiVersion: "2022-03-02",
+        })
+        const fallbackResponse = await requestAliyunImageModerationOnce(fallbackClient, {
+          service,
+          imageURL: args.imageURL,
+          dataID: args.dataID,
+        })
+        return normalizeAliyunImageModerationResponse(fallbackResponse)
+      } catch (fallbackError) {
+        return buildImageModerationUnavailableResult(
+          `primary=${error instanceof Error ? error.message : String(error)}; fallback=${
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+          }`
+        )
+      }
+    }
+
     return buildImageModerationUnavailableResult(
       error instanceof Error ? error.message : String(error)
     )
   }
+}
+
+async function requestAliyunImageModerationOnce(
+  client: any,
+  args: {
+    service: string
+    imageURL: string
+    dataID: string
+  }
+): Promise<any> {
+  return await withTimeout(
+    client.request(
+      "ImageModeration",
+      {
+        Service: args.service,
+        ServiceParameters: JSON.stringify({
+          imageUrl: args.imageURL,
+          dataId: args.dataID,
+        }),
+      },
+      {
+        method: "POST",
+        formatParams: false,
+      }
+    ),
+    IMAGE_MODERATION_TIMEOUT_MS,
+    "Aliyun image moderation timeout"
+  )
+}
+
+function shouldRetryAliyunImageModeration(response: any): boolean {
+  return Number(response?.Code ?? response?.code ?? 0) === 500
 }
 
 function normalizeAliyunImageModerationResponse(response: any): ImageModerationResult {
@@ -1568,6 +1629,15 @@ function isSevereImageModerationLabel(label: {
 }
 
 function buildImageModerationUnavailableResult(internalError: string): ImageModerationResult {
+  const publicError: Record<string, unknown> = {
+    error: "图片安全检查失败，请稍后再试。",
+    code: "image_moderation_unavailable",
+  }
+
+  if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
+    publicError.details = internalError
+  }
+
   return {
     allowed: false,
     code: "image_moderation_unavailable",
@@ -1575,10 +1645,7 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
     countedViolation: false,
     statusCode: 503,
     internalError,
-    publicError: {
-      error: "图片安全检查失败，请稍后再试。",
-      code: "image_moderation_unavailable",
-    },
+    publicError,
   }
 }
 
@@ -1618,10 +1685,15 @@ async function withTimeout<T>(
 
 function normalizeImageModerationService(value: string | undefined | null): string {
   const service = value?.trim()
-  if (!service || service === "baselineCheck") {
-    return "baselineCheckByVL"
+  return service || "baselineCheck"
+}
+
+function normalizeAliyunEndpoint(value: string | undefined | null): string {
+  const endpoint = value?.trim() || "green-cip.cn-shanghai.aliyuncs.com"
+  if (endpoint.startsWith("http://") || endpoint.startsWith("https://")) {
+    return endpoint
   }
-  return service
+  return `https://${endpoint}`
 }
 
 function normalizeRiskLevel(value: unknown): string {
