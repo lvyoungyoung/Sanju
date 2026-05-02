@@ -9,7 +9,47 @@
 - 阿里云 Supabase 线上环境只部署已经提交到 GitHub 的版本。
 - 不从聊天记录、临时草稿或浏览器编辑器里的旧内容直接复制部署。
 
-## Edge Function 手动发布
+## Edge Function 发布
+
+默认使用 GitHub Actions 发布，避免浏览器编辑器里残留旧代码导致线上和 GitHub 漂移。
+
+### GitHub Actions 发布
+
+1. 在本地修改 `supabase/functions/<function-name>/index.ts`。
+2. 如果新增或删除函数，同步更新 `scripts/edge-functions.txt` 和 `.github/workflows/backend-functions.yml` 的 `workflow_dispatch` 选项。
+3. 本地运行检查。
+
+   ```bash
+   bash scripts/check-edge-functions.sh
+   ```
+
+4. 提交并推送到 GitHub。
+
+   ```bash
+   git status --short
+   git add supabase/functions scripts .github/workflows docs
+   git commit -m "<release message>"
+   git push
+   ```
+
+5. 打开 GitHub 仓库的 `Actions` -> `Backend Functions` -> `Run workflow`。
+6. 选择要部署的函数，或者选择 `all` 部署全部函数。
+7. 部署完成后，用真机走一遍关键路径。
+8. 如果确认线上正常，给当前 commit 打发布 tag。
+
+   ```bash
+   git tag backend-YYYYMMDD-N
+   git push origin backend-YYYYMMDD-N
+   ```
+
+GitHub Actions 需要在仓库的 `Settings` -> `Secrets and variables` -> `Actions` 中配置：
+
+- `SUPABASE_ACCESS_TOKEN`
+- `SUPABASE_PROJECT_REF`，当前项目为 `spb-bp103246ivn7q0nl`
+
+`scripts/deploy-edge-functions.sh` 会固定按 `scripts/edge-functions.txt` 中的清单部署，避免误部署临时目录。`delete-account` 会自动带上 `--no-verify-jwt`，保持当前线上配置。
+
+### 兜底手动发布
 
 1. 在本地修改 `supabase/functions/<function-name>/index.ts`。
 2. 运行语法检查。
@@ -33,7 +73,7 @@
    git rev-parse --short HEAD
    ```
 
-5. 从本地仓库当前版本复制完整函数内容到阿里云 Supabase Edge Function 编辑器。
+5. 只有当 GitHub Actions / CLI 发布不可用时，才从本地仓库当前版本复制完整函数内容到阿里云 Supabase Edge Function 编辑器。
 
    ```bash
    pbcopy < supabase/functions/<function-name>/index.ts
@@ -83,7 +123,7 @@ Git tag：
 - SQL 回滚：不要直接删除线上数据或强行回滚 migration，先写修复 SQL。
 - 客户端兼容：后端返回字段尽量只增不删，避免旧版本 App 崩溃。
 
-## 当前手动部署函数
+## 当前部署函数
 
 - `generate-memory-v2`
 - `moderate-image-v1`

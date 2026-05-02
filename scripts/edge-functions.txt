@@ -1,0 +1,7 @@
+cleanup-guest-generation-jobs
+confirm-purchase
+delete-account
+generate-memory-v2
+migrate-guest-credits
+moderate-image-v1
+recover-guest-generation

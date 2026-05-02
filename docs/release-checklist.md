@@ -3,6 +3,9 @@
 ## 后端发布
 
 - 后端 Edge Function 和 SQL 发布前，先按 `docs/backend-release-process.md` 确认本地、GitHub、阿里云 Supabase 三者版本一致。
+- Edge Function 默认从 GitHub Actions 的 `Backend Functions` 工作流发布，不再优先从阿里云网页编辑器手动复制。
+- 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 7 个函数都能通过 `deno check`。
+- 如果通过 GitHub Actions 部署 `delete-account`，确认工作流使用 `scripts/deploy-edge-functions.sh`，不要手动漏掉 `--no-verify-jwt`。
 
 ## 后端环境变量
 

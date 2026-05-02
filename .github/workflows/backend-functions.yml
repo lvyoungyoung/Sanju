@@ -1,0 +1,72 @@
+name: Backend Functions
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/**"
+      - "scripts/edge-functions.txt"
+      - "scripts/check-edge-functions.sh"
+      - "scripts/deploy-edge-functions.sh"
+      - ".github/workflows/backend-functions.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - "scripts/edge-functions.txt"
+      - "scripts/check-edge-functions.sh"
+      - "scripts/deploy-edge-functions.sh"
+      - ".github/workflows/backend-functions.yml"
+  workflow_dispatch:
+    inputs:
+      function_name:
+        description: "Edge Function to deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - cleanup-guest-generation-jobs
+          - confirm-purchase
+          - delete-account
+          - generate-memory-v2
+          - migrate-guest-credits
+          - moderate-image-v1
+          - recover-guest-generation
+
+jobs:
+  check:
+    name: Check Edge Functions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Check functions
+        run: bash scripts/check-edge-functions.sh
+
+  deploy:
+    name: Deploy Edge Functions
+    runs-on: ubuntu-latest
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy selected function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: bash scripts/deploy-edge-functions.sh "${{ inputs.function_name }}"
