@@ -49,7 +49,6 @@
 - `generate-memory-v2`
 - `migrate-guest-credits`
 - `recover-guest-generation`
-- `store-apple-auth-credential`
 
 ### 关键 Secrets
 
