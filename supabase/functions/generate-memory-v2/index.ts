@@ -1,5 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
-import RPCClient from "npm:@alicloud/pop-core"
 
 interface Sentence {
   english: string
@@ -1455,28 +1454,22 @@ async function requestAliyunImageModeration(args: {
   const fallbackEndpoint = normalizeAliyunEndpoint("green-cip.cn-beijing.aliyuncs.com")
 
   let primaryResponse: any
-  const client = new RPCClient({
-    accessKeyId: accessKeyID,
-    accessKeySecret,
-    endpoint,
-    apiVersion: "2022-03-02",
-  })
 
   try {
-    primaryResponse = await requestAliyunImageModerationOnce(client, {
+    primaryResponse = await requestAliyunImageModerationOnce({
+      accessKeyID,
+      accessKeySecret,
+      endpoint,
       service,
       imageURL: args.imageURL,
       dataID: args.dataID,
     })
 
     if (shouldRetryAliyunImageModeration(primaryResponse) && endpoint !== fallbackEndpoint) {
-      const fallbackClient = new RPCClient({
-        accessKeyId: accessKeyID,
+      const fallbackResponse = await requestAliyunImageModerationOnce({
+        accessKeyID,
         accessKeySecret,
         endpoint: fallbackEndpoint,
-        apiVersion: "2022-03-02",
-      })
-      const fallbackResponse = await requestAliyunImageModerationOnce(fallbackClient, {
         service,
         imageURL: args.imageURL,
         dataID: args.dataID,
@@ -1488,13 +1481,10 @@ async function requestAliyunImageModeration(args: {
   } catch (error) {
     if (endpoint !== fallbackEndpoint) {
       try {
-        const fallbackClient = new RPCClient({
-          accessKeyId: accessKeyID,
+        const fallbackResponse = await requestAliyunImageModerationOnce({
+          accessKeyID,
           accessKeySecret,
           endpoint: fallbackEndpoint,
-          apiVersion: "2022-03-02",
-        })
-        const fallbackResponse = await requestAliyunImageModerationOnce(fallbackClient, {
           service,
           imageURL: args.imageURL,
           dataID: args.dataID,
@@ -1515,32 +1505,143 @@ async function requestAliyunImageModeration(args: {
   }
 }
 
-async function requestAliyunImageModerationOnce(
-  client: any,
-  args: {
-    service: string
-    imageURL: string
-    dataID: string
+async function requestAliyunImageModerationOnce(args: {
+  accessKeyID: string
+  accessKeySecret: string
+  endpoint: string
+  service: string
+  imageURL: string
+  dataID: string
+}): Promise<any> {
+  return await callAliyunRPC({
+    accessKeyID: args.accessKeyID,
+    accessKeySecret: args.accessKeySecret,
+    endpoint: args.endpoint,
+    action: "ImageModeration",
+    version: "2022-03-02",
+    timeoutMs: IMAGE_MODERATION_TIMEOUT_MS,
+    params: {
+      Service: args.service,
+      ServiceParameters: JSON.stringify({
+        imageUrl: args.imageURL,
+        dataId: args.dataID,
+      }),
+    },
+  })
+}
+
+async function callAliyunRPC(args: {
+  accessKeyID: string
+  accessKeySecret: string
+  endpoint: string
+  action: string
+  version: string
+  timeoutMs: number
+  params: Record<string, string>
+}): Promise<any> {
+  const commonParams: Record<string, string> = {
+    Format: "JSON",
+    Version: args.version,
+    AccessKeyId: args.accessKeyID,
+    SignatureMethod: "HMAC-SHA1",
+    Timestamp: formatAliyunTimestamp(new Date()),
+    SignatureVersion: "1.0",
+    SignatureNonce: crypto.randomUUID(),
+    Action: args.action,
+    ...args.params,
   }
-): Promise<any> {
-  return await withTimeout(
-    client.request(
-      "ImageModeration",
-      {
-        Service: args.service,
-        ServiceParameters: JSON.stringify({
-          imageUrl: args.imageURL,
-          dataId: args.dataID,
-        }),
+  const signature = await signAliyunRPCParams("POST", commonParams, args.accessKeySecret)
+  const body = formEncode({
+    ...commonParams,
+    Signature: signature,
+  })
+
+  const response = await fetchWithTimeout(
+    args.endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
       },
-      {
-        method: "POST",
-        formatParams: false,
-      }
-    ),
-    IMAGE_MODERATION_TIMEOUT_MS,
-    "Aliyun image moderation timeout"
+      body,
+    },
+    args.timeoutMs
   )
+  const rawText = await response.text()
+  let data: any = null
+  try {
+    data = rawText ? JSON.parse(rawText) : null
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Aliyun RPC HTTP ${response.status} ${response.statusText}: ${rawText.slice(0, 1000)}`
+    )
+  }
+
+  return data ?? {
+    Code: response.status,
+    Message: rawText || "empty aliyun rpc response",
+  }
+}
+
+async function signAliyunRPCParams(
+  method: "POST" | "GET",
+  params: Record<string, string>,
+  accessKeySecret: string
+): Promise<string> {
+  const canonicalizedQueryString = Object.keys(params)
+    .sort()
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
+    .join("&")
+  const stringToSign = `${method}&${percentEncode("/")}&${percentEncode(
+    canonicalizedQueryString
+  )}`
+  const key = `${accessKeySecret}&`
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(key),
+    {
+      name: "HMAC",
+      hash: "SHA-1",
+    },
+    false,
+    ["sign"]
+  )
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    new TextEncoder().encode(stringToSign)
+  )
+  return base64Encode(signature)
+}
+
+function formEncode(params: Record<string, string>): string {
+  return Object.keys(params)
+    .sort()
+    .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
+    .join("&")
+}
+
+function percentEncode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${character.charCodeAt(0).toString(16).toUpperCase()}`
+  )
+}
+
+function base64Encode(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+function formatAliyunTimestamp(date: Date): string {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z")
 }
 
 function shouldRetryAliyunImageModeration(response: any): boolean {
@@ -1632,7 +1733,7 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
   const publicError: Record<string, unknown> = {
     error: "图片安全检查失败，请稍后再试。",
     code: "image_moderation_unavailable",
-    debugVersion: "2026-05-02-moderation-debug-v2",
+    debugVersion: "2026-05-02-moderation-direct-rpc-v3",
   }
 
   if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
