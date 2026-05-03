@@ -13,15 +13,15 @@
 
 在 GitHub 仓库的 `Settings` -> `Environments` 中，给 `staging` 和 `production` 分别添加：
 
-- `SUPABASE_DATABASE_URL`
+- `SUPABASE_PROJECT_ID`，项目 ID，例如 `spb-bp1364k407p37qn7`。如果已经配置过 `SUPABASE_PROJECT_REF`，workflow 也会兼容读取
+- `SUPABASE_DB_HOST`，数据库连接地址。按阿里云说明，从“实例管理”跳转后的 URL 中取 IP / host 部分
+- `SUPABASE_DB_PASSWORD`，数据库账号 `postgres` 的密码
 
-这个值填写目标环境的 PostgreSQL 连接串，建议包含 `sslmode=require`。例如：
+如果账号、库名、端口不是默认值，可以在对应 environment 的 Variables 里覆盖：
 
-```text
-postgresql://<user>:<password>@<project-host>:5432/<database>?sslmode=require
-```
-
-当前 workflow 会校验连接串里是否包含目标项目 ID，避免把 staging migration 打到 production。
+- `SUPABASE_DB_USER`，默认 `postgres`
+- `SUPABASE_DB_NAME`，默认 `postgres`
+- `SUPABASE_DB_PORT`，默认 `5432`
 
 建议给 GitHub 的 `production` environment 配置 required reviewer。这样 production migration 需要人工确认后才会执行，不会因为误点或误配置直接影响线上。
 
@@ -36,13 +36,19 @@ postgresql://<user>:<password>@<project-host>:5432/<database>?sslmode=require
 3. `mode` 选择 `baseline`。
 4. 运行成功后，再用 `mode=status` 确认 `Pending: 0`。
 
-`baseline` 只会把当前仓库里的 migration 文件登记到 `public.sanju_schema_migrations`，不会执行 SQL 内容。
+`baseline` 只会把当前仓库里的 migration 文件登记到 Supabase CLI 自带的 migration history 表，不会执行 SQL 内容。
+
+注意：Supabase CLI 使用 migration 文件名前缀作为版本号，所以文件名必须是唯一时间戳，例如：
+
+```text
+20260503143000_example_change.sql
+```
 
 ## 日常发布
 
 推荐顺序：
 
-1. 新增 migration 文件，例如 `supabase/migrations/20260503_example.sql`。
+1. 新增 migration 文件，例如 `supabase/migrations/20260503143000_example.sql`。
 2. 提交并推送到 GitHub。
 3. `Backend Database` 选择 `staging` + `apply`。
 4. `Backend Functions` 选择 `staging` + 需要部署的函数。
@@ -58,29 +64,26 @@ postgresql://<user>:<password>@<project-host>:5432/<database>?sslmode=require
 
 ## 本地查看状态
 
-如果本地有数据库连接串，可以运行：
+如果本地有数据库连接信息，可以运行：
 
 ```bash
-SUPABASE_DATABASE_URL="<database-url>" \
 TARGET_ENVIRONMENT=staging \
+SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
 EXPECTED_SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
-npm run db:migrate:status
+SUPABASE_DB_HOST="<database-host-or-ip>" \
+SUPABASE_DB_PASSWORD="<postgres-password>" \
+bash scripts/supabase-db-migrations.sh status
 ```
 
-对 production 本地执行 `baseline` 或 `apply` 时，需要额外加：
+如果要本地登记历史 migration：
 
 ```bash
-DATABASE_MIGRATION_ALLOW_PRODUCTION=1
+bash scripts/supabase-db-migrations.sh baseline
 ```
 
 正常情况下，production 只通过 GitHub Actions 执行。
 
-## 为什么要有 migration 表
+## 使用的 migration 表
 
-脚本会维护 `public.sanju_schema_migrations`：
-
-- `version`：migration 文件名。
-- `checksum`：文件内容 hash。
-- `mode`：是 `baseline` 登记，还是 `apply` 执行。
-
-如果已经登记过的 migration 文件内容被改了，脚本会直接失败。这是为了避免“线上执行过的 SQL 和仓库里的 SQL 不一致”。
+这里使用 Supabase CLI 自带的 migration history 表，而不是我们自建表。
+`baseline` 底层调用 `supabase migration repair --status applied`，`apply` 底层调用 `supabase db push`。
