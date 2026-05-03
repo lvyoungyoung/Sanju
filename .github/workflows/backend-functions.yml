@@ -19,6 +19,14 @@ on:
       - ".github/workflows/backend-functions.yml"
   workflow_dispatch:
     inputs:
+      target_environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
       function_name:
         description: "Edge Function to deploy"
         required: true
@@ -55,7 +63,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, aliyun-ecs]
     needs: check
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
-    environment: production
+    environment: ${{ inputs.target_environment }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

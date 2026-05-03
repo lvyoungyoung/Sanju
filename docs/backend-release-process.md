@@ -33,19 +33,30 @@
    ```
 
 5. 打开 GitHub 仓库的 `Actions` -> `Backend Functions` -> `Run workflow`。
-6. 选择要部署的函数，或者选择 `all` 部署全部函数。
-7. 部署完成后，用真机走一遍关键路径。
-8. 如果确认线上正常，给当前 commit 打发布 tag。
+6. 先选择 `target_environment`，默认部署到 `staging`。
+7. 选择要部署的函数，或者选择 `all` 部署全部函数。
+8. 部署完成后，用真机走一遍关键路径。
+9. 如果确认线上正常，给当前 commit 打发布 tag。
 
    ```bash
    git tag backend-YYYYMMDD-N
    git push origin backend-YYYYMMDD-N
    ```
 
-GitHub Actions 需要在仓库的 `Settings` -> `Secrets and variables` -> `Actions` 中配置：
+GitHub Actions 需要在仓库的 `Settings` -> `Environments` 中创建两个环境：
+
+- `staging`
+- `production`
+
+每个 environment 里分别配置自己的 Secrets：
 
 - `SUPABASE_API_URL`，当前项目为 `https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
 - `SUPABASE_API_KEY`，填写阿里云 Supabase 的 `service_role` key
+
+当前 API URL：
+
+- staging: `https://spb-bp1xyf79n1a72b7e.supabase.opentrust.net`
+- production: `https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
 
 `scripts/deploy-edge-functions.sh` 会固定按 `scripts/edge-functions.txt` 中的清单部署，避免误部署临时目录。脚本使用阿里云 AnalyticDB Supabase 的 `functions-cli` 发布；`delete-account` 会自动带上 `--no-verify-jwt`，保持当前线上配置。
 
