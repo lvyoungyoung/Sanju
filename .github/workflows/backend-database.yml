@@ -70,6 +70,7 @@ jobs:
           EXPECTED_SUPABASE_PROJECT_ID: ${{ inputs.target_environment == 'staging' && 'spb-bp1364k407p37qn7' || 'spb-bp103246ivn7q0nl' }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PLATFORM: aliyun
           ALIYUN_ACCESS_TOKEN: ${{ secrets.ALIYUN_ACCESS_TOKEN }}
           ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
           SUPABASE_CLI_BIN: /tmp/aliyun-supabase-cli/supabase

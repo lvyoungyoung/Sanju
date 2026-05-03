@@ -7,6 +7,7 @@ TARGET_ENVIRONMENT="${TARGET_ENVIRONMENT:-unknown}"
 EXPECTED_SUPABASE_PROJECT_ID="${EXPECTED_SUPABASE_PROJECT_ID:-}"
 SUPABASE_PROJECT_ID="${SUPABASE_PROJECT_ID:-${SUPABASE_PROJECT_REF:-}}"
 SUPABASE_CLI_BIN="${SUPABASE_CLI_BIN:-supabase}"
+export SUPABASE_PLATFORM="${SUPABASE_PLATFORM:-aliyun}"
 
 if [[ "${MODE}" != "status" && "${MODE}" != "baseline" && "${MODE}" != "apply" ]]; then
   echo "Invalid mode: ${MODE}. Expected status, baseline, or apply." >&2
@@ -52,6 +53,7 @@ fi
 echo "Sanju Supabase CLI migration runner"
 echo "Target environment: ${TARGET_ENVIRONMENT}"
 echo "Project id: ${SUPABASE_PROJECT_ID}"
+echo "Platform: ${SUPABASE_PLATFORM}"
 echo "Region: ${ALIYUN_REGION_ID:-<cli default>}"
 echo "Mode: ${MODE}"
 echo "Migration files: ${#MIGRATION_VERSIONS[@]}"

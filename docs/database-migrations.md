@@ -21,6 +21,8 @@
 
 - `ALIYUN_REGION_ID`，当前默认 `cn-hangzhou`
 
+workflow 会固定设置 `SUPABASE_PLATFORM=aliyun`，让阿里云版 CLI 走 AnalyticDB Supabase 平台逻辑。不要把 `ALIYUN_ACCESS_TOKEN` 填到官方 Supabase 的 `SUPABASE_ACCESS_TOKEN` 里，否则部分命令会按官方 `sbp_...` token 校验。
+
 建议给 GitHub 的 `production` environment 配置 required reviewer。这样 production migration 需要人工确认后才会执行，不会因为误点或误配置直接影响线上。
 
 ## 首次接入：baseline
@@ -71,6 +73,7 @@ TARGET_ENVIRONMENT=staging \
 SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
 EXPECTED_SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
 SUPABASE_DB_PASSWORD="<postgres-password>" \
+SUPABASE_PLATFORM=aliyun \
 ALIYUN_ACCESS_TOKEN="<AccessKeyID>|<AccessKeySecret>" \
 ALIYUN_REGION_ID=cn-hangzhou \
 bash scripts/supabase-db-migrations.sh status
