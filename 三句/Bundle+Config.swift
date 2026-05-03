@@ -1,6 +1,14 @@
 import Foundation
 
 extension Bundle {
+    private var configResourceName: String {
+        #if STAGING
+        "Config.staging"
+        #else
+        "Config"
+        #endif
+    }
+
     var supabaseURL: String? {
         configValue(forKey: "SupabaseURL")
     }
@@ -10,7 +18,7 @@ extension Bundle {
     }
 
     var storeProductConfigs: [StoreProductConfig] {
-        guard let url = url(forResource: "Config", withExtension: "plist"),
+        guard let url = url(forResource: configResourceName, withExtension: "plist"),
               let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let rawProducts = plist["StoreKitProducts"] as? [[String: Any]] else {
@@ -28,7 +36,7 @@ extension Bundle {
     }
 
     private func configValue(forKey key: String) -> String? {
-        guard let url = url(forResource: "Config", withExtension: "plist"),
+        guard let url = url(forResource: configResourceName, withExtension: "plist"),
               let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
               let value = plist[key] as? String else {

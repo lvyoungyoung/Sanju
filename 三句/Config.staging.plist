@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>用于将回忆图片保存到你的系统相册。</string>
+    <key>StoreKitProducts</key>
+    <array>
+        <dict>
+            <key>credits</key>
+            <integer>200</integer>
+            <key>productID</key>
+            <string>com.yanglv.sanju.credits200</string>
+        </dict>
+        <dict>
+            <key>credits</key>
+            <integer>365</integer>
+            <key>productID</key>
+            <string>com.yanglv.sanju.credits365</string>
+        </dict>
+    </array>
+    <key>SupabasePublishableKey</key>
+    <string>eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1icDEzNjRrNDA3cDM3cW43IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3Nzc3ODM4NjMsImV4cCI6MjA5MzM1OTg2M30.8v5eVFbxodBp-NBDgzYCBP7Q3uhdkujkjxeRijLery0</string>
+    <key>SupabaseURL</key>
+    <string>https://spb-bp1364k407p37qn7.supabase.opentrust.net</string>
+</dict>
+</plist>
