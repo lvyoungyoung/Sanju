@@ -5,7 +5,7 @@
 - Debug: 使用 `三句/Config.staging.plist`
 - Release/App Store: 使用 `三句/Config.plist`
 
-`STAGING` 编译条件目前只加在 Debug build configuration 上，所以 Xcode 直接 Run 到真机时会连接 staging；Archive 上传 App Store 时仍然连接 production。
+`STAGING` 编译条件目前只加在 Debug build configuration 上，所以 Xcode 直接 Run 到真机时会连接 staging；Archive 上传 TestFlight 或 App Store 时仍然连接 production。
 
 ## 当前地址
 
