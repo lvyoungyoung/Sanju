@@ -7,6 +7,7 @@
 - GitHub Actions Secrets 使用 `SUPABASE_API_URL` 和 `SUPABASE_API_KEY`；不使用官方 Supabase 的 `SUPABASE_ACCESS_TOKEN` / `SUPABASE_PROJECT_REF`。
 - 手动运行 `Backend Functions` 时，默认先选 `staging`，测试通过后再选 `production`。
 - 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 7 个函数都能通过 `deno check`。
+- 新建 Supabase 环境后，必须开通实例访问公网；否则带 `npm:` import 的 Edge Function 部署可能返回 `504 upstream server is timing out`。
 - 如果通过 GitHub Actions 部署 `delete-account`，确认工作流使用 `scripts/deploy-edge-functions.sh`，不要手动漏掉 `--no-verify-jwt`。
 
 ## 后端环境变量
