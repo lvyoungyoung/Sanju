@@ -1,0 +1,77 @@
+name: Backend Database
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/apply-sql-migrations.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-database.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/apply-sql-migrations.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-database.yml"
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Target environment"
+        required: true
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - production
+      mode:
+        description: "Migration mode"
+        required: true
+        default: "status"
+        type: choice
+        options:
+          - status
+          - baseline
+          - apply
+
+jobs:
+  check:
+    name: Check Migration Runner
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check migration script syntax
+        run: node --check scripts/apply-sql-migrations.mjs
+
+  migrate:
+    name: SQL Migrations
+    runs-on: [self-hosted, linux, x64, aliyun-ecs]
+    needs: check
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    environment: ${{ inputs.target_environment }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install release-tool dependencies
+        run: npm ci
+
+      - name: Run SQL migrations
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+          DATABASE_MIGRATION_MODE: ${{ inputs.mode }}
+          DATABASE_MIGRATION_ALLOW_PRODUCTION: ${{ inputs.target_environment == 'production' && '1' || '0' }}
+          EXPECTED_SUPABASE_PROJECT_ID: ${{ inputs.target_environment == 'staging' && 'spb-bp1364k407p37qn7' || 'spb-bp103246ivn7q0nl' }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: node scripts/apply-sql-migrations.mjs

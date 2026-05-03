@@ -13,6 +13,8 @@
 
 默认使用 GitHub Actions 发布，避免浏览器编辑器里残留旧代码导致线上和 GitHub 漂移。
 
+如果同一次发布既包含 SQL migration 又包含 Edge Function，先执行 `Backend Database` 的 migration，再部署 Edge Function。这样函数不会先运行在缺少表结构或 RPC 的数据库上。
+
 ### GitHub Actions 发布
 
 1. 在本地修改 `supabase/functions/<function-name>/index.ts`。
@@ -128,6 +130,10 @@ The upstream server is timing out
 
 ## SQL Migration 手动发布
 
+默认使用 GitHub Actions 发布 SQL migration，避免 staging 和 production 漏执行某个 RPC 或表结构变更。详细说明见 `docs/database-migrations.md`。
+
+### GitHub Actions 发布
+
 1. 所有数据库结构或 RPC 变更都新增 migration 文件，不修改已经在线上执行过的旧 migration。
 2. 文件名使用递增日期和清晰描述，例如：
 
@@ -136,9 +142,20 @@ The upstream server is timing out
    ```
 
 3. 本地提交并推送 SQL 文件。
-4. 在阿里云 Supabase SQL Editor 执行同一个 migration 文件的完整内容。
-5. 执行成功后记录 commit 和执行时间。
-6. 如果 SQL 涉及函数重建，先在测试数据上验证返回结构，再更新客户端。
+4. 打开 GitHub 仓库的 `Actions` -> `Backend Database` -> `Run workflow`。
+5. 先选择 `staging` + `apply`。
+6. staging 通过兼容测试和真机测试后，再选择 `production` + `apply`。
+7. 如果 SQL 涉及函数重建，先在测试数据上验证返回结构，再更新客户端。
+
+首次接入新环境时，先用 `baseline` 登记已经手动执行过的历史 migration，再用 `status` 确认没有 pending migration。
+
+### 兜底手动发布
+
+只有当 GitHub Actions / 数据库连接串不可用时，才回退到手动执行：
+
+1. 确认 migration 文件已经提交并推送到 GitHub。
+2. 在阿里云 Supabase SQL Editor 执行同一个 migration 文件的完整内容。
+3. 执行成功后记录 commit 和执行时间。
 
 ## 发布记录模板
 
