@@ -35,8 +35,15 @@
 5. 打开 GitHub 仓库的 `Actions` -> `Backend Functions` -> `Run workflow`。
 6. 先选择 `target_environment`，默认部署到 `staging`。
 7. 选择要部署的函数，或者选择 `all` 部署全部函数。
-8. 部署完成后，用真机走一遍关键路径。
-9. 如果确认线上正常，给当前 commit 打发布 tag。
+8. 部署到 staging 后，先运行旧客户端兼容测试。
+
+   ```bash
+   node scripts/check-client-compatibility.mjs
+   ```
+
+9. 兼容测试通过后，用 Debug 包真机走一遍关键路径。
+10. 如果确认线上正常，再把同一个 commit 部署到 production。
+11. 如果 production 确认正常，给当前 commit 打发布 tag。
 
    ```bash
    git tag backend-YYYYMMDD-N
