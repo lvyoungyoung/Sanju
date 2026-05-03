@@ -60,11 +60,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Install Aliyun Supabase functions-cli
         run: |
           curl -L https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20260319/yaruon/functions-cli-linux-amd64-2026-03-17 -o /tmp/functions-cli
