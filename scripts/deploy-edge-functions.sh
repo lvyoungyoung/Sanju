@@ -7,6 +7,8 @@ TARGET_FUNCTION="${1:-all}"
 FUNCTIONS_CLI_BIN="${FUNCTIONS_CLI_BIN:-functions-cli}"
 DEPLOY_MAX_ATTEMPTS="${DEPLOY_MAX_ATTEMPTS:-3}"
 DEPLOY_RETRY_DELAY_SECONDS="${DEPLOY_RETRY_DELAY_SECONDS:-20}"
+TARGET_ENVIRONMENT="${TARGET_ENVIRONMENT:-unknown}"
+EXPECTED_SUPABASE_PROJECT_ID="${EXPECTED_SUPABASE_PROJECT_ID:-}"
 
 if [[ -z "${SUPABASE_API_URL:-}" ]]; then
   echo "SUPABASE_API_URL is required." >&2
@@ -15,6 +17,13 @@ fi
 
 if [[ -z "${SUPABASE_API_KEY:-}" ]]; then
   echo "SUPABASE_API_KEY is required." >&2
+  exit 1
+fi
+
+if [[ -n "${EXPECTED_SUPABASE_PROJECT_ID}" && "${SUPABASE_API_URL}" != *"${EXPECTED_SUPABASE_PROJECT_ID}"* ]]; then
+  echo "SUPABASE_API_URL does not match ${TARGET_ENVIRONMENT} project." >&2
+  echo "Expected project id: ${EXPECTED_SUPABASE_PROJECT_ID}" >&2
+  echo "Actual API URL: ${SUPABASE_API_URL}" >&2
   exit 1
 fi
 
@@ -39,6 +48,9 @@ deploy_function() {
   fi
 
   echo "Deploying ${function_name}"
+  echo "Target environment: ${TARGET_ENVIRONMENT}"
+  echo "Target API URL: ${SUPABASE_API_URL}"
+  echo "Function directory: supabase/functions/${function_name}"
   local attempt=1
   while (( attempt <= DEPLOY_MAX_ATTEMPTS )); do
     echo "Deploy attempt ${attempt}/${DEPLOY_MAX_ATTEMPTS}: ${function_name}"
