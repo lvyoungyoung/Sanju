@@ -6,10 +6,7 @@ MODE="${1:-status}"
 TARGET_ENVIRONMENT="${TARGET_ENVIRONMENT:-unknown}"
 EXPECTED_SUPABASE_PROJECT_ID="${EXPECTED_SUPABASE_PROJECT_ID:-}"
 SUPABASE_PROJECT_ID="${SUPABASE_PROJECT_ID:-${SUPABASE_PROJECT_REF:-}}"
-SUPABASE_DB_USER="${SUPABASE_DB_USER:-postgres}"
-SUPABASE_DB_NAME="${SUPABASE_DB_NAME:-postgres}"
-SUPABASE_DB_PORT="${SUPABASE_DB_PORT:-5432}"
-SUPABASE_DB_SSLMODE="${SUPABASE_DB_SSLMODE:-require}"
+SUPABASE_CLI_BIN="${SUPABASE_CLI_BIN:-supabase}"
 
 if [[ "${MODE}" != "status" && "${MODE}" != "baseline" && "${MODE}" != "apply" ]]; then
   echo "Invalid mode: ${MODE}. Expected status, baseline, or apply." >&2
@@ -23,8 +20,8 @@ if [[ -n "${EXPECTED_SUPABASE_PROJECT_ID}" && "${SUPABASE_PROJECT_ID}" != "${EXP
   exit 1
 fi
 
-if [[ -z "${SUPABASE_DB_HOST:-}" ]]; then
-  echo "SUPABASE_DB_HOST is required." >&2
+if [[ -z "${SUPABASE_PROJECT_ID:-}" ]]; then
+  echo "SUPABASE_PROJECT_ID is required." >&2
   exit 1
 fi
 
@@ -33,28 +30,10 @@ if [[ -z "${SUPABASE_DB_PASSWORD:-}" ]]; then
   exit 1
 fi
 
-DB_URL="$(
-  SUPABASE_DB_USER="${SUPABASE_DB_USER}" \
-  SUPABASE_DB_PASSWORD="${SUPABASE_DB_PASSWORD}" \
-  SUPABASE_DB_HOST="${SUPABASE_DB_HOST}" \
-  SUPABASE_DB_PORT="${SUPABASE_DB_PORT}" \
-  SUPABASE_DB_NAME="${SUPABASE_DB_NAME}" \
-  SUPABASE_DB_SSLMODE="${SUPABASE_DB_SSLMODE}" \
-  node -e '
-    const user = encodeURIComponent(process.env.SUPABASE_DB_USER);
-    const password = encodeURIComponent(process.env.SUPABASE_DB_PASSWORD);
-    let host = process.env.SUPABASE_DB_HOST.trim();
-    if (/^https?:\/\//i.test(host)) {
-      host = new URL(host).hostname;
-    } else {
-      host = host.split("/")[0].split(":")[0];
-    }
-    const port = process.env.SUPABASE_DB_PORT;
-    const database = encodeURIComponent(process.env.SUPABASE_DB_NAME);
-    const sslmode = encodeURIComponent(process.env.SUPABASE_DB_SSLMODE);
-    process.stdout.write(`postgresql://${user}:${password}@${host}:${port}/${database}?sslmode=${sslmode}`);
-  '
-)"
+if [[ -z "${ALIYUN_ACCESS_TOKEN:-}" && ( -z "${ALIBABA_CLOUD_ACCESS_KEY_ID:-}" || -z "${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}" ) ]]; then
+  echo "ALIYUN_ACCESS_TOKEN or ALIBABA_CLOUD_ACCESS_KEY_ID/ALIBABA_CLOUD_ACCESS_KEY_SECRET is required." >&2
+  exit 1
+fi
 
 MIGRATION_VERSIONS=()
 while IFS= read -r migration_version; do
@@ -73,26 +52,30 @@ fi
 echo "Sanju Supabase CLI migration runner"
 echo "Target environment: ${TARGET_ENVIRONMENT}"
 echo "Project id: ${SUPABASE_PROJECT_ID}"
+echo "Region: ${ALIYUN_REGION_ID:-<cli default>}"
 echo "Mode: ${MODE}"
 echo "Migration files: ${#MIGRATION_VERSIONS[@]}"
 
 case "${MODE}" in
   status)
-    supabase migration list \
+    "${SUPABASE_CLI_BIN}" migration list \
       --workdir "${ROOT_DIR}" \
-      --db-url "${DB_URL}"
+      --project-ref "${SUPABASE_PROJECT_ID}" \
+      --password "${SUPABASE_DB_PASSWORD}"
     ;;
   baseline)
-    supabase migration repair "${MIGRATION_VERSIONS[@]}" \
+    "${SUPABASE_CLI_BIN}" migration repair "${MIGRATION_VERSIONS[@]}" \
       --workdir "${ROOT_DIR}" \
-      --db-url "${DB_URL}" \
+      --project-ref "${SUPABASE_PROJECT_ID}" \
+      --password "${SUPABASE_DB_PASSWORD}" \
       --status applied \
       --yes
     ;;
   apply)
-    supabase db push \
+    "${SUPABASE_CLI_BIN}" db push \
       --workdir "${ROOT_DIR}" \
-      --db-url "${DB_URL}" \
+      --project-ref "${SUPABASE_PROJECT_ID}" \
+      --password "${SUPABASE_DB_PASSWORD}" \
       --yes
     ;;
 esac

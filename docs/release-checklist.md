@@ -5,7 +5,7 @@
 - 后端 Edge Function 和 SQL 发布前，先按 `docs/backend-release-process.md` 确认本地、GitHub、阿里云 Supabase 三者版本一致。
 - Edge Function 默认从 GitHub Actions 的 `Backend Functions` 工作流发布，不再优先从阿里云网页编辑器手动复制。
 - SQL migration 默认从 GitHub Actions 的 `Backend Database` 工作流发布。首次接入新环境时先跑 `baseline`，之后日常发布跑 `apply`。
-- GitHub Actions Secrets 使用 `SUPABASE_API_URL`、`SUPABASE_API_KEY`、`SUPABASE_PROJECT_ID`、`SUPABASE_DB_HOST` 和 `SUPABASE_DB_PASSWORD`；数据库 workflow 也兼容之前添加过的 `SUPABASE_PROJECT_REF`。不使用官方 Supabase 的 `SUPABASE_ACCESS_TOKEN`。
+- GitHub Actions Secrets 使用 `SUPABASE_API_URL`、`SUPABASE_API_KEY`、`SUPABASE_PROJECT_ID`、`SUPABASE_DB_PASSWORD` 和 `ALIYUN_ACCESS_TOKEN`；数据库 workflow 也兼容之前添加过的 `SUPABASE_PROJECT_REF`。不使用官方 Supabase 的 `SUPABASE_ACCESS_TOKEN`。
 - 手动运行 `Backend Functions` 时，默认先选 `staging`，测试通过后再选 `production`。
 - 手动运行 `Backend Database` 时，默认先选 `staging`，测试通过后再选 `production`。
 - 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 7 个函数都能通过 `deno check`。

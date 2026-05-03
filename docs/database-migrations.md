@@ -14,14 +14,12 @@
 在 GitHub 仓库的 `Settings` -> `Environments` 中，给 `staging` 和 `production` 分别添加：
 
 - `SUPABASE_PROJECT_ID`，项目 ID，例如 `spb-bp1364k407p37qn7`。如果已经配置过 `SUPABASE_PROJECT_REF`，workflow 也会兼容读取
-- `SUPABASE_DB_HOST`，数据库连接地址。按阿里云说明，从“实例管理”跳转后的 URL 中取 IP / host 部分
 - `SUPABASE_DB_PASSWORD`，数据库账号 `postgres` 的密码
+- `ALIYUN_ACCESS_TOKEN`，格式为 `<AccessKeyID>|<AccessKeySecret>`
 
-如果账号、库名、端口不是默认值，可以在对应 environment 的 Variables 里覆盖：
+如果地域不是杭州，可以在对应 environment 的 Variables 里覆盖：
 
-- `SUPABASE_DB_USER`，默认 `postgres`
-- `SUPABASE_DB_NAME`，默认 `postgres`
-- `SUPABASE_DB_PORT`，默认 `5432`
+- `ALIYUN_REGION_ID`，当前默认 `cn-hangzhou`
 
 建议给 GitHub 的 `production` environment 配置 required reviewer。这样 production migration 需要人工确认后才会执行，不会因为误点或误配置直接影响线上。
 
@@ -64,14 +62,17 @@
 
 ## 本地查看状态
 
-如果本地有数据库连接信息，可以运行：
+这套流程使用阿里云版 Supabase CLI，不是官方 Supabase CLI。官方 CLI 不支持阿里云文档里的 `--project-ref` 参数。
+
+如果本地已经安装阿里云版 CLI，可以运行：
 
 ```bash
 TARGET_ENVIRONMENT=staging \
 SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
 EXPECTED_SUPABASE_PROJECT_ID=spb-bp1364k407p37qn7 \
-SUPABASE_DB_HOST="<database-host-or-ip>" \
 SUPABASE_DB_PASSWORD="<postgres-password>" \
+ALIYUN_ACCESS_TOKEN="<AccessKeyID>|<AccessKeySecret>" \
+ALIYUN_REGION_ID=cn-hangzhou \
 bash scripts/supabase-db-migrations.sh status
 ```
 
@@ -86,4 +87,4 @@ bash scripts/supabase-db-migrations.sh baseline
 ## 使用的 migration 表
 
 这里使用 Supabase CLI 自带的 migration history 表，而不是我们自建表。
-`baseline` 底层调用 `supabase migration repair --status applied`，`apply` 底层调用 `supabase db push`。
+`baseline` 底层调用 `supabase migration repair --project-ref ... --password ... --status applied`，`apply` 底层调用 `supabase db push --project-ref ... --password ...`。

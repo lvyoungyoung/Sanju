@@ -56,24 +56,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: 2.75.0
+      - name: Install Aliyun Supabase CLI
+        run: |
+          curl -L https://help-static-aliyun-doc.aliyuncs.com/file-manage-files/zh-CN/20260422/lptmes/supabase_v1.0.0_linux_amd64.tar.gz -o /tmp/aliyun-supabase.tar.gz
+          mkdir -p /tmp/aliyun-supabase-cli
+          tar -xzf /tmp/aliyun-supabase.tar.gz -C /tmp/aliyun-supabase-cli
+          chmod +x /tmp/aliyun-supabase-cli/supabase
+          /tmp/aliyun-supabase-cli/supabase --help
 
       - name: Run SQL migrations
         env:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EXPECTED_SUPABASE_PROJECT_ID: ${{ inputs.target_environment == 'staging' && 'spb-bp1364k407p37qn7' || 'spb-bp103246ivn7q0nl' }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF }}
-          SUPABASE_DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_DB_USER: ${{ vars.SUPABASE_DB_USER || 'postgres' }}
-          SUPABASE_DB_NAME: ${{ vars.SUPABASE_DB_NAME || 'postgres' }}
-          SUPABASE_DB_PORT: ${{ vars.SUPABASE_DB_PORT || '5432' }}
+          ALIYUN_ACCESS_TOKEN: ${{ secrets.ALIYUN_ACCESS_TOKEN }}
+          ALIYUN_REGION_ID: ${{ vars.ALIYUN_REGION_ID || 'cn-hangzhou' }}
+          SUPABASE_CLI_BIN: /tmp/aliyun-supabase-cli/supabase
         run: bash scripts/supabase-db-migrations.sh "${{ inputs.mode }}"
