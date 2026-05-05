@@ -337,6 +337,7 @@ struct SupabaseAPIError: Decodable {
         case error
         case msg
         case errorDescription = "error_description"
+        case errorCode = "error_code"
         case code
     }
 
@@ -352,7 +353,7 @@ struct SupabaseAPIError: Decodable {
         .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
         .first { !$0.isEmpty }
 
-        let code = try container.decodeIfPresent(String.self, forKey: .code)?
+        let code = try Self.decodeFlexibleString(from: container, forKeys: [.code, .errorCode])?
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let preferredMessage {
@@ -370,5 +371,20 @@ struct SupabaseAPIError: Decodable {
         }
 
         message = "Unknown API error"
+    }
+
+    private static func decodeFlexibleString(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKeys keys: [CodingKeys]
+    ) throws -> String? {
+        for key in keys {
+            if let value = try container.decodeIfPresent(String.self, forKey: key) {
+                return value
+            }
+            if let value = try container.decodeIfPresent(Int.self, forKey: key) {
+                return String(value)
+            }
+        }
+        return nil
     }
 }

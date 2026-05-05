@@ -249,6 +249,9 @@ enum SupabaseServiceError: LocalizedError {
             if normalized.contains("user already registered") {
                 return "该邮箱已注册，请直接登录。"
             }
+            if normalized.contains("error sending recovery email") {
+                return "验证码邮件发送失败，请稍后再试。"
+            }
             if normalized.contains("otp_expired") ||
                 normalized.contains("token has expired") ||
                 normalized.contains("expired otp") ||

@@ -879,6 +879,10 @@ extension AppModel {
                 normalized.contains("network connection") && normalized.contains("lost") {
                 return "网络连接已中断，请检查当前网络后重试。"
             }
+            if normalized.contains("error sending recovery email") ||
+                normalized.contains("sending recovery email") {
+                return "验证码邮件发送失败，请稍后再试。"
+            }
             if normalized.contains("bad gateway") ||
                 normalized.contains("gateway") ||
                 normalized.contains("service unavailable") ||
