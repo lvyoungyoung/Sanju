@@ -11,6 +11,12 @@
 - 手动运行 `Backend Database` 时，默认先选 `staging`，测试通过后再选 `production`。
 - 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 7 个函数都能通过 `deno check`。
 - 部署 staging 后运行 `node scripts/check-client-compatibility.mjs`，确认旧客户端兼容测试通过。
+- 本地验证 iOS 构建时，把 DerivedData 放到非云同步目录，避免 iCloud/FileProvider 扩展属性导致小组件签名失败：
+
+  ```bash
+  xcodebuild -project 三句.xcodeproj -scheme 三句 -sdk iphonesimulator -configuration Debug -destination 'generic/platform=iOS Simulator' -derivedDataPath /private/tmp/sanju-codex-derived-data build
+  ```
+
 - 新建 Supabase 环境后，必须开通实例访问公网；否则带 `npm:` import 的 Edge Function 部署可能返回 `504 upstream server is timing out`。
 - 如果通过 GitHub Actions 部署 `delete-account`，确认工作流使用 `scripts/deploy-edge-functions.sh`，不要手动漏掉 `--no-verify-jwt`。
 
