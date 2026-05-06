@@ -309,6 +309,11 @@ struct NewLearningView: View {
                             Text("正在读取照片...")
                                 .font(.system(size: AppFontSize.field, weight: .semibold))
                                 .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+
+                            Text("如果本地没有原图，从 iCloud 获取图片会花点时间。")
+                                .font(.system(size: AppFontSize.metadata, weight: .medium))
+                                .foregroundStyle(AppTextColor.secondary)
+                                .multilineTextAlignment(.center)
                         }
                         .padding(.horizontal, AppSpacing.section)
                     }
