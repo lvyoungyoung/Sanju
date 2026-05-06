@@ -38,7 +38,7 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english 和 chinese 两个字段
+8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english 和 chinese 都必须是字符串
 10. 不要输出任何多余字段
 11. 不要转义整个 JSON 对象
@@ -136,7 +136,7 @@ function makeDiagnosticSnippet(value: unknown, maxLength = 300): string {
 function parseSentences(content: string): Sentence[] | null {
   const candidate = extractSentencePayload(content)
   if (!candidate || !Array.isArray(candidate.sentences)) {
-    return extractSentencesByPattern(content)
+    return extractSentencesByPattern(content) ?? extractLooseSentencePairs(content)
   }
 
   const sentences = normalizeSentenceArray(candidate.sentences)
@@ -144,7 +144,7 @@ function parseSentences(content: string): Sentence[] | null {
     return sentences
   }
 
-  return extractSentencesByPattern(content)
+  return extractSentencesByPattern(content) ?? extractLooseSentencePairs(content)
 }
 
 function extractSentencePayload(content: string): any | null {
@@ -241,6 +241,49 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
   }
 
   return matches.length === 3 ? matches : null
+}
+
+function extractLooseSentencePairs(content: string): Sentence[] | null {
+  const normalized = normalizeJSONPayload(content)
+  const objectRegex = /\{[^{}]*"english"\s*:\s*"((?:\\.|[^"\\])*)"(?<tail>[^{}]*)\}/g
+
+  const matches: Sentence[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = objectRegex.exec(normalized)) !== null) {
+    const english = decodeJSONStringFragment(match[1]).trim()
+    const tail = match.groups?.tail ?? ""
+    const chinese = extractLooseChineseValue(tail)
+
+    if (english && chinese) {
+      matches.push({ english, chinese })
+    }
+  }
+
+  return matches.length === 3 ? matches : null
+}
+
+function extractLooseChineseValue(value: string): string {
+  const keyedMatch = /"chinese"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(value)
+  if (keyedMatch) {
+    return decodeJSONStringFragment(keyedMatch[1]).trim()
+  }
+
+  const stringRegex = /"((?:\\.|[^"\\])*)"/g
+  let match: RegExpExecArray | null
+
+  while ((match = stringRegex.exec(value)) !== null) {
+    const candidate = decodeJSONStringFragment(match[1]).trim()
+    if (containsCJK(candidate)) {
+      return candidate
+    }
+  }
+
+  return ""
+}
+
+function containsCJK(value: string): boolean {
+  return /[\u3400-\u9fff]/.test(value)
 }
 
 function decodeJSONStringFragment(value: string): string {
