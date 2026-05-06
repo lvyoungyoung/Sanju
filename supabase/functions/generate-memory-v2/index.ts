@@ -107,6 +107,32 @@ function truncateDiagnosticText(value: string, maxLength = 500): string {
     : normalized
 }
 
+function appendDiagnosticSnippet(
+  message: string,
+  label: string,
+  value: unknown,
+  maxLength = 300
+): string {
+  const snippet = makeDiagnosticSnippet(value, maxLength)
+  return snippet ? `${message}; ${label}=${snippet}` : message
+}
+
+function makeDiagnosticSnippet(value: unknown, maxLength = 300): string {
+  let text: string
+
+  if (typeof value === "string") {
+    text = value
+  } else {
+    try {
+      text = JSON.stringify(value)
+    } catch {
+      text = String(value)
+    }
+  }
+
+  return truncateDiagnosticText(text, maxLength)
+}
+
 function parseSentences(content: string): Sentence[] | null {
   const candidate = extractSentencePayload(content)
   if (!candidate || !Array.isArray(candidate.sentences)) {
@@ -1030,7 +1056,11 @@ async function requestMimoOnce(
       fallbackable: true,
       rateLimited: false,
       statusCode: 500,
-      internalError: "Invalid MiMo response content",
+      internalError: appendDiagnosticSnippet(
+        "Invalid MiMo response content",
+        "response_snippet",
+        rawText
+      ),
       publicError: { error: "生成结果格式异常，请重试" },
     }
   }
@@ -1043,7 +1073,11 @@ async function requestMimoOnce(
       fallbackable: true,
       rateLimited: false,
       statusCode: 500,
-      internalError: "Failed to parse sentences",
+      internalError: appendDiagnosticSnippet(
+        "Failed to parse sentences",
+        "content_snippet",
+        content
+      ),
       publicError: { error: "生成结果格式异常，请重试" },
     }
   }
