@@ -14,6 +14,7 @@ struct ProfileView: View {
     @State private var nicknameEditErrorMessage: String?
     @State private var isUpdatingNickname = false
     @State private var transientHintMessage: String?
+    @State private var transientHintStyle: TopHintStyle = .normal
     @State private var transientHintTask: Task<Void, Never>?
     @State private var learningReminderTime = Date()
     @State private var isShowingLearningReminderTimePicker = false
@@ -86,7 +87,7 @@ struct ProfileView: View {
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
             if let transientHintMessage {
-                LightweightTopHint(message: transientHintMessage)
+                LightweightTopHint(message: transientHintMessage, style: transientHintStyle)
                     .padding(.top, AppSpacing.medium)
                     .padding(.horizontal, AppSpacing.xLarge)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -527,24 +528,26 @@ struct ProfileView: View {
 
     private func interceptIfGenerationInProgress() -> Bool {
         guard appModel.hasActiveGenerationTask else { return false }
-        showTransientHint(generationGuardMessage)
+        showTransientHint(generationGuardMessage, style: .warning)
         return true
     }
 
     private func interceptIfPendingCloudSyncInProgress() -> Bool {
         guard appModel.isSyncingPendingCloudChanges else { return false }
-        showTransientHint(pendingCloudSyncGuardMessage)
+        showTransientHint(pendingCloudSyncGuardMessage, style: .warning)
         return true
     }
 
-    private func showTransientHint(_ message: String) {
+    private func showTransientHint(_ message: String, style: TopHintStyle = .normal) {
         transientHintTask?.cancel()
         transientHintMessage = message
+        transientHintStyle = style
         transientHintTask = Task {
             try? await Task.sleep(for: .seconds(1.8))
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 transientHintMessage = nil
+                transientHintStyle = .normal
                 transientHintTask = nil
             }
         }
@@ -686,22 +689,96 @@ private struct NicknameEditorSheet: View {
     }
 }
 
+private enum TopHintStyle {
+    case normal
+    case warning
+}
+
 private struct LightweightTopHint: View {
     let message: String
+    let style: TopHintStyle
 
     var body: some View {
-        Text(message)
-            .font(.system(size: AppFontSize.sectionLabel, weight: .medium))
-            .foregroundStyle(AppTextColor.primary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.96))
+        HStack(spacing: 10) {
+            if style == .warning {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.88, green: 0.35, blue: 0.10))
+            }
+
+            Text(message)
+                .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                .foregroundStyle(textColor)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, style == .warning ? 13 : 12)
+        .frame(maxWidth: .infinity)
+        .background(backgroundShape)
+        .overlay(borderShape)
+        .shadow(
+            color: shadowColor,
+            radius: style == .warning ? 18 : 14,
+            x: 0,
+            y: style == .warning ? 10 : 8
+        )
+    }
+
+    private var textColor: Color {
+        switch style {
+        case .normal:
+            return AppTextColor.primary
+        case .warning:
+            return Color(red: 0.52, green: 0.20, blue: 0.06)
+        }
+    }
+
+    private var backgroundShape: some View {
+        Capsule(style: .continuous)
+            .fill(backgroundFill)
+    }
+
+    private var borderShape: some View {
+        Capsule(style: .continuous)
+            .strokeBorder(borderColor, lineWidth: style == .warning ? 1.5 : 0)
+    }
+
+    private var backgroundFill: LinearGradient {
+        switch style {
+        case .normal:
+            return LinearGradient(
+                colors: [Color.white.opacity(0.96), Color.white.opacity(0.96)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
             )
-            .appCardShadow()
+        case .warning:
+            return LinearGradient(
+                colors: [
+                    Color(red: 1.00, green: 0.93, blue: 0.78),
+                    Color(red: 1.00, green: 0.82, blue: 0.60)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var borderColor: Color {
+        switch style {
+        case .normal:
+            return .clear
+        case .warning:
+            return Color(red: 0.96, green: 0.55, blue: 0.18).opacity(0.75)
+        }
+    }
+
+    private var shadowColor: Color {
+        switch style {
+        case .normal:
+            return Color.black.opacity(0.10)
+        case .warning:
+            return Color(red: 0.90, green: 0.40, blue: 0.10).opacity(0.24)
+        }
     }
 }
 
