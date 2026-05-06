@@ -368,6 +368,7 @@ extension AppModel {
     }
 
     func signOut() {
+        guard !isSyncingPendingCloudChanges else { return }
         beginPendingLocalSignOutTransaction()
         completeLocalSignOutTransaction()
     }

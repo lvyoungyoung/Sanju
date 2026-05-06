@@ -23,6 +23,7 @@ struct ProfileView: View {
 
     private let deleteAccountConfirmationPhrase = "我已知晓后果，确定删除账号"
     private let generationGuardMessage = "正在为您生成描述，请稍后操作。"
+    private let pendingCloudSyncGuardMessage = "正在同步数据到云端，请勿退出登录。"
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: AppSpacing.large) {
@@ -128,6 +129,7 @@ struct ProfileView: View {
         }
         .alert("确定要退出登录吗？", isPresented: $isShowingSignOutAlert) {
             Button("退出登录", role: .destructive) {
+                guard !interceptIfPendingCloudSyncInProgress() else { return }
                 appModel.signOut()
             }
             Button("取消", role: .cancel) { }
@@ -216,6 +218,7 @@ struct ProfileView: View {
 
                 Button(role: .destructive) {
                     guard !interceptIfGenerationInProgress() else { return }
+                    guard !interceptIfPendingCloudSyncInProgress() else { return }
                     isShowingSignOutAlert = true
                 } label: {
                     HStack {
@@ -525,6 +528,12 @@ struct ProfileView: View {
     private func interceptIfGenerationInProgress() -> Bool {
         guard appModel.hasActiveGenerationTask else { return false }
         showTransientHint(generationGuardMessage)
+        return true
+    }
+
+    private func interceptIfPendingCloudSyncInProgress() -> Bool {
+        guard appModel.isSyncingPendingCloudChanges else { return false }
+        showTransientHint(pendingCloudSyncGuardMessage)
         return true
     }
 
