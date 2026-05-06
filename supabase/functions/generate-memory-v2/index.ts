@@ -267,7 +267,7 @@ interface RequestBody {
   guestJobID?: string
 }
 
-const MIMO_TIMEOUT_MS = 15000
+const MIMO_TIMEOUT_MS = 30000
 const KIMI_TIMEOUT_MS = 20000
 const GENERATION_CONCURRENCY_LIMIT = 50
 const GENERATION_SLOT_TTL_SECONDS = 180
