@@ -84,6 +84,29 @@ function serializeGenerationError(args: {
   })
 }
 
+function summarizeProviderFailure(args: {
+  code?: string
+  statusCode: number
+  rateLimited?: boolean
+  internalError: string
+}): string {
+  const parts = [
+    args.code ? `code=${args.code}` : null,
+    `status=${args.statusCode}`,
+    args.rateLimited ? "rate_limited=true" : null,
+    args.internalError,
+  ].filter((part): part is string => Boolean(part))
+
+  return truncateDiagnosticText(parts.join(" | "))
+}
+
+function truncateDiagnosticText(value: string, maxLength = 500): string {
+  const normalized = value.replace(/\s+/g, " ").trim()
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 1)}…`
+    : normalized
+}
+
 function parseSentences(content: string): Sentence[] | null {
   const candidate = extractSentencePayload(content)
   if (!candidate || !Array.isArray(candidate.sentences)) {
@@ -596,7 +619,7 @@ Deno.serve(async (req) => {
       return jsonResponse(completionResult.publicError, completionResult.statusCode)
     }
 
-    const { sentences, provider } = completionResult
+    const { sentences, provider, mimoFailureReason } = completionResult
     const finalizedSentences = sentences.map((sentence) => ({
       id: crypto.randomUUID(),
       english: sentence.english,
@@ -637,6 +660,12 @@ Deno.serve(async (req) => {
 
         return jsonResponse(finalizeResult.publicError, finalizeResult.statusCode)
       }
+
+      await updateGuestGenerationDiagnostics(adminClient, {
+        guestJobID: guestJobID!,
+        provider,
+        mimoFailureReason,
+      })
 
       return jsonResponse({
         memory: {
@@ -693,6 +722,13 @@ Deno.serve(async (req) => {
 
       return jsonResponse(finalizeResult.publicError, finalizeResult.statusCode)
     }
+
+    await updateMemoryGenerationDiagnostics(adminClient, {
+      memoryID,
+      userID: user.id,
+      provider,
+      mimoFailureReason,
+    })
 
     return jsonResponse({
       memory: {
@@ -751,7 +787,12 @@ async function requestWithFallback(args: {
   kimiBaseURL: string
   kimiApiKey: string
 }): Promise<
-  | { ok: true; sentences: Sentence[]; provider: ProviderName }
+  | {
+      ok: true
+      sentences: Sentence[]
+      provider: ProviderName
+      mimoFailureReason: string | null
+    }
   | {
       ok: false
       provider?: ProviderName
@@ -798,7 +839,10 @@ async function requestWithFallback(args: {
   )
 
   if (mimoResult.ok) {
-    return mimoResult
+    return {
+      ...mimoResult,
+      mimoFailureReason: null,
+    }
   }
 
   console.error(
@@ -860,7 +904,10 @@ async function requestWithFallback(args: {
   )
 
   if (kimiResult.ok) {
-    return kimiResult
+    return {
+      ...kimiResult,
+      mimoFailureReason: summarizeProviderFailure(mimoResult),
+    }
   }
 
   console.error(
@@ -1199,6 +1246,74 @@ async function finalizeGuestGeneration(
   return {
     ok: true,
     remainingCredits: normalizeRPCInteger(data),
+  }
+}
+
+async function updateMemoryGenerationDiagnostics(
+  adminClient: any,
+  args: {
+    memoryID: string
+    userID: string
+    provider: ProviderName
+    mimoFailureReason: string | null
+  }
+): Promise<void> {
+  try {
+    const { error } = await adminClient
+      .from("memories")
+      .update({
+        provider: args.provider,
+        mimo_failure_reason: args.mimoFailureReason,
+      })
+      .eq("id", args.memoryID)
+      .eq("user_id", args.userID)
+
+    if (error) {
+      throw error
+    }
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2]",
+      serializeGenerationError({
+        provider: args.provider,
+        code: "generation_diagnostics_update_failed",
+        statusCode: 500,
+        internalError: error instanceof Error ? error.message : String(error),
+      })
+    )
+  }
+}
+
+async function updateGuestGenerationDiagnostics(
+  adminClient: any,
+  args: {
+    guestJobID: string
+    provider: ProviderName
+    mimoFailureReason: string | null
+  }
+): Promise<void> {
+  try {
+    const { error } = await adminClient
+      .from("guest_generation_jobs")
+      .update({
+        provider: args.provider,
+        mimo_failure_reason: args.mimoFailureReason,
+      })
+      .eq("id", args.guestJobID)
+
+    if (error) {
+      throw error
+    }
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2]",
+      serializeGenerationError({
+        provider: args.provider,
+        code: "guest_generation_diagnostics_update_failed",
+        statusCode: 500,
+        internalError: error instanceof Error ? error.message : String(error),
+      })
+    )
   }
 }
 
