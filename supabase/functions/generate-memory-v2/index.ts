@@ -359,7 +359,7 @@ interface RequestBody {
   guestJobID?: string
 }
 
-const MIMO_TIMEOUT_MS = 30000
+const MIMO_TIMEOUT_MS = 20000
 const KIMI_TIMEOUT_MS = 20000
 const GENERATION_CONCURRENCY_LIMIT = 50
 const GENERATION_SLOT_TTL_SECONDS = 180
@@ -1518,7 +1518,7 @@ async function moderateImageBeforeGeneration(args: {
   const functionURL = buildModerationFunctionURL()
 
   if (!serviceRoleKey || !functionURL) {
-    return buildImageModerationUnavailableResult("missing moderation function configuration")
+    return buildImageModerationAllowResult("missing moderation function configuration")
   }
 
   const requestBody: Record<string, unknown> = {
@@ -1550,7 +1550,7 @@ async function moderateImageBeforeGeneration(args: {
     }
 
     if (!response.ok) {
-      return buildImageModerationUnavailableResult(
+      return buildImageModerationAllowResult(
         `moderation function HTTP ${response.status}: ${rawText.slice(0, 1000)}`
       )
     }
@@ -1569,7 +1569,7 @@ async function moderateImageBeforeGeneration(args: {
       return { allowed: true }
     }
 
-    return buildImageModerationUnavailableResult(
+    return buildImageModerationAllowResult(
       error instanceof Error ? error.message : String(error)
     )
   }
@@ -1603,6 +1603,13 @@ function normalizeModerationFunctionResult(
     }
 
     if (result.allowed === false) {
+      const policyViolation = result.policyViolation === true
+      if (!policyViolation) {
+        return buildImageModerationAllowResult(
+          String(result.internalError ?? result.code ?? "moderation function unavailable")
+        )
+      }
+
       const publicError =
         typeof result.publicError === "object" && result.publicError !== null
           ? (result.publicError as Record<string, unknown>)
@@ -1614,7 +1621,7 @@ function normalizeModerationFunctionResult(
       return {
         allowed: false,
         code: String(result.code ?? "image_moderation_unavailable"),
-        policyViolation: result.policyViolation === true,
+        policyViolation,
         countedViolation: result.countedViolation === true,
         statusCode:
           typeof result.statusCode === "number" && Number.isFinite(result.statusCode)
@@ -1626,31 +1633,22 @@ function normalizeModerationFunctionResult(
     }
   }
 
-  return buildImageModerationUnavailableResult(
+  return buildImageModerationAllowResult(
     `invalid moderation function response: ${rawText.slice(0, 1000)}`
   )
 }
 
-function buildImageModerationUnavailableResult(internalError: string): ImageModerationResult {
-  const publicError: Record<string, unknown> = {
-    error: "图片安全检查失败，请稍后再试。",
-    code: "image_moderation_unavailable",
-    debugVersion: "2026-05-02-generate-moderation-caller-v1",
-  }
+function buildImageModerationAllowResult(internalError: string): ImageModerationResult {
+  console.warn(
+    "[generate-memory-v2]",
+    serializeGenerationError({
+      code: "image_moderation_unavailable_allow",
+      statusCode: 200,
+      internalError: `image moderation unavailable; allowing generation: ${internalError}`,
+    })
+  )
 
-  if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
-    publicError.details = internalError
-  }
-
-  return {
-    allowed: false,
-    code: "image_moderation_unavailable",
-    policyViolation: false,
-    countedViolation: false,
-    statusCode: 503,
-    internalError,
-    publicError,
-  }
+  return { allowed: true }
 }
 
 async function removeStoragePathQuietly(adminClient: any, path: string): Promise<void> {
