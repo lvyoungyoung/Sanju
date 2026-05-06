@@ -5,6 +5,7 @@ import UIKit
 struct NewLearningView: View {
     private let recoveryResultUnavailableMessage = "暂未从云端获取到结果，请重试。"
     private let generationStepDisplayDuration: Duration = .seconds(2)
+    private let photoLoadTimeout: Duration = .seconds(20)
 
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -363,6 +364,35 @@ struct NewLearningView: View {
         }
     }
 
+    private enum PhotoLoadError: Error {
+        case timedOut
+    }
+
+    private func loadTransferableData(
+        from item: PhotosPickerItem,
+        timeout: Duration
+    ) async throws -> Data? {
+        try await withThrowingTaskGroup(of: Data?.self) { group in
+            group.addTask {
+                try await item.loadTransferable(type: Data.self)
+            }
+
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw PhotoLoadError.timedOut
+            }
+
+            do {
+                let data = try await group.next() ?? nil
+                group.cancelAll()
+                return data
+            } catch {
+                group.cancelAll()
+                throw error
+            }
+        }
+    }
+
     private func loadSelectedPhoto() async {
         guard let selectedItem else {
             photoLoadRequestID = UUID()
@@ -380,9 +410,13 @@ struct NewLearningView: View {
         }
 
         do {
-            guard let data = try await selectedItem.loadTransferable(type: Data.self) else {
+            guard let data = try await loadTransferableData(
+                from: selectedItem,
+                timeout: photoLoadTimeout
+            ) else {
                 guard photoLoadRequestID == loadRequestID else { return }
                 errorMessage = "无法读取这张图片。"
+                self.selectedItem = nil
                 return
             }
 
@@ -409,7 +443,12 @@ struct NewLearningView: View {
             errorMessage = nil
         } catch {
             guard photoLoadRequestID == loadRequestID else { return }
-            errorMessage = "读取图片失败，请重试。"
+            if error is PhotoLoadError {
+                errorMessage = "读取照片超时，请确认原图已下载后重试。"
+            } else {
+                errorMessage = "读取图片失败，请重试。"
+            }
+            self.selectedItem = nil
         }
     }
 
