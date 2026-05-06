@@ -1206,12 +1206,21 @@ private struct SentenceStudyQuestion {
             desiredCount = 5
         }
 
-        let preferred = alphaWords.filter(\.isPreferredBlankCandidate).map(\.tokenIndex)
+        let prepositions = alphaWords.filter(\.isPrepositionBlankCandidate).map(\.tokenIndex)
+        let contentWords = alphaWords
+            .filter { !$0.isPrepositionBlankCandidate && $0.isContentBlankCandidate }
+            .map(\.tokenIndex)
         let fallback = alphaWords
-            .filter { !preferred.contains($0.tokenIndex) }
+            .filter { !$0.isPrepositionBlankCandidate && !$0.isContentBlankCandidate }
             .map(\.tokenIndex)
 
-        var selected = randomizedDistributedSelection(from: preferred, count: desiredCount)
+        var selected = randomizedDistributedSelection(from: prepositions, count: desiredCount)
+        if selected.count < desiredCount {
+            let excluded = Set(selected)
+            let remainingContentWords = contentWords.filter { !excluded.contains($0) }
+            selected.append(contentsOf: randomizedDistributedSelection(from: remainingContentWords, count: desiredCount - selected.count))
+        }
+
         if selected.count < desiredCount {
             let excluded = Set(selected)
             let remainingFallback = fallback.filter { !excluded.contains($0) }
@@ -1287,7 +1296,11 @@ private struct SentenceStudyParsedWord {
         core.range(of: "[A-Za-z]", options: .regularExpression) != nil
     }
 
-    var isPreferredBlankCandidate: Bool {
+    var isPrepositionBlankCandidate: Bool {
+        SentenceStudyParsedWord.prepositions.contains(core.lowercased())
+    }
+
+    var isContentBlankCandidate: Bool {
         let lowercased = core.lowercased()
         return isAlphabetic &&
             core.count >= 4 &&
@@ -1304,6 +1317,15 @@ private struct SentenceStudyParsedWord {
         "i", "in", "is", "it", "its", "me", "my", "of", "on", "or", "our",
         "she", "so", "that", "the", "their", "them", "there", "they", "this",
         "to", "up", "us", "very", "was", "we", "were", "with", "you", "your"
+    ]
+
+    private static let prepositions: Set<String> = [
+        "about", "above", "across", "after", "against", "along", "among", "around",
+        "at", "before", "behind", "below", "beneath", "beside", "between", "beyond",
+        "by", "down", "during", "for", "from", "in", "inside", "into", "near",
+        "of", "off", "on", "onto", "out", "outside", "over", "past", "through",
+        "to", "toward", "towards", "under", "underneath", "until", "up", "upon",
+        "with", "within", "without"
     ]
 }
 
