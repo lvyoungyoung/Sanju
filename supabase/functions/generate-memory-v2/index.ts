@@ -943,24 +943,6 @@ async function requestMimoOnce(
   }
 
   if (!response.ok) {
-    if (isGenerationPolicyViolation(data, rawText)) {
-      return {
-        ok: false,
-        provider: "mimo",
-        code: "generation_policy_violation",
-        policyViolation: true,
-        fallbackable: false,
-        rateLimited: false,
-        statusCode: 403,
-        internalError: `MiMo policy violation: ${rawText}`,
-        publicError: {
-          error: "这张图片暂时无法生成，请更换图片后再试。",
-          code: "generation_policy_violation",
-          provider: "mimo",
-        },
-      }
-    }
-
     if (response.status === 429) {
       return {
         ok: false,
@@ -993,23 +975,6 @@ async function requestMimoOnce(
   }
 
   const content = data?.choices?.[0]?.message?.content
-  if (typeof content === "string" && isGenerationPolicyViolation(data, content)) {
-    return {
-      ok: false,
-      provider: "mimo",
-      code: "generation_policy_violation",
-      policyViolation: true,
-      fallbackable: false,
-      rateLimited: false,
-      statusCode: 403,
-      internalError: `MiMo policy violation content: ${content}`,
-      publicError: {
-        error: "这张图片暂时无法生成，请更换图片后再试。",
-        code: "generation_policy_violation",
-        provider: "mimo",
-      },
-    }
-  }
 
   if (!content || typeof content !== "string") {
     return {
@@ -1100,23 +1065,6 @@ async function requestKimiOnce(
   }
 
   if (!response.ok) {
-    if (isGenerationPolicyViolation(data, rawText)) {
-      return {
-        ok: false,
-        provider: "kimi",
-        code: "generation_policy_violation",
-        policyViolation: true,
-        rateLimited: false,
-        statusCode: 403,
-        internalError: `Kimi policy violation: ${rawText}`,
-        publicError: {
-          error: "这张图片暂时无法生成，请更换图片后再试。",
-          code: "generation_policy_violation",
-          provider: "kimi",
-        },
-      }
-    }
-
     if (response.status === 429) {
       return {
         ok: false,
@@ -1147,22 +1095,6 @@ async function requestKimiOnce(
   }
 
   const content = data?.choices?.[0]?.message?.content
-  if (typeof content === "string" && isGenerationPolicyViolation(data, content)) {
-    return {
-      ok: false,
-      provider: "kimi",
-      code: "generation_policy_violation",
-      policyViolation: true,
-      rateLimited: false,
-      statusCode: 403,
-      internalError: `Kimi policy violation content: ${content}`,
-      publicError: {
-        error: "这张图片暂时无法生成，请更换图片后再试。",
-        code: "generation_policy_violation",
-        provider: "kimi",
-      },
-    }
-  }
 
   if (!content || typeof content !== "string") {
     return {
@@ -1622,75 +1554,4 @@ function buildGenerationPolicyViolationError(
     bannedUntil: record?.bannedUntil ?? null,
     violationCount: record?.violationCount ?? null,
   }
-}
-
-function isGenerationPolicyViolation(data: unknown, rawText: string): boolean {
-  const collectedText = [rawText, ...collectStringValues(data)]
-    .join(" ")
-    .toLowerCase()
-  const compactText = collectedText.replace(/[\s_-]+/g, "")
-
-  const compactKeywords = [
-    "contentfilter",
-    "contentpolicy",
-    "policyviolation",
-    "safetyviolation",
-    "imagesafety",
-    "filteredduetosafety",
-  ]
-  const phraseKeywords = [
-    "moderation",
-    "prohibited",
-    "disallowed",
-    "not allowed",
-    "unsafe content",
-    "sensitive content",
-    "violates policy",
-    "violated policy",
-    "policy violation",
-    "content filter",
-    "content policy",
-    "safety policy",
-    "safety violation",
-    "违规",
-    "不合规",
-    "违反",
-    "违法",
-    "敏感内容",
-    "内容安全",
-    "安全策略",
-    "审核不通过",
-    "无法处理该图片",
-  ]
-
-  return (
-    compactKeywords.some((keyword) => compactText.includes(keyword)) ||
-    phraseKeywords.some((keyword) => collectedText.includes(keyword))
-  )
-}
-
-function collectStringValues(value: unknown, depth = 0): string[] {
-  if (depth > 4 || value == null) {
-    return []
-  }
-
-  if (typeof value === "string") {
-    return [value]
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return [String(value)]
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap((item) => collectStringValues(item, depth + 1))
-  }
-
-  if (typeof value === "object") {
-    return Object.values(value as Record<string, unknown>).flatMap((item) =>
-      collectStringValues(item, depth + 1)
-    )
-  }
-
-  return []
 }

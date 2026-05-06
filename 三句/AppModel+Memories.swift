@@ -856,6 +856,23 @@ extension AppModel {
 
     func shouldAttemptGenerationRecovery(for error: Error) -> Bool {
         let message = error.localizedDescription.lowercased()
+        let nonRecoverableMarkers = [
+            "generation_policy_violation",
+            "generation_banned",
+            "image_moderation_unavailable",
+            "no_credits_left",
+            "rate_limit_exceeded",
+            "这张图片暂时无法生成",
+            "当前账号暂时无法生成",
+            "图片安全检查失败",
+            "当前使用人数过多",
+            "操作频繁",
+            "no credits left"
+        ]
+        if nonRecoverableMarkers.contains(where: { message.contains($0) }) {
+            return false
+        }
+
         return message.contains("超时") ||
             message.contains("timed out") ||
             message.contains("timeout") ||

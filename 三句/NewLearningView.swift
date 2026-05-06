@@ -448,6 +448,7 @@ struct NewLearningView: View {
             let localizedError = error.localizedDescription
             if !isTransientGenerationError(localizedError) {
                 statusTask.cancel()
+                appModel.clearPendingGeneratedMemoryImage()
                 errorMessage = localizedError
                 isWaitingForRecoveredGeneration = false
                 resetRecoveryCancelButtonVisibility()
