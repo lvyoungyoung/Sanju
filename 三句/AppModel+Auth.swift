@@ -1433,38 +1433,29 @@ extension AppModel {
         let queuedMemoryDeletions = state?.pendingMemoryDeletions ?? pendingMemoryDeletions
         let queuedFavoriteChanges = pendingFavoriteChanges
         let queuedLocalStudyProgress = localSentenceStudyProgressToMerge()
-        let queuedFavoriteSentenceIDs = Set(queuedFavoriteChanges.map(\.sentenceID))
-        let remoteMemoryByID = Dictionary(uniqueKeysWithValues: remoteMemories.map { ($0.id, $0) })
-        let favoriteDifferenceCount = memories.reduce(into: 0) { partialResult, localMemory in
-            guard localMemory.syncedToAccount, let remoteMemory = remoteMemoryByID[localMemory.id] else { return }
-            let remoteSentenceByID = Dictionary(uniqueKeysWithValues: remoteMemory.sentences.map { ($0.id, $0) })
-            partialResult += localMemory.sentences.filter { localSentence in
-                !queuedFavoriteSentenceIDs.contains(localSentence.id)
-                    && remoteSentenceByID[localSentence.id]?.isFavorite != localSentence.isFavorite
-            }.count
-        }
-
-        let totalCount = queuedGuestMemories.count
-            + queuedMemoryDeletions.count
-            + queuedFavoriteChanges.count
-            + favoriteDifferenceCount
-            + queuedLocalStudyProgress.count
-        if totalCount > 0 {
+        let cloudSyncPlan = cloudSyncManager.makePlan(
+            localMemories: memories,
+            remoteMemories: remoteMemories,
+            queuedGuestMemories: queuedGuestMemories,
+            queuedMemoryDeletions: queuedMemoryDeletions,
+            queuedFavoriteChanges: queuedFavoriteChanges,
+            queuedLocalStudyProgress: queuedLocalStudyProgress
+        )
+        if cloudSyncPlan.totalCount > 0 {
             pendingCloudSyncDebugLog(
-                """
-                session=\(session.userID) local=\(memories.count) remote=\(remoteMemories.count) \
-                queuedGuestMemories=\(queuedGuestMemories.count) deletions=\(queuedMemoryDeletions.count) \
-                queuedFavoriteChanges=\(queuedFavoriteChanges.count) favoriteDiffs=\(favoriteDifferenceCount) \
-                localStudyProgress=\(queuedLocalStudyProgress.count)
-                """
+                cloudSyncPlan.debugDescription(
+                    sessionID: session.userID,
+                    localMemoryCount: memories.count,
+                    remoteMemoryCount: remoteMemories.count
+                )
             )
         }
-        guard totalCount > 0 else { return }
+        guard cloudSyncPlan.totalCount > 0 else { return }
 
         if showsProgress {
             isSyncingPendingCloudChanges = true
             pendingCloudSyncCompletedCount = 0
-            pendingCloudSyncTotalCount = totalCount
+            pendingCloudSyncTotalCount = cloudSyncPlan.totalCount
         }
         defer {
             if showsProgress {

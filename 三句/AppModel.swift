@@ -313,6 +313,7 @@ final class AppModel: ObservableObject {
     let speech = SpeechService()
     let purchaseManager = PurchaseManager()
     let supabaseService: SupabaseServicing
+    let cloudSyncManager = CloudSyncManager()
     let defaults = UserDefaults.standard
     let localRateLimiter = LocalRateLimiter()
     let networkStatusMonitor = NetworkStatusMonitor()
