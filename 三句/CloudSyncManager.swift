@@ -32,6 +32,21 @@ struct CloudSyncPlan: Equatable {
     }
 }
 
+struct CloudSyncReconciliationResult {
+    let memories: [MemoryEntry]
+    let didChange: Bool
+
+    var recordedMemoriesCount: Int {
+        memories.count
+    }
+
+    var favoriteSentencesCount: Int {
+        memories.reduce(into: 0) { partialResult, memory in
+            partialResult += memory.sentences.filter(\.isFavorite).count
+        }
+    }
+}
+
 struct CloudSyncManager {
     func makeRemoteMemories(from records: [SupabaseMemoryRecord]) -> [MemoryEntry] {
         records.compactMap { record -> MemoryEntry? in
@@ -87,5 +102,76 @@ struct CloudSyncManager {
             favoriteDifferenceCount: favoriteDifferenceCount,
             localStudyProgressCount: queuedLocalStudyProgress.count
         )
+    }
+
+    func reconcileLocalMemories(
+        localMemories: [MemoryEntry],
+        remoteMemories: [MemoryEntry],
+        sessionUserID: String
+    ) -> CloudSyncReconciliationResult {
+        var reconciledMemories = localMemories
+        var didChange = false
+
+        for index in reconciledMemories.indices {
+            guard isMemoryContentComplete(reconciledMemories[index]),
+                  !reconciledMemories[index].syncedToAccount else {
+                continue
+            }
+            guard remoteMemories.contains(where: { matchesMemoryIdentity($0, reconciledMemories[index]) }) else {
+                continue
+            }
+            reconciledMemories[index].syncedToAccount = true
+            didChange = true
+        }
+
+        let originalCount = reconciledMemories.count
+        reconciledMemories.removeAll { localMemory in
+            guard isMemoryContentComplete(localMemory) else { return false }
+            guard remoteMemories.contains(where: { matchesMemoryIdentity($0, localMemory) }) else { return false }
+
+            if !localMemory.syncedToAccount {
+                return true
+            }
+
+            guard let remoteImagePath = localMemory.remoteImagePath else { return false }
+            return !remoteImagePath.hasPrefix("\(sessionUserID)/")
+        }
+        didChange = didChange || reconciledMemories.count != originalCount
+
+        return CloudSyncReconciliationResult(
+            memories: reconciledMemories,
+            didChange: didChange
+        )
+    }
+
+    private func matchesMemoryIdentity(_ lhs: MemoryEntry, _ rhs: MemoryEntry) -> Bool {
+        if lhs.id == rhs.id {
+            return true
+        }
+
+        let lhsContent = lhs.sentences.map { normalizedSentenceIdentity(for: $0) }
+        let rhsContent = rhs.sentences.map { normalizedSentenceIdentity(for: $0) }
+        return lhsContent == rhsContent
+    }
+
+    private func normalizedSentenceIdentity(for sentence: SentenceRecord) -> String {
+        "\(normalizeSentenceComponent(sentence.english))\u{001F}\(normalizeSentenceComponent(sentence.chinese))"
+    }
+
+    private func normalizeSentenceComponent(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    private func isMemoryContentComplete(_ memory: MemoryEntry) -> Bool {
+        guard memory.sentences.count == 3 else { return false }
+
+        return memory.sentences.allSatisfy {
+            !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !$0.chinese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 }

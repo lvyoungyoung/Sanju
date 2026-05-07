@@ -1404,8 +1404,7 @@ extension AppModel {
 
         let remoteMemories = cloudSyncManager.makeRemoteMemories(from: remoteRecords)
 
-        markLocalMemoriesAsSyncedIfNeeded(using: remoteMemories)
-        pruneRedundantLocalMemories(using: remoteMemories, sessionUserID: session.userID)
+        reconcileLocalMemoriesWithRemote(remoteMemories, sessionUserID: session.userID)
         let queuedMemoryDeletions = state?.pendingMemoryDeletions ?? pendingMemoryDeletions
         let queuedFavoriteChanges = pendingFavoriteChanges
         let queuedLocalStudyProgress = localSentenceStudyProgressToMerge()
@@ -1448,40 +1447,17 @@ extension AppModel {
         await syncLocalSentenceStudyProgressIfNeeded()
     }
 
-    private func markLocalMemoriesAsSyncedIfNeeded(using remoteMemories: [MemoryEntry]) {
-        var updated = false
-        for index in memories.indices {
-            guard isMemoryContentComplete(memories[index]), !memories[index].syncedToAccount else { continue }
-            guard remoteMemories.contains(where: { matchesMemoryIdentity($0, memories[index]) }) else { continue }
-            memories[index].syncedToAccount = true
-            updated = true
-        }
+    private func reconcileLocalMemoriesWithRemote(_ remoteMemories: [MemoryEntry], sessionUserID: String) {
+        let result = cloudSyncManager.reconcileLocalMemories(
+            localMemories: memories,
+            remoteMemories: remoteMemories,
+            sessionUserID: sessionUserID
+        )
+        guard result.didChange else { return }
 
-        if updated {
-            persistMemories()
-        }
-    }
-
-    private func pruneRedundantLocalMemories(using remoteMemories: [MemoryEntry], sessionUserID: String) {
-        let originalCount = memories.count
-        memories.removeAll { localMemory in
-            guard isMemoryContentComplete(localMemory) else { return false }
-            guard remoteMemories.contains(where: { matchesMemoryIdentity($0, localMemory) }) else { return false }
-
-            if !localMemory.syncedToAccount {
-                return true
-            }
-
-            guard let remoteImagePath = localMemory.remoteImagePath else { return false }
-            return !remoteImagePath.hasPrefix("\(sessionUserID)/")
-        }
-
-        guard memories.count != originalCount else { return }
-
-        recordedMemoriesCount = memories.count
-        favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
-            partialResult += memory.sentences.filter(\.isFavorite).count
-        }
+        memories = result.memories
+        recordedMemoriesCount = result.recordedMemoriesCount
+        favoriteSentencesCount = result.favoriteSentencesCount
         persistMemories()
     }
 
