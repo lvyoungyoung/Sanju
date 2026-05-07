@@ -51,19 +51,19 @@ enum MemoryWidgetSnapshotStore {
         }
 
         let imageDirectoryURL = containerURL.appendingPathComponent(imageDirectoryName, isDirectory: true)
-        try? FileManager.default.createDirectory(at: imageDirectoryURL, withIntermediateDirectories: true)
+        PersistenceDiagnostics.createDirectory(at: imageDirectoryURL, operation: "Create widget image directory")
 
         let validFileNames = Set<String>(memories.compactMap { memory in
             guard !memory.imageData.isEmpty, !memory.sentences.isEmpty else { return nil }
             return imageFileName(for: memory.id)
         })
 
-        if let existingFiles = try? FileManager.default.contentsOfDirectory(
+        if let existingFiles = PersistenceDiagnostics.contentsOfDirectory(
             at: imageDirectoryURL,
-            includingPropertiesForKeys: nil
+            operation: "List widget image directory"
         ) {
             for fileURL in existingFiles where !validFileNames.contains(fileURL.lastPathComponent) {
-                try? FileManager.default.removeItem(at: fileURL)
+                PersistenceDiagnostics.removeItem(at: fileURL, operation: "Remove stale widget image")
             }
         }
 
@@ -76,7 +76,7 @@ enum MemoryWidgetSnapshotStore {
             let fileName = imageFileName(for: memory.id)
             if !memory.imageData.isEmpty {
                 let imageFileURL = imageDirectoryURL.appendingPathComponent(fileName)
-                try? memory.imageData.write(to: imageFileURL, options: .atomic)
+                PersistenceDiagnostics.writeData(memory.imageData, to: imageFileURL, operation: "Write widget image")
             }
 
             for sentence in memory.sentences {
@@ -99,8 +99,12 @@ enum MemoryWidgetSnapshotStore {
         let payload = Snapshot(generatedAt: .now, items: items)
         let payloadURL = containerURL.appendingPathComponent(snapshotFileName)
 
-        if let data = try? encoder.encode(payload) {
-            try? data.write(to: payloadURL, options: .atomic)
+        if let data = PersistenceDiagnostics.encode(
+            payload,
+            using: encoder,
+            operation: "Encode widget snapshot"
+        ) {
+            PersistenceDiagnostics.writeData(data, to: payloadURL, operation: "Write widget snapshot")
         }
 
         WidgetCenter.shared.reloadTimelines(ofKind: widgetKind)

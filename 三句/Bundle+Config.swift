@@ -19,8 +19,8 @@ extension Bundle {
 
     var storeProductConfigs: [StoreProductConfig] {
         guard let url = url(forResource: configResourceName, withExtension: "plist"),
-              let data = try? Data(contentsOf: url),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let data = PersistenceDiagnostics.readData(from: url, operation: "Load app config"),
+              let plist = propertyList(from: data, operation: "Parse app config"),
               let rawProducts = plist["StoreKitProducts"] as? [[String: Any]] else {
             return []
         }
@@ -37,12 +37,23 @@ extension Bundle {
 
     private func configValue(forKey key: String) -> String? {
         guard let url = url(forResource: configResourceName, withExtension: "plist"),
-              let data = try? Data(contentsOf: url),
-              let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let data = PersistenceDiagnostics.readData(from: url, operation: "Load app config"),
+              let plist = propertyList(from: data, operation: "Parse app config"),
               let value = plist[key] as? String else {
             return nil
         }
 
         return value
+    }
+
+    private func propertyList(from data: Data, operation: String) -> [String: Any]? {
+        do {
+            return try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        } catch {
+            #if DEBUG
+            print("[Persistence] \(operation) failed: \(error.localizedDescription)")
+            #endif
+            return nil
+        }
     }
 }

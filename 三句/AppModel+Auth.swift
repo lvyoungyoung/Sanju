@@ -446,7 +446,12 @@ extension AppModel {
         var didLoadPersistedProfile = false
 
         if let profileData = defaults.data(forKey: AppStorageKey.profile),
-           let decodedProfile = try? decoder.decode(UserProfile.self, from: profileData) {
+           let decodedProfile = PersistenceDiagnostics.decode(
+               UserProfile.self,
+               from: profileData,
+               using: decoder,
+               operation: "Decode persisted profile"
+           ) {
             profile = decodedProfile
             didLoadPersistedProfile = true
         }

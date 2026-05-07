@@ -38,19 +38,22 @@ private enum MemoryImagePersistenceStore {
         let fileManager = FileManager.default
         let directoryURL = memoryImageDirectoryURL()
 
-        try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        PersistenceDiagnostics.createDirectory(at: directoryURL, operation: "Create memory image directory")
 
         let validFileNames = Set(imageFiles.map { memoryImageFileName(for: $0.memoryID) })
-        if let existingFiles = try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
+        if let existingFiles = PersistenceDiagnostics.contentsOfDirectory(
+            at: directoryURL,
+            operation: "List memory image directory"
+        ) {
             for fileURL in existingFiles where !validFileNames.contains(fileURL.lastPathComponent) {
-                try? fileManager.removeItem(at: fileURL)
+                PersistenceDiagnostics.removeItem(at: fileURL, operation: "Remove stale memory image")
             }
         }
 
         for imageFile in imageFiles where !imageFile.imageData.isEmpty {
             let fileURL = directoryURL.appendingPathComponent(memoryImageFileName(for: imageFile.memoryID))
             guard !fileManager.fileExists(atPath: fileURL.path) else { continue }
-            try? imageFile.imageData.write(to: fileURL, options: .atomic)
+            PersistenceDiagnostics.writeData(imageFile.imageData, to: fileURL, operation: "Write memory image")
         }
     }
 
@@ -66,26 +69,29 @@ private enum MemoryImagePersistenceStore {
         let legacyURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(directoryName, isDirectory: true)
 
-        try? fileManager.createDirectory(at: supportRootURL, withIntermediateDirectories: true)
+        PersistenceDiagnostics.createDirectory(at: supportRootURL, operation: "Create support root directory")
 
         guard fileManager.fileExists(atPath: legacyURL.path) else {
             return targetURL
         }
 
         if !fileManager.fileExists(atPath: targetURL.path) {
-            try? fileManager.moveItem(at: legacyURL, to: targetURL)
+            PersistenceDiagnostics.moveItem(at: legacyURL, to: targetURL, operation: "Move legacy image directory")
             return targetURL
         }
 
-        if let legacyFiles = try? fileManager.contentsOfDirectory(at: legacyURL, includingPropertiesForKeys: nil) {
-            try? fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
+        if let legacyFiles = PersistenceDiagnostics.contentsOfDirectory(
+            at: legacyURL,
+            operation: "List legacy image directory"
+        ) {
+            PersistenceDiagnostics.createDirectory(at: targetURL, operation: "Create migrated image directory")
             for fileURL in legacyFiles {
                 let destinationURL = targetURL.appendingPathComponent(fileURL.lastPathComponent)
                 guard !fileManager.fileExists(atPath: destinationURL.path) else { continue }
-                try? fileManager.moveItem(at: fileURL, to: destinationURL)
+                PersistenceDiagnostics.moveItem(at: fileURL, to: destinationURL, operation: "Move legacy image file")
             }
         }
-        try? fileManager.removeItem(at: legacyURL)
+        PersistenceDiagnostics.removeItem(at: legacyURL, operation: "Remove legacy image directory")
         return targetURL
     }
 
@@ -144,7 +150,11 @@ extension AppModel {
         guard let supabaseSession else { return }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(supabaseSession) {
+        if let data = PersistenceDiagnostics.encode(
+            supabaseSession,
+            using: encoder,
+            operation: "Encode Supabase session"
+        ) {
             KeychainStorage.set(data, for: AppStorageKey.supabaseSession)
         }
     }
@@ -156,7 +166,12 @@ extension AppModel {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(SupabaseSession.self, from: data)
+        return PersistenceDiagnostics.decode(
+            SupabaseSession.self,
+            from: data,
+            using: decoder,
+            operation: "Decode Supabase session"
+        )
     }
 
     func clearStoredSession() {
@@ -166,7 +181,7 @@ extension AppModel {
 
     func persistProfile() {
         let encoder = JSONEncoder()
-        let data = try? encoder.encode(profile)
+        let data = PersistenceDiagnostics.encode(profile, using: encoder, operation: "Encode profile")
         defaults.set(data, forKey: AppStorageKey.profile)
     }
 
@@ -185,7 +200,11 @@ extension AppModel {
                 sentences: $0.sentences
             )
         }
-        let data = try? encoder.encode(persistedMemories)
+        let data = PersistenceDiagnostics.encode(
+            persistedMemories,
+            using: encoder,
+            operation: "Encode persisted memories"
+        )
         defaults.set(data, forKey: AppStorageKey.memories)
         defaults.set(userID, forKey: AppStorageKey.memoriesUserID)
         MemoryImagePersistenceStore.schedulePersist(memories: memories)
@@ -312,7 +331,11 @@ extension AppModel {
     private func persistPendingLocalAccountTransition(_ transition: PendingLocalAccountTransition) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let data = try? encoder.encode(transition)
+        let data = PersistenceDiagnostics.encode(
+            transition,
+            using: encoder,
+            operation: "Encode pending local account transition"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingLocalAccountTransition)
     }
 
@@ -323,7 +346,12 @@ extension AppModel {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(PendingLocalAccountTransition.self, from: data)
+        return PersistenceDiagnostics.decode(
+            PendingLocalAccountTransition.self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending local account transition"
+        )
     }
 
     private func clearPendingLocalAccountTransition() {
@@ -352,19 +380,31 @@ extension AppModel {
 
     func persistPendingMemoryImageUploads() {
         let encoder = JSONEncoder()
-        let data = try? encoder.encode(pendingMemoryImageUploads)
+        let data = PersistenceDiagnostics.encode(
+            pendingMemoryImageUploads,
+            using: encoder,
+            operation: "Encode pending memory image uploads"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingMemoryImageUploads)
     }
 
     func persistPendingFavoriteChanges() {
         let encoder = JSONEncoder()
-        let data = try? encoder.encode(pendingFavoriteChanges)
+        let data = PersistenceDiagnostics.encode(
+            pendingFavoriteChanges,
+            using: encoder,
+            operation: "Encode pending favorite changes"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingFavoriteChanges)
     }
 
     func persistPendingMemoryDeletions() {
         let encoder = JSONEncoder()
-        let data = try? encoder.encode(pendingMemoryDeletions)
+        let data = PersistenceDiagnostics.encode(
+            pendingMemoryDeletions,
+            using: encoder,
+            operation: "Encode pending memory deletions"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingMemoryDeletions)
     }
 
@@ -375,7 +415,11 @@ extension AppModel {
         }
 
         let encoder = JSONEncoder()
-        let data = try? encoder.encode(pendingGuestCreditMigration)
+        let data = PersistenceDiagnostics.encode(
+            pendingGuestCreditMigration,
+            using: encoder,
+            operation: "Encode pending guest credit migration"
+        )
         if let data {
             KeychainStorage.set(data, for: AppStorageKey.pendingGuestCreditMigration)
         }
@@ -384,7 +428,11 @@ extension AppModel {
     func persistLocalSentenceStudyProgress() {
         let encoder = JSONEncoder()
         let progressRecords = Array(localSentenceStudyProgress.values)
-        let data = try? encoder.encode(progressRecords)
+        let data = PersistenceDiagnostics.encode(
+            progressRecords,
+            using: encoder,
+            operation: "Encode local sentence study progress"
+        )
         defaults.set(data, forKey: AppStorageKey.localSentenceStudyProgress)
     }
 
@@ -395,7 +443,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        guard let progressRecords = try? decoder.decode([LocalSentenceStudyProgress].self, from: data) else {
+        guard let progressRecords = PersistenceDiagnostics.decode(
+            [LocalSentenceStudyProgress].self,
+            from: data,
+            using: decoder,
+            operation: "Decode local sentence study progress"
+        ) else {
             localSentenceStudyProgress = [:]
             return
         }
@@ -429,7 +482,11 @@ extension AppModel {
                 guestJobID: $0.guestJobID
             )
         }
-        let data = try? encoder.encode(persistedValue)
+        let data = PersistenceDiagnostics.encode(
+            persistedValue,
+            using: encoder,
+            operation: "Encode pending generated memory image metadata"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingGeneratedMemoryImage)
     }
 
@@ -449,14 +506,17 @@ extension AppModel {
         memoryWidgetSnapshotUpdateTask?.cancel()
         defaults.removeObject(forKey: AppStorageKey.memories)
         defaults.removeObject(forKey: AppStorageKey.memoriesUserID)
-        try? FileManager.default.removeItem(at: memoryImageDirectoryURL())
+        PersistenceDiagnostics.removeItem(at: memoryImageDirectoryURL(), operation: "Remove memory image directory")
         MemoryWidgetSnapshotStore.scheduleUpdate(with: [])
     }
 
     func clearPendingGuestMemoryMigrationQueue() {
         pendingGuestMemoryMigrationQueue = []
         defaults.removeObject(forKey: AppStorageKey.pendingGuestMemoryMigrationQueue)
-        try? FileManager.default.removeItem(at: pendingGuestMemoryImageDirectoryURL())
+        PersistenceDiagnostics.removeItem(
+            at: pendingGuestMemoryImageDirectoryURL(),
+            operation: "Remove pending guest memory image directory"
+        )
     }
 
     func persistPendingGuestMemoryMigrationQueue() {
@@ -470,7 +530,11 @@ extension AppModel {
                 sentences: $0.sentences
             )
         }
-        let data = try? encoder.encode(persistedQueue)
+        let data = PersistenceDiagnostics.encode(
+            persistedQueue,
+            using: encoder,
+            operation: "Encode pending guest memory migration queue"
+        )
         defaults.set(data, forKey: AppStorageKey.pendingGuestMemoryMigrationQueue)
         persistPendingGuestMemoryImageFiles()
     }
@@ -482,7 +546,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        guard let persistedQueue = try? decoder.decode([PersistedPendingGuestMemoryMigrationEntry].self, from: data) else {
+        guard let persistedQueue = PersistenceDiagnostics.decode(
+            [PersistedPendingGuestMemoryMigrationEntry].self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending guest memory migration queue"
+        ) else {
             pendingGuestMemoryMigrationQueue = []
             return
         }
@@ -608,7 +677,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        if let persistedMemories = try? decoder.decode([PersistedMemoryEntry].self, from: memoryData) {
+        if let persistedMemories = PersistenceDiagnostics.decode(
+            [PersistedMemoryEntry].self,
+            from: memoryData,
+            using: decoder,
+            operation: "Decode cached memories"
+        ) {
             let defaultSyncedToAccount = defaultSyncedValueForCachedMemories(userID: userID)
             var deferredImageMemoryIDs: [UUID] = []
             let decodedMemories = persistedMemories.map { memory -> MemoryEntry in
@@ -631,7 +705,12 @@ extension AppModel {
             return CachedMemories(memories: decodedMemories, deferredImageMemoryIDs: deferredImageMemoryIDs)
         }
 
-        if let decodedLegacyMemories = try? decoder.decode([MemoryEntry].self, from: memoryData) {
+        if let decodedLegacyMemories = PersistenceDiagnostics.decode(
+            [MemoryEntry].self,
+            from: memoryData,
+            using: decoder,
+            operation: "Decode legacy cached memories"
+        ) {
             return CachedMemories(memories: decodedLegacyMemories, deferredImageMemoryIDs: [])
         }
 
@@ -664,7 +743,10 @@ extension AppModel {
                     guard !Task.isCancelled else { return loadedImages }
                     let fileName = "\(memoryID.uuidString.lowercased()).jpg"
                     let fileURL = directoryURL.appendingPathComponent(fileName)
-                    guard let imageData = try? Data(contentsOf: fileURL),
+                    guard let imageData = PersistenceDiagnostics.readData(
+                        from: fileURL,
+                        operation: "Hydrate cached memory image"
+                    ),
                           !imageData.isEmpty else {
                         continue
                     }
@@ -719,7 +801,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        pendingMemoryImageUploads = (try? decoder.decode([PendingMemoryImageUpload].self, from: data)) ?? []
+        pendingMemoryImageUploads = PersistenceDiagnostics.decode(
+            [PendingMemoryImageUpload].self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending memory image uploads"
+        ) ?? []
     }
 
     func loadPendingFavoriteChanges() {
@@ -729,7 +816,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        pendingFavoriteChanges = (try? decoder.decode([PendingFavoriteChange].self, from: data)) ?? []
+        pendingFavoriteChanges = PersistenceDiagnostics.decode(
+            [PendingFavoriteChange].self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending favorite changes"
+        ) ?? []
     }
 
 
@@ -741,7 +833,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        pendingMemoryDeletions = (try? decoder.decode([PendingMemoryDeletion].self, from: data)) ?? []
+        pendingMemoryDeletions = PersistenceDiagnostics.decode(
+            [PendingMemoryDeletion].self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending memory deletions"
+        ) ?? []
     }
 
     func loadPendingGuestCreditMigration() {
@@ -753,7 +850,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        pendingGuestCreditMigration = try? decoder.decode(PendingGuestCreditMigration.self, from: data)
+        pendingGuestCreditMigration = PersistenceDiagnostics.decode(
+            PendingGuestCreditMigration.self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending guest credit migration"
+        )
     }
 
     func loadPendingGeneratedMemoryImage() {
@@ -763,7 +865,12 @@ extension AppModel {
         }
 
         let decoder = JSONDecoder()
-        if let persistedValue = try? decoder.decode(PersistedPendingGeneratedMemoryImage.self, from: data) {
+        if let persistedValue = PersistenceDiagnostics.decode(
+            PersistedPendingGeneratedMemoryImage.self,
+            from: data,
+            using: decoder,
+            operation: "Decode pending generated memory image metadata"
+        ) {
             let imageData = loadPendingGeneratedImageData()
             pendingGeneratedMemoryImage = imageData.map {
                 PendingGeneratedMemoryImage(
@@ -773,7 +880,12 @@ extension AppModel {
                     imageData: $0
                 )
             }
-        } else if let legacyValue = try? decoder.decode(PendingGeneratedMemoryImage.self, from: data) {
+        } else if let legacyValue = PersistenceDiagnostics.decode(
+            PendingGeneratedMemoryImage.self,
+            from: data,
+            using: decoder,
+            operation: "Decode legacy pending generated memory image"
+        ) {
             pendingGeneratedMemoryImage = legacyValue
             persistPendingGeneratedMemoryImage()
         } else {
@@ -783,47 +895,49 @@ extension AppModel {
 
     private func loadMemoryImageData(for memoryID: UUID) -> Data {
         let fileURL = memoryImageDirectoryURL().appendingPathComponent(memoryImageFileName(for: memoryID))
-        return (try? Data(contentsOf: fileURL)) ?? Data()
+        return PersistenceDiagnostics.readData(from: fileURL, operation: "Load memory image") ?? Data()
     }
 
     private func persistPendingGuestMemoryImageFiles() {
         let fileManager = FileManager.default
         let directoryURL = pendingGuestMemoryImageDirectoryURL()
 
-        try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        PersistenceDiagnostics.createDirectory(at: directoryURL, operation: "Create pending guest memory image directory")
 
         let validFileNames = Set(pendingGuestMemoryMigrationQueue.map { memoryImageFileName(for: $0.id) })
-        if let existingFiles = try? fileManager.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil) {
+        if let existingFiles = PersistenceDiagnostics.contentsOfDirectory(
+            at: directoryURL,
+            operation: "List pending guest memory image directory"
+        ) {
             for fileURL in existingFiles where !validFileNames.contains(fileURL.lastPathComponent) {
-                try? fileManager.removeItem(at: fileURL)
+                PersistenceDiagnostics.removeItem(at: fileURL, operation: "Remove stale pending guest memory image")
             }
         }
 
         for memory in pendingGuestMemoryMigrationQueue where !memory.imageData.isEmpty {
             let fileURL = directoryURL.appendingPathComponent(memoryImageFileName(for: memory.id))
             guard !fileManager.fileExists(atPath: fileURL.path) else { continue }
-            try? memory.imageData.write(to: fileURL, options: .atomic)
+            PersistenceDiagnostics.writeData(memory.imageData, to: fileURL, operation: "Write pending guest memory image")
         }
     }
 
     private func loadPendingGuestMemoryImageData(for memoryID: UUID) -> Data {
         let fileURL = pendingGuestMemoryImageDirectoryURL().appendingPathComponent(memoryImageFileName(for: memoryID))
-        return (try? Data(contentsOf: fileURL)) ?? Data()
+        return PersistenceDiagnostics.readData(from: fileURL, operation: "Load pending guest memory image") ?? Data()
     }
 
     private func writePendingGeneratedImageData(_ data: Data) {
-        let fileManager = FileManager.default
         let directoryURL = pendingGeneratedImageDirectoryURL()
-        try? fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-        try? data.write(to: pendingGeneratedImageFileURL(), options: .atomic)
+        PersistenceDiagnostics.createDirectory(at: directoryURL, operation: "Create pending generated image directory")
+        PersistenceDiagnostics.writeData(data, to: pendingGeneratedImageFileURL(), operation: "Write pending generated image")
     }
 
     private func loadPendingGeneratedImageData() -> Data? {
-        try? Data(contentsOf: pendingGeneratedImageFileURL())
+        PersistenceDiagnostics.readData(from: pendingGeneratedImageFileURL(), operation: "Load pending generated image")
     }
 
     private func removePendingGeneratedImageData() {
-        try? FileManager.default.removeItem(at: pendingGeneratedImageFileURL())
+        PersistenceDiagnostics.removeItem(at: pendingGeneratedImageFileURL(), operation: "Remove pending generated image")
     }
 
     private func memoryImageDirectoryURL() -> URL {
@@ -846,26 +960,29 @@ extension AppModel {
         let legacyURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(directoryName, isDirectory: true)
 
-        try? fileManager.createDirectory(at: supportRootURL, withIntermediateDirectories: true)
+        PersistenceDiagnostics.createDirectory(at: supportRootURL, operation: "Create support root directory")
 
         guard fileManager.fileExists(atPath: legacyURL.path) else {
             return targetURL
         }
 
         if !fileManager.fileExists(atPath: targetURL.path) {
-            try? fileManager.moveItem(at: legacyURL, to: targetURL)
+            PersistenceDiagnostics.moveItem(at: legacyURL, to: targetURL, operation: "Move legacy image directory")
             return targetURL
         }
 
-        if let legacyFiles = try? fileManager.contentsOfDirectory(at: legacyURL, includingPropertiesForKeys: nil) {
-            try? fileManager.createDirectory(at: targetURL, withIntermediateDirectories: true)
+        if let legacyFiles = PersistenceDiagnostics.contentsOfDirectory(
+            at: legacyURL,
+            operation: "List legacy image directory"
+        ) {
+            PersistenceDiagnostics.createDirectory(at: targetURL, operation: "Create migrated image directory")
             for fileURL in legacyFiles {
                 let destinationURL = targetURL.appendingPathComponent(fileURL.lastPathComponent)
                 guard !fileManager.fileExists(atPath: destinationURL.path) else { continue }
-                try? fileManager.moveItem(at: fileURL, to: destinationURL)
+                PersistenceDiagnostics.moveItem(at: fileURL, to: destinationURL, operation: "Move legacy image file")
             }
         }
-        try? fileManager.removeItem(at: legacyURL)
+        PersistenceDiagnostics.removeItem(at: legacyURL, operation: "Remove legacy image directory")
         return targetURL
     }
 

@@ -134,13 +134,22 @@ final class LocalRateLimiter {
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([Date].self, from: data)) ?? []
+        return PersistenceDiagnostics.decode(
+            [Date].self,
+            from: data,
+            using: decoder,
+            operation: "Decode local rate limiter timestamps"
+        ) ?? []
     }
 
     private func saveAttemptTimestamps(_ timestamps: [Date], for action: Action) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let data = try? encoder.encode(timestamps)
+        let data = PersistenceDiagnostics.encode(
+            timestamps,
+            using: encoder,
+            operation: "Encode local rate limiter timestamps"
+        )
         defaults.set(data, forKey: action.storageKey)
     }
 }
