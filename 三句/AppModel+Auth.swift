@@ -540,7 +540,7 @@ extension AppModel {
                 return
             }
 
-            applyCachedMemoriesIfAvailable(for: launchCacheUserID)
+            applyCachedMemoriesIfAvailable(for: launchCacheUserID, imageLoading: .deferRemoteBacked)
             if !storedSession.isAnonymous {
                 mergePendingGuestMemoriesIntoCurrentMemoriesIfNeeded(persistUserID: launchCacheUserID)
             }
@@ -554,7 +554,7 @@ extension AppModel {
             return
         }
 
-        applyCachedMemoriesIfAvailable(for: AppStorageKey.guestMemoriesUserID)
+        applyCachedMemoriesIfAvailable(for: AppStorageKey.guestMemoriesUserID, imageLoading: .deferRemoteBacked)
     }
 
     func startNetworkMonitoring() {
@@ -598,7 +598,7 @@ extension AppModel {
             }
 
             let cacheUserID = sessionToUse.isAnonymous ? AppStorageKey.guestMemoriesUserID : sessionToUse.userID
-            applyCachedMemoriesIfAvailable(for: cacheUserID)
+            applyCachedMemoriesIfAvailable(for: cacheUserID, imageLoading: .deferRemoteBacked)
             if !sessionToUse.isAnonymous {
                 mergePendingGuestMemoriesIntoCurrentMemoriesIfNeeded(persistUserID: cacheUserID)
             }

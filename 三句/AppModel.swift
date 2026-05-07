@@ -334,6 +334,8 @@ final class AppModel: ObservableObject {
     var remoteContentRefreshTask: Task<Void, Never>?
     var remoteMemoriesSyncTask: Task<Void, Never>?
     var remoteMemoryImageHydrationTask: Task<Void, Never>?
+    var cachedMemoryImageHydrationTask: Task<Void, Never>?
+    var memoryWidgetSnapshotUpdateTask: Task<Void, Never>?
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
 
@@ -437,6 +439,8 @@ final class AppModel: ObservableObject {
         remoteContentRefreshTask?.cancel()
         remoteMemoriesSyncTask?.cancel()
         remoteMemoryImageHydrationTask?.cancel()
+        cachedMemoryImageHydrationTask?.cancel()
+        memoryWidgetSnapshotUpdateTask?.cancel()
         networkStatusMonitor.cancel()
     }
 

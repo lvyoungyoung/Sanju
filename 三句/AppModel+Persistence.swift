@@ -1,5 +1,10 @@
 import Foundation
 
+enum CachedMemoryImageLoadingMode: Equatable {
+    case immediateForAll
+    case deferRemoteBacked
+}
+
 private enum MemoryImagePersistenceStore {
     private struct ImageFile {
         let memoryID: UUID
@@ -90,6 +95,8 @@ private enum MemoryImagePersistenceStore {
 }
 
 extension AppModel {
+    private static let memoryWidgetSnapshotDebounceNanoseconds: UInt64 = 500_000_000
+
     private struct PersistedMemoryEntry: Codable {
         let id: UUID
         let createdAt: Date
@@ -110,6 +117,11 @@ extension AppModel {
         let remoteImagePath: String?
         let syncedToAccount: Bool?
         let sentences: [SentenceRecord]
+    }
+
+    private struct CachedMemories {
+        let memories: [MemoryEntry]
+        let deferredImageMemoryIDs: [UUID]
     }
 
     private struct PendingLocalAccountTransition: Codable {
@@ -177,7 +189,7 @@ extension AppModel {
         defaults.set(data, forKey: AppStorageKey.memories)
         defaults.set(userID, forKey: AppStorageKey.memoriesUserID)
         MemoryImagePersistenceStore.schedulePersist(memories: memories)
-        MemoryWidgetSnapshotStore.scheduleUpdate(with: memories)
+        scheduleMemoryWidgetSnapshotUpdate(with: memories)
     }
 
     func beginPendingLocalSignOutTransaction() {
@@ -433,6 +445,8 @@ extension AppModel {
     }
 
     func clearPersistedMemories() {
+        cachedMemoryImageHydrationTask?.cancel()
+        memoryWidgetSnapshotUpdateTask?.cancel()
         defaults.removeObject(forKey: AppStorageKey.memories)
         defaults.removeObject(forKey: AppStorageKey.memoriesUserID)
         try? FileManager.default.removeItem(at: memoryImageDirectoryURL())
@@ -490,20 +504,28 @@ extension AppModel {
         defaults.set(currentCreditsOwnerID, forKey: AppStorageKey.remainingCreditsOwnerID)
     }
 
-    func applyCachedMemoriesIfAvailable(for userID: String) {
-        guard let decodedMemories = cachedMemories(for: userID) else {
+    func applyCachedMemoriesIfAvailable(
+        for userID: String,
+        imageLoading: CachedMemoryImageLoadingMode = .immediateForAll
+    ) {
+        guard let cachedMemories = cachedMemories(for: userID, imageLoading: imageLoading) else {
             memories = []
             recordedMemoriesCount = 0
             favoriteSentencesCount = 0
             return
         }
 
-        memories = decodedMemories
+        memories = cachedMemories.memories
 
         recordedMemoriesCount = memories.count
         favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
             partialResult += memory.sentences.filter(\.isFavorite).count
         }
+
+        scheduleCachedMemoryImageHydrationIfNeeded(
+            for: cachedMemories.deferredImageMemoryIDs,
+            userID: userID
+        )
     }
 
     func mergePendingGuestMemoriesIntoCurrentMemoriesIfNeeded(persistUserID: String? = nil) {
@@ -514,7 +536,7 @@ extension AppModel {
         if let persistUserID,
            persistUserID != AppStorageKey.guestMemoriesUserID,
            let cachedGuestMemories = cachedMemories(for: AppStorageKey.guestMemoriesUserID) {
-            for guestMemory in cachedGuestMemories
+            for guestMemory in cachedGuestMemories.memories
                 .filter({ isMemoryContentComplete($0) && !$0.syncedToAccount })
                 .sorted(by: { $0.createdAt > $1.createdAt }) {
                 let alreadyQueued = queuedMemories.contains { queuedMemory in
@@ -575,7 +597,10 @@ extension AppModel {
         }
     }
 
-    private func cachedMemories(for userID: String) -> [MemoryEntry]? {
+    private func cachedMemories(
+        for userID: String,
+        imageLoading: CachedMemoryImageLoadingMode = .immediateForAll
+    ) -> CachedMemories? {
         let cachedUserID = defaults.string(forKey: AppStorageKey.memoriesUserID)
         guard cachedUserID == userID,
               let memoryData = defaults.data(forKey: AppStorageKey.memories) else {
@@ -585,21 +610,29 @@ extension AppModel {
         let decoder = JSONDecoder()
         if let persistedMemories = try? decoder.decode([PersistedMemoryEntry].self, from: memoryData) {
             let defaultSyncedToAccount = defaultSyncedValueForCachedMemories(userID: userID)
-            let decodedMemories = persistedMemories.map { memory in
-                MemoryEntry(
+            var deferredImageMemoryIDs: [UUID] = []
+            let decodedMemories = persistedMemories.map { memory -> MemoryEntry in
+                let syncedToAccount = memory.syncedToAccount ?? defaultSyncedToAccount
+                let shouldDeferImage = imageLoading == .deferRemoteBacked
+                    && syncedToAccount
+                    && memory.remoteImagePath != nil
+                if shouldDeferImage {
+                    deferredImageMemoryIDs.append(memory.id)
+                }
+                return MemoryEntry(
                     id: memory.id,
                     createdAt: memory.createdAt,
-                    imageData: loadMemoryImageData(for: memory.id),
+                    imageData: shouldDeferImage ? Data() : loadMemoryImageData(for: memory.id),
                     remoteImagePath: memory.remoteImagePath,
-                    syncedToAccount: memory.syncedToAccount ?? defaultSyncedToAccount,
+                    syncedToAccount: syncedToAccount,
                     sentences: memory.sentences
                 )
             }
-            return decodedMemories
+            return CachedMemories(memories: decodedMemories, deferredImageMemoryIDs: deferredImageMemoryIDs)
         }
 
         if let decodedLegacyMemories = try? decoder.decode([MemoryEntry].self, from: memoryData) {
-            return decodedLegacyMemories
+            return CachedMemories(memories: decodedLegacyMemories, deferredImageMemoryIDs: [])
         }
 
         return nil
@@ -613,6 +646,70 @@ extension AppModel {
         let cachedUserID = defaults.string(forKey: AppStorageKey.memoriesUserID)
         guard cachedUserID == userID else { return false }
         return defaults.data(forKey: AppStorageKey.memories) != nil
+    }
+
+    private func scheduleCachedMemoryImageHydrationIfNeeded(
+        for memoryIDs: [UUID],
+        userID: String
+    ) {
+        cachedMemoryImageHydrationTask?.cancel()
+
+        guard !memoryIDs.isEmpty else { return }
+
+        let directoryURL = memoryImageDirectoryURL()
+        cachedMemoryImageHydrationTask = Task { [weak self] in
+            let imagesByID = await Task.detached(priority: .utility) {
+                var loadedImages: [UUID: Data] = [:]
+                for memoryID in memoryIDs {
+                    guard !Task.isCancelled else { return loadedImages }
+                    let fileName = "\(memoryID.uuidString.lowercased()).jpg"
+                    let fileURL = directoryURL.appendingPathComponent(fileName)
+                    guard let imageData = try? Data(contentsOf: fileURL),
+                          !imageData.isEmpty else {
+                        continue
+                    }
+                    loadedImages[memoryID] = imageData
+                }
+                return loadedImages
+            }.value
+
+            guard !Task.isCancelled, let self else { return }
+            guard self.defaults.string(forKey: AppStorageKey.memoriesUserID) == userID else { return }
+
+            var didHydrateImage = false
+            let hydratedMemories = self.memories.map { memory in
+                guard memory.imageData.isEmpty,
+                      let imageData = imagesByID[memory.id],
+                      !imageData.isEmpty else {
+                    return memory
+                }
+
+                didHydrateImage = true
+                return MemoryEntry(
+                    id: memory.id,
+                    createdAt: memory.createdAt,
+                    imageData: imageData,
+                    remoteImagePath: memory.remoteImagePath,
+                    syncedToAccount: memory.syncedToAccount,
+                    sentences: memory.sentences
+                )
+            }
+
+            guard didHydrateImage else { return }
+            self.memories = hydratedMemories
+            self.scheduleMemoryWidgetSnapshotUpdate(with: hydratedMemories)
+        }
+    }
+
+    private func scheduleMemoryWidgetSnapshotUpdate(with memories: [MemoryEntry]) {
+        memoryWidgetSnapshotUpdateTask?.cancel()
+        let snapshotMemories = memories
+
+        memoryWidgetSnapshotUpdateTask = Task {
+            try? await Task.sleep(nanoseconds: Self.memoryWidgetSnapshotDebounceNanoseconds)
+            guard !Task.isCancelled else { return }
+            MemoryWidgetSnapshotStore.scheduleUpdate(with: snapshotMemories)
+        }
     }
 
     func loadPendingMemoryImageUploads() {
