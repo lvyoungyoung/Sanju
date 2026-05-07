@@ -7,7 +7,146 @@
 
 import Foundation
 
-struct SupabaseService {
+protocol SupabaseServicing {
+    var isConfigured: Bool { get }
+
+    func signInWithEmail(email: String, password: String) async throws -> SupabaseSession
+    func signUpWithEmail(email: String, password: String, nickname: String) async throws -> SupabaseEmailSignUpResult
+    func requestPasswordReset(email: String) async throws
+    func updatePassword(session: SupabaseSession, newPassword: String) async throws
+    func verifyRecoveryOTP(email: String, token: String) async throws -> SupabaseSession
+    func signInAnonymously() async throws -> SupabaseSession
+    func refreshSession(refreshToken: String) async throws -> SupabaseSession
+    func fetchCurrentUser(session: SupabaseSession) async throws -> SupabaseCurrentAuthUserResponse
+    func upsertProfile(
+        session: SupabaseSession,
+        appleUserID: String,
+        nickname: String,
+        email: String?,
+        englishLevel: EnglishLevel,
+        languageStyle: LanguageStyle,
+        initialAvailableGenerations: Int?
+    ) async throws -> SupabaseProfileRecord
+    func fetchProfile(session: SupabaseSession) async throws -> SupabaseProfileRecord?
+    func updateProfile(
+        session: SupabaseSession,
+        nickname: String?,
+        englishLevel: EnglishLevel?,
+        languageStyle: LanguageStyle?
+    ) async throws -> SupabaseProfileRecord?
+    func updateAnonymousStarterCredits(
+        session: SupabaseSession,
+        availableGenerations: Int
+    ) async throws -> SupabaseProfileRecord?
+    func confirmPurchase(
+        session: SupabaseSession,
+        transactionID: String,
+        productID: String
+    ) async throws -> Int
+    func generateMemorySentences(
+        session: SupabaseSession,
+        imageData: Data,
+        englishLevel: EnglishLevel,
+        languageStyle: LanguageStyle,
+        guestJobID: String?
+    ) async throws -> SupabaseGenerateMemoryResult
+    func recoverGuestGeneration(
+        session: SupabaseSession,
+        imageData: Data,
+        guestJobID: String
+    ) async throws -> SupabaseGuestGenerationRecoveryResult?
+    func deleteAccount(session: SupabaseSession) async throws
+    func migrateGuestCredits(
+        session: SupabaseSession,
+        guestRefreshToken: String,
+        guestUserID: String
+    ) async throws -> SupabaseProfileRecord
+    func uploadMemoryImage(session: SupabaseSession, path: String, data: Data) async throws
+    func downloadMemoryImage(session: SupabaseSession, path: String) async throws -> Data
+    func deleteMemoryImage(session: SupabaseSession, path: String) async throws
+    func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord]
+    func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
+    func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
+    func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
+    func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int
+    func fetchSentenceStudyTodayCount(session: SupabaseSession) async throws -> Int
+    func fetchSentenceStudyReviewableTodayCount(session: SupabaseSession) async throws -> Int
+    func fetchSentenceStudyQueue(
+        session: SupabaseSession,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
+    func fetchSentenceStudyTodayReviewQueue(
+        session: SupabaseSession,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
+    func recordSentenceStudyResult(
+        session: SupabaseSession,
+        sentenceID: UUID,
+        wasCorrect: Bool
+    ) async throws -> SentenceStudyProgress
+    func mergeLocalSentenceStudyProgress(
+        session: SupabaseSession,
+        progressRecords: [LocalSentenceStudyProgress]
+    ) async throws -> Set<UUID>
+    func updateSentenceFavorite(
+        session: SupabaseSession,
+        sentenceID: UUID,
+        isFavorite: Bool
+    ) async throws
+    func deleteMemory(
+        session: SupabaseSession,
+        memoryID: UUID,
+        imagePath: String?
+    ) async throws
+}
+
+extension SupabaseServicing {
+    func upsertProfile(
+        session: SupabaseSession,
+        appleUserID: String,
+        nickname: String,
+        email: String?,
+        englishLevel: EnglishLevel,
+        languageStyle: LanguageStyle
+    ) async throws -> SupabaseProfileRecord {
+        try await upsertProfile(
+            session: session,
+            appleUserID: appleUserID,
+            nickname: nickname,
+            email: email,
+            englishLevel: englishLevel,
+            languageStyle: languageStyle,
+            initialAvailableGenerations: nil
+        )
+    }
+
+    func updateProfile(
+        session: SupabaseSession,
+        nickname: String
+    ) async throws -> SupabaseProfileRecord? {
+        try await updateProfile(
+            session: session,
+            nickname: nickname,
+            englishLevel: nil,
+            languageStyle: nil
+        )
+    }
+
+    func updateProfile(
+        session: SupabaseSession,
+        englishLevel: EnglishLevel,
+        languageStyle: LanguageStyle
+    ) async throws -> SupabaseProfileRecord? {
+        try await updateProfile(
+            session: session,
+            nickname: nil,
+            englishLevel: englishLevel,
+            languageStyle: languageStyle
+        )
+    }
+}
+
+struct SupabaseService: SupabaseServicing {
     private let session: URLSession = .shared
     private let memoryBucket = "memories"
     private let authRequestTimeout: TimeInterval = 90

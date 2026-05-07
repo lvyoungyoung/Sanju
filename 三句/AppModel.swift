@@ -312,7 +312,7 @@ final class AppModel: ObservableObject {
 
     let speech = SpeechService()
     let purchaseManager = PurchaseManager()
-    let supabaseService = SupabaseService()
+    let supabaseService: SupabaseServicing
     let defaults = UserDefaults.standard
     let localRateLimiter = LocalRateLimiter()
     let networkStatusMonitor = NetworkStatusMonitor()
@@ -339,7 +339,8 @@ final class AppModel: ObservableObject {
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
 
-    init() {
+    init(supabaseService: SupabaseServicing = SupabaseService()) {
+        self.supabaseService = supabaseService
 #if DEBUG
         // resetInitialCreditsGrantForDebug()
 #endif
