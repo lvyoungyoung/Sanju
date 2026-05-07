@@ -955,20 +955,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     private func perform<Response: Decodable>(_ request: URLRequest, retryOnTimeout: Int = 0) async throws -> Response {
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError where urlError.code == .timedOut {
-            debugLog("Request timed out -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>")")
-            if retryOnTimeout > 0 {
-                debugLog("Retrying request after timeout -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: remaining_retries=\(retryOnTimeout)")
-                return try await perform(request, retryOnTimeout: retryOnTimeout - 1)
-            }
-            throw SupabaseServiceError.apiError("request timed out")
-        } catch {
-            debugLog("Transport error -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: \(error.localizedDescription)")
-            throw error
-        }
+        let (data, response) = try await data(for: request, retryOnTimeout: retryOnTimeout)
         try validate(response: response, data: data)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -996,26 +983,29 @@ struct SupabaseService: SupabaseServicing {
     }
 
     private func performWithoutBody(_ request: URLRequest, retryOnTimeout: Int = 0) async throws -> HTTPURLResponse {
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let urlError as URLError where urlError.code == .timedOut {
-            debugLog("Request timed out -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>")")
-            if retryOnTimeout > 0 {
-                debugLog("Retrying request after timeout -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: remaining_retries=\(retryOnTimeout)")
-                return try await performWithoutBody(request, retryOnTimeout: retryOnTimeout - 1)
-            }
-            throw SupabaseServiceError.apiError("request timed out")
-        } catch {
-            debugLog("Transport error -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: \(error.localizedDescription)")
-            throw error
-        }
+        let (data, response) = try await data(for: request, retryOnTimeout: retryOnTimeout)
         try validate(response: response, data: data)
         guard let http = response as? HTTPURLResponse else {
             throw SupabaseServiceError.invalidResponse
         }
         _ = data
         return http
+    }
+
+    private func data(for request: URLRequest, retryOnTimeout: Int) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code == .timedOut {
+            debugLog("Request timed out -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>")")
+            if retryOnTimeout > 0 {
+                debugLog("Retrying request after timeout -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: remaining_retries=\(retryOnTimeout)")
+                return try await data(for: request, retryOnTimeout: retryOnTimeout - 1)
+            }
+            throw SupabaseServiceError.apiError("request timed out")
+        } catch {
+            debugLog("Transport error -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: \(error.localizedDescription)")
+            throw error
+        }
     }
 
     private func performCount(_ request: URLRequest) async throws -> Int {

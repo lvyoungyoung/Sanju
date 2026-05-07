@@ -22,9 +22,17 @@ struct ProfileView: View {
     @State private var learningReminderStatusMessage: String?
     @State private var learningReminderStatusIsError = false
 
-    private let deleteAccountConfirmationPhrase = "我已知晓后果，确定删除账号"
-    private let generationGuardMessage = "正在为您生成描述，请稍后操作。"
-    private let pendingCloudSyncGuardMessage = "正在同步数据到云端，请勿退出登录。"
+    private var deleteAccountConfirmationPhrase: String {
+        L10n.string("account.delete.confirmation_phrase", "我已知晓后果，确定删除账号")
+    }
+
+    private var generationGuardMessage: String {
+        L10n.string("profile.guard.generation_in_progress", "正在为您生成描述，请稍后操作。")
+    }
+
+    private var pendingCloudSyncGuardMessage: String {
+        L10n.string("profile.guard.pending_cloud_sync", "正在同步数据到云端，请勿退出登录。")
+    }
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: AppSpacing.large) {
@@ -128,21 +136,24 @@ struct ProfileView: View {
             .presentationBackground(Color(.systemGroupedBackground))
             .presentationDragIndicator(.visible)
         }
-        .alert("确定要退出登录吗？", isPresented: $isShowingSignOutAlert) {
-            Button("退出登录", role: .destructive) {
+        .alert(L10n.string("profile.sign_out.alert_title", "确定要退出登录吗？"), isPresented: $isShowingSignOutAlert) {
+            Button(L10n.string("profile.sign_out.action", "退出登录"), role: .destructive) {
                 guard !interceptIfPendingCloudSyncInProgress() else { return }
                 appModel.signOut()
             }
-            Button("取消", role: .cancel) { }
+            Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
         } message: {
-            Text("退出登录后，当前设备上的本地回忆与收藏会被清空，但云端账号和数据仍会保留。如果您想永久删除云端账号和所有数据，请使用「删除账号」功能。")
+            Text(L10n.string(
+                "profile.sign_out.alert_message",
+                "退出登录后，当前设备上的本地回忆与收藏会被清空，但云端账号和数据仍会保留。如果您想永久删除云端账号和所有数据，请使用「删除账号」功能。"
+            ))
         }
-        .alert("确认删除账号？", isPresented: $isShowingDeleteAccountAlert) {
-            TextField("请输入指定内容", text: $deleteAccountConfirmationText)
-            Button("取消", role: .cancel) {
+        .alert(L10n.string("account.delete.alert_title", "确认删除账号？"), isPresented: $isShowingDeleteAccountAlert) {
+            TextField(L10n.string("account.delete.confirmation_placeholder", "请输入指定内容"), text: $deleteAccountConfirmationText)
+            Button(L10n.string("common.cancel", "取消"), role: .cancel) {
                 deleteAccountConfirmationText = ""
             }
-            Button("确定删除", role: .destructive) {
+            Button(L10n.string("account.delete.confirm_action", "确定删除"), role: .destructive) {
                 Task {
                     do {
                         try await appModel.deleteAccount()
@@ -155,10 +166,14 @@ struct ProfileView: View {
             }
             .disabled(deleteAccountConfirmationText != deleteAccountConfirmationPhrase)
         } message: {
-            Text("删除后，你的账号资料、云端数据、当前设备上的本地回忆与收藏，以及未使用次数都会被永久删除且无法恢复。\n如果确定删除，请在下方输入框中输入“\(deleteAccountConfirmationPhrase)”。")
+            Text(L10n.string(
+                "account.delete.alert_message",
+                "删除后，你的账号资料、云端数据、当前设备上的本地回忆与收藏，以及未使用次数都会被永久删除且无法恢复。\n如果确定删除，请在下方输入框中输入“%@”。",
+                deleteAccountConfirmationPhrase
+            ))
         }
-        .alert("删除失败", isPresented: deleteAccountErrorAlertBinding) {
-            Button("知道了", role: .cancel) {
+        .alert(L10n.string("account.delete.failed_title", "删除失败"), isPresented: deleteAccountErrorAlertBinding) {
+            Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
                 deleteAccountErrorMessage = nil
             }
         } message: {

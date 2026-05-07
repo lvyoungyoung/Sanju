@@ -1,4 +1,10 @@
 "account.delete.loading" = "Deleting account. Please keep the app open.";
+"account.delete.alert_message" = "After deletion, your account profile, cloud data, local memories and favorites on this device, and unused credits will be permanently deleted and cannot be recovered.\nTo confirm, type \"%@\" below.";
+"account.delete.alert_title" = "Delete account?";
+"account.delete.confirm_action" = "Delete";
+"account.delete.confirmation_phrase" = "I understand the consequences and want to delete my account";
+"account.delete.confirmation_placeholder" = "Type the required phrase";
+"account.delete.failed_title" = "Delete Failed";
 "auth.accessibility.hide_password" = "Hide password";
 "auth.accessibility.show_password" = "Show password";
 "auth.field.confirm_password" = "Confirm Password";
@@ -39,6 +45,7 @@
 "auth_error.recovery_email_failed" = "Failed to send the verification email. Please try again later.";
 "auth_error.service_unavailable" = "Sign-in service is temporarily unavailable. Please try again later.";
 "common.got_it" = "Got it";
+"common.cancel" = "Cancel";
 "common.notice" = "Notice";
 "english_level.advanced" = "Advanced";
 "english_level.intermediate" = "Intermediate";
@@ -68,6 +75,11 @@
 "purchase_error.pending" = "Purchase is pending confirmation. Please check again later.";
 "purchase_error.product_not_found" = "No purchasable product was found.";
 "purchase_error.unverified" = "Payment verification failed. Please try again later.";
+"profile.guard.generation_in_progress" = "Generating your description. Please wait.";
+"profile.guard.pending_cloud_sync" = "Syncing data to the cloud. Please do not sign out.";
+"profile.sign_out.action" = "Sign Out";
+"profile.sign_out.alert_message" = "After signing out, local memories and favorites on this device will be cleared, but your cloud account and data will remain. To permanently delete your cloud account and all data, use Delete Account.";
+"profile.sign_out.alert_title" = "Sign out?";
 "rate_limit.email_sign_in" = "Too many attempts. Please try again in 1 minute.";
 "rate_limit.operation_frequent" = "Too many actions. Please try again later.";
 "supabase_error.email_not_confirmed" = "Please verify your email before signing in.";

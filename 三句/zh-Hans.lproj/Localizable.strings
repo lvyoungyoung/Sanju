@@ -1,4 +1,10 @@
 "account.delete.loading" = "正在删除账号，请勿关闭应用";
+"account.delete.alert_message" = "删除后，你的账号资料、云端数据、当前设备上的本地回忆与收藏，以及未使用次数都会被永久删除且无法恢复。\n如果确定删除，请在下方输入框中输入“%@”。";
+"account.delete.alert_title" = "确认删除账号？";
+"account.delete.confirm_action" = "确定删除";
+"account.delete.confirmation_phrase" = "我已知晓后果，确定删除账号";
+"account.delete.confirmation_placeholder" = "请输入指定内容";
+"account.delete.failed_title" = "删除失败";
 "auth.accessibility.hide_password" = "隐藏密码";
 "auth.accessibility.show_password" = "显示密码";
 "auth.field.confirm_password" = "确认密码";
@@ -39,6 +45,7 @@
 "auth_error.recovery_email_failed" = "验证码邮件发送失败，请稍后再试。";
 "auth_error.service_unavailable" = "登录服务暂时异常，请稍后再试。";
 "common.got_it" = "知道了";
+"common.cancel" = "取消";
 "common.notice" = "提示";
 "english_level.advanced" = "高级";
 "english_level.intermediate" = "中级";
@@ -68,6 +75,11 @@
 "purchase_error.pending" = "购买正在等待确认，请稍后查看。";
 "purchase_error.product_not_found" = "未找到可购买商品。";
 "purchase_error.unverified" = "支付校验失败，请稍后重试。";
+"profile.guard.generation_in_progress" = "正在为您生成描述，请稍后操作。";
+"profile.guard.pending_cloud_sync" = "正在同步数据到云端，请勿退出登录。";
+"profile.sign_out.action" = "退出登录";
+"profile.sign_out.alert_message" = "退出登录后，当前设备上的本地回忆与收藏会被清空，但云端账号和数据仍会保留。如果您想永久删除云端账号和所有数据，请使用「删除账号」功能。";
+"profile.sign_out.alert_title" = "确定要退出登录吗？";
 "rate_limit.email_sign_in" = "尝试次数过多，请1分钟后再试";
 "rate_limit.operation_frequent" = "操作频繁，请稍后再试。";
 "supabase_error.email_not_confirmed" = "请先前往邮箱完成验证后再登录。";
