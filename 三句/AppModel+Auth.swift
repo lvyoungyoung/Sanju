@@ -1,5 +1,4 @@
 import Foundation
-import Network
 
 extension AppModel {
     private static let guestCreditRecoveryWarningMessages: Set<String> = [
@@ -44,39 +43,8 @@ extension AppModel {
         #endif
     }
 
-    private func networkDebugDescription(for path: NWPath) -> String {
-        let interface: String
-        if path.usesInterfaceType(.wifi) {
-            interface = "wifi"
-        } else if path.usesInterfaceType(.cellular) {
-            interface = "cellular"
-        } else if path.usesInterfaceType(.wiredEthernet) {
-            interface = "ethernet"
-        } else if path.usesInterfaceType(.loopback) {
-            interface = "loopback"
-        } else if path.usesInterfaceType(.other) {
-            interface = "other"
-        } else {
-            interface = "unknown"
-        }
-
-        let status: String
-        switch path.status {
-        case .satisfied:
-            status = "satisfied"
-        case .requiresConnection:
-            status = "requiresConnection"
-        case .unsatisfied:
-            status = "unsatisfied"
-        @unknown default:
-            status = "unknown"
-        }
-
-        return "status=\(status), interface=\(interface), expensive=\(path.isExpensive), constrained=\(path.isConstrained)"
-    }
-
     private var currentNetworkDebugDescription: String {
-        networkDebugDescription(for: networkMonitor.currentPath)
+        networkStatusMonitor.currentDebugDescription
     }
 
     func handleFreshInstallIfNeeded() {
@@ -590,12 +558,11 @@ extension AppModel {
     }
 
     func startNetworkMonitoring() {
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            let isSatisfied = path.status == .satisfied
+        networkStatusMonitor.start { [weak self] isSatisfied, debugDescription in
             DispatchQueue.main.async {
                 let wasAvailable = self?.isNetworkAvailable ?? false
                 self?.isNetworkAvailable = isSatisfied
-                self?.authDebugLog("Network path update :: \(self?.networkDebugDescription(for: path) ?? "unknown")")
+                self?.authDebugLog("Network path update :: \(debugDescription)")
                 if isSatisfied && !wasAvailable, let appModel = self {
                     Task {
                         await appModel.retryPendingPurchasesIfNeeded()
@@ -607,7 +574,6 @@ extension AppModel {
                 }
             }
         }
-        networkMonitor.start(queue: networkQueue)
     }
 
     func restoreRemoteSessionIfPossible() async {

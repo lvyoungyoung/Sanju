@@ -7,7 +7,6 @@
 
 import Combine
 import Foundation
-import Network
 
 struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
@@ -315,8 +314,8 @@ final class AppModel: ObservableObject {
     let purchaseManager = PurchaseManager()
     let supabaseService = SupabaseService()
     let defaults = UserDefaults.standard
-    let networkMonitor = NWPathMonitor()
-    let networkQueue = DispatchQueue(label: "sanju.network.monitor")
+    let localRateLimiter = LocalRateLimiter()
+    let networkStatusMonitor = NetworkStatusMonitor()
     var supabaseSession: SupabaseSession?
     var processedPurchaseTransactionIDs: Set<String> = []
     var processingPurchaseTransactionIDs: Set<String> = []
@@ -438,7 +437,7 @@ final class AppModel: ObservableObject {
         remoteContentRefreshTask?.cancel()
         remoteMemoriesSyncTask?.cancel()
         remoteMemoryImageHydrationTask?.cancel()
-        networkMonitor.cancel()
+        networkStatusMonitor.cancel()
     }
 
     func syncOnForegroundIfNeeded() {
