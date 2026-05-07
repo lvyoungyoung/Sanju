@@ -1,5 +1,22 @@
 import Foundation
 
+private struct PreparedGenerationImages {
+    let originalImageData: Data
+    let analysisImageData: Data
+    let memoryImageData: Data
+}
+
+private struct GenerationRequestContext {
+    var session: SupabaseSession
+    let existingMemoryIDs: Set<UUID>
+    let guestJobID: String?
+}
+
+private enum GenerationRequestOutcome {
+    case generated(SupabaseGenerateMemoryResult, SupabaseSession)
+    case recovered(MemoryEntry, SupabaseSession)
+}
+
 extension AppModel {
     private var initialRemoteMemoryBatchSize: Int {
         20
@@ -28,12 +45,42 @@ extension AppModel {
 
         try consumeGenerationAttemptIfAllowed()
 
-        let analysisImageData = try ImageCompressor.analysisJPEGData(from: imageData)
-        let memoryImageData = try ImageCompressor.memoryJPEGData(from: imageData)
-        var session = try await ensureValidSession()
-        let generationResult: SupabaseGenerateMemoryResult
+        let images = try prepareGenerationImages(from: imageData)
+        let context = try await prepareGenerationRequestContext(memoryImageData: images.memoryImageData)
+
+        switch try await performGenerationRequest(images: images, context: context) {
+        case let .generated(result, session):
+            let memory = makeGeneratedMemory(
+                from: result,
+                memoryImageData: images.memoryImageData,
+                isAnonymous: session.isAnonymous
+            )
+            await finalizeGeneratedMemory(
+                memory,
+                originalImageData: images.originalImageData,
+                remainingCredits: result.remainingCredits,
+                session: session
+            )
+            return memory
+
+        case let .recovered(memory, _):
+            return memory
+        }
+    }
+
+    private func prepareGenerationImages(from imageData: Data) throws -> PreparedGenerationImages {
+        PreparedGenerationImages(
+            originalImageData: imageData,
+            analysisImageData: try ImageCompressor.analysisJPEGData(from: imageData),
+            memoryImageData: try ImageCompressor.memoryJPEGData(from: imageData)
+        )
+    }
+
+    private func prepareGenerationRequestContext(memoryImageData: Data) async throws -> GenerationRequestContext {
+        let session = try await ensureValidSession()
         let existingMemoryIDs = Set(memories.map(\.id))
         let guestJobID = session.isAnonymous ? UUID().uuidString.lowercased() : nil
+
         pendingGeneratedMemoryImage = PendingGeneratedMemoryImage(
             startedAt: .now,
             previousMemoryIDs: Array(existingMemoryIDs),
@@ -42,79 +89,141 @@ extension AppModel {
         )
         persistPendingGeneratedMemoryImage()
 
+        return GenerationRequestContext(
+            session: session,
+            existingMemoryIDs: existingMemoryIDs,
+            guestJobID: guestJobID
+        )
+    }
+
+    private func performGenerationRequest(
+        images: PreparedGenerationImages,
+        context: GenerationRequestContext
+    ) async throws -> GenerationRequestOutcome {
         do {
-            generationResult = try await supabaseService.generateMemorySentences(
-                session: session,
-                imageData: analysisImageData,
-                englishLevel: englishLevel,
-                languageStyle: languageStyle,
-                guestJobID: guestJobID
+            let result = try await requestGeneratedMemorySentences(
+                session: context.session,
+                imageData: images.analysisImageData,
+                guestJobID: context.guestJobID
             )
+            return .generated(result, context.session)
         } catch {
-            if case let SupabaseServiceError.apiError(message) = error,
-               message.localizedCaseInsensitiveContains("invalid jwt") {
-                session = try await forceRefreshSession()
-                do {
-                    generationResult = try await supabaseService.generateMemorySentences(
-                        session: session,
-                        imageData: analysisImageData,
-                        englishLevel: englishLevel,
-                        languageStyle: languageStyle,
-                        guestJobID: guestJobID
-                    )
-                } catch {
-                    if !shouldAttemptGenerationRecovery(for: error) {
-                        clearPendingGeneratedMemoryImage()
-                    }
-                    throw error
-                }
-            } else if let recoveredMemory = await recoverGeneratedMemoryIfNeeded(
-                after: error,
-                previousMemoryIDs: existingMemoryIDs,
-                session: session
-            ) {
-                let reconciledMemory = MemoryEntry(
-                    id: recoveredMemory.id,
-                    createdAt: recoveredMemory.createdAt,
-                    imageData: memoryImageData,
-                    remoteImagePath: recoveredMemory.remoteImagePath,
-                    syncedToAccount: !session.isAnonymous,
-                    sentences: recoveredMemory.sentences
+            if isInvalidJWTGenerationError(error) {
+                return try await retryGenerationAfterRefreshingSession(
+                    images: images,
+                    context: context
                 )
-
-                if let recoveredIndex = memories.firstIndex(where: { $0.id == recoveredMemory.id }) {
-                    memories[recoveredIndex] = reconciledMemory
-                    persistMemories()
-                }
-
-                enqueuePendingMemoryImageUploadIfNeeded(
-                    memoryID: reconciledMemory.id,
-                    remoteImagePath: reconciledMemory.remoteImagePath,
-                    imageData: memoryImageData
-                )
-                await uploadMemoryImageIfNeeded(
-                    memoryID: reconciledMemory.id,
-                    remoteImagePath: reconciledMemory.remoteImagePath,
-                    imageData: memoryImageData,
-                    session: session
-                )
-
-                draftLearningImageData = imageData
-                draftGeneratedMemory = reconciledMemory
-                draftGeneratedMemoryID = reconciledMemory.id
-                upsertPendingGuestMemoryMigrationIfNeeded(reconciledMemory)
-                clearPendingGeneratedMemoryImage()
-                return reconciledMemory
-            } else {
-                if !shouldAttemptGenerationRecovery(for: error) {
-                    clearPendingGeneratedMemoryImage()
-                }
-                throw error
             }
+
+            if let recoveredMemory = await recoverGeneratedMemoryIfNeeded(
+                after: error,
+                previousMemoryIDs: context.existingMemoryIDs,
+                session: context.session
+            ) {
+                let reconciledMemory = await finalizeRecoveredGeneratedMemory(
+                    recoveredMemory,
+                    originalImageData: images.originalImageData,
+                    memoryImageData: images.memoryImageData,
+                    session: context.session
+                )
+                return .recovered(reconciledMemory, context.session)
+            }
+
+            clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for: error)
+            throw error
+        }
+    }
+
+    private func retryGenerationAfterRefreshingSession(
+        images: PreparedGenerationImages,
+        context: GenerationRequestContext
+    ) async throws -> GenerationRequestOutcome {
+        let refreshedSession = try await forceRefreshSession()
+
+        do {
+            let result = try await requestGeneratedMemorySentences(
+                session: refreshedSession,
+                imageData: images.analysisImageData,
+                guestJobID: context.guestJobID
+            )
+            return .generated(result, refreshedSession)
+        } catch {
+            clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for: error)
+            throw error
+        }
+    }
+
+    private func requestGeneratedMemorySentences(
+        session: SupabaseSession,
+        imageData: Data,
+        guestJobID: String?
+    ) async throws -> SupabaseGenerateMemoryResult {
+        try await supabaseService.generateMemorySentences(
+            session: session,
+            imageData: imageData,
+            englishLevel: englishLevel,
+            languageStyle: languageStyle,
+            guestJobID: guestJobID
+        )
+    }
+
+    private func isInvalidJWTGenerationError(_ error: Error) -> Bool {
+        guard case let SupabaseServiceError.apiError(message) = error else { return false }
+        return message.localizedCaseInsensitiveContains("invalid jwt")
+    }
+
+    private func clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for error: Error) {
+        if !shouldAttemptGenerationRecovery(for: error) {
+            clearPendingGeneratedMemoryImage()
+        }
+    }
+
+    private func finalizeRecoveredGeneratedMemory(
+        _ recoveredMemory: MemoryEntry,
+        originalImageData: Data,
+        memoryImageData: Data,
+        session: SupabaseSession
+    ) async -> MemoryEntry {
+        let reconciledMemory = MemoryEntry(
+            id: recoveredMemory.id,
+            createdAt: recoveredMemory.createdAt,
+            imageData: memoryImageData,
+            remoteImagePath: recoveredMemory.remoteImagePath,
+            syncedToAccount: !session.isAnonymous,
+            sentences: recoveredMemory.sentences
+        )
+
+        if let recoveredIndex = memories.firstIndex(where: { $0.id == recoveredMemory.id }) {
+            memories[recoveredIndex] = reconciledMemory
+            persistMemories()
         }
 
-        let memory: MemoryEntry
-        if session.isAnonymous {
+        enqueuePendingMemoryImageUploadIfNeeded(
+            memoryID: reconciledMemory.id,
+            remoteImagePath: reconciledMemory.remoteImagePath,
+            imageData: memoryImageData
+        )
+        await uploadMemoryImageIfNeeded(
+            memoryID: reconciledMemory.id,
+            remoteImagePath: reconciledMemory.remoteImagePath,
+            imageData: memoryImageData,
+            session: session
+        )
+
+        draftLearningImageData = originalImageData
+        draftGeneratedMemory = reconciledMemory
+        draftGeneratedMemoryID = reconciledMemory.id
+        upsertPendingGuestMemoryMigrationIfNeeded(reconciledMemory)
+        clearPendingGeneratedMemoryImage()
+        return reconciledMemory
+    }
+
+    private func makeGeneratedMemory(
+        from generationResult: SupabaseGenerateMemoryResult,
+        memoryImageData: Data,
+        isAnonymous: Bool
+    ) -> MemoryEntry {
+        if isAnonymous {
             let localSentences = generationResult.memory.sentences.map { sentence in
                 SentenceRecord(
                     id: UUID(),
@@ -123,7 +232,7 @@ extension AppModel {
                     isFavorite: sentence.isFavorite
                 )
             }
-            memory = MemoryEntry(
+            return MemoryEntry(
                 id: UUID(),
                 createdAt: generationResult.memory.createdAt,
                 imageData: memoryImageData,
@@ -131,42 +240,47 @@ extension AppModel {
                 syncedToAccount: false,
                 sentences: localSentences
             )
-        } else {
-            memory = MemoryEntry(
-                id: generationResult.memory.id,
-                createdAt: generationResult.memory.createdAt,
-                imageData: memoryImageData,
-                remoteImagePath: generationResult.memory.remoteImagePath,
-                syncedToAccount: true,
-                sentences: generationResult.memory.sentences
-            )
         }
 
+        return MemoryEntry(
+            id: generationResult.memory.id,
+            createdAt: generationResult.memory.createdAt,
+            imageData: memoryImageData,
+            remoteImagePath: generationResult.memory.remoteImagePath,
+            syncedToAccount: true,
+            sentences: generationResult.memory.sentences
+        )
+    }
+
+    private func finalizeGeneratedMemory(
+        _ memory: MemoryEntry,
+        originalImageData: Data,
+        remainingCredits updatedRemainingCredits: Int,
+        session: SupabaseSession
+    ) async {
         memories.insert(memory, at: 0)
         recordedMemoriesCount = memories.count
-        draftLearningImageData = imageData
+        draftLearningImageData = originalImageData
         draftGeneratedMemory = memory
         draftGeneratedMemoryID = memory.id
-        remainingCredits = generationResult.remainingCredits
+        remainingCredits = updatedRemainingCredits
         upsertPendingGuestMemoryMigrationIfNeeded(memory)
         persistMemories()
         persistCredits()
         clearPendingGeneratedMemoryImage()
-        if !session.isAnonymous {
-            enqueuePendingMemoryImageUploadIfNeeded(
-                memoryID: memory.id,
-                remoteImagePath: memory.remoteImagePath,
-                imageData: memoryImageData
-            )
-            await uploadMemoryImageIfNeeded(
-                memoryID: memory.id,
-                remoteImagePath: memory.remoteImagePath,
-                imageData: memoryImageData,
-                session: session
-            )
-        }
 
-        return memory
+        guard !session.isAnonymous else { return }
+        enqueuePendingMemoryImageUploadIfNeeded(
+            memoryID: memory.id,
+            remoteImagePath: memory.remoteImagePath,
+            imageData: memory.imageData
+        )
+        await uploadMemoryImageIfNeeded(
+            memoryID: memory.id,
+            remoteImagePath: memory.remoteImagePath,
+            imageData: memory.imageData,
+            session: session
+        )
     }
 
     func clearLearningDraft() {
