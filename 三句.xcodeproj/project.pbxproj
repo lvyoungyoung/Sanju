@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		6F28B9FC2F7E4E760065A3EC /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6F28B9FB2F7E4E760065A3EC /* StoreKit.framework */; };
 		A10000000000000000000001 /* 三句小组件.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* 三句小组件.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B20000000000000000000001 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -33,6 +34,13 @@
 			remoteGlobalIDString = A10000000000000000000006;
 			remoteInfo = "三句小组件";
 		};
+		B20000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 6F28B9D22F7BBF700065A3EC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 6F28B9D92F7BBF700065A3EC;
+			remoteInfo = "三句";
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -53,6 +61,8 @@
 		6F28B9DA2F7BBF700065A3EC /* 三句.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "三句.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F28B9FB2F7E4E760065A3EC /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		A10000000000000000000002 /* 三句小组件.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "三句小组件.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000002 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		B20000000000000000000004 /* 三句Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "三句Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -64,6 +74,11 @@
 		A10000000000000000000003 /* 三句小组件 */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "三句小组件";
+			sourceTree = "<group>";
+		};
+		B20000000000000000000005 /* 三句Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "三句Tests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -84,6 +99,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B20000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B20000000000000000000001 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -92,6 +115,7 @@
 			children = (
 				6F28B9DC2F7BBF700065A3EC /* 三句 */,
 				A10000000000000000000003 /* 三句小组件 */,
+				B20000000000000000000005 /* 三句Tests */,
 				6F28B9FA2F7E4E760065A3EC /* Frameworks */,
 				6F28B9DB2F7BBF700065A3EC /* Products */,
 			);
@@ -102,6 +126,7 @@
 			children = (
 				6F28B9DA2F7BBF700065A3EC /* 三句.app */,
 				A10000000000000000000002 /* 三句小组件.appex */,
+				B20000000000000000000004 /* 三句Tests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -110,6 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				6F28B9FB2F7E4E760065A3EC /* StoreKit.framework */,
+				B20000000000000000000002 /* XCTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -164,6 +190,29 @@
 			productReference = A10000000000000000000002 /* 三句小组件.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		B20000000000000000000007 /* 三句Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B20000000000000000000008 /* Build configuration list for PBXNativeTarget "三句Tests" */;
+			buildPhases = (
+				B20000000000000000000009 /* Sources */,
+				B20000000000000000000006 /* Frameworks */,
+				B2000000000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B2000000000000000000000B /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B20000000000000000000005 /* 三句Tests */,
+			);
+			name = "三句Tests";
+			packageProductDependencies = (
+			);
+			productName = "三句Tests";
+			productReference = B20000000000000000000004 /* 三句Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -179,6 +228,10 @@
 					};
 					A10000000000000000000006 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					B20000000000000000000007 = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 6F28B9D92F7BBF700065A3EC;
 					};
 				};
 			};
@@ -198,6 +251,7 @@
 			targets = (
 				6F28B9D92F7BBF700065A3EC /* 三句 */,
 				A10000000000000000000006 /* 三句小组件 */,
+				B20000000000000000000007 /* 三句Tests */,
 			);
 		};
 /* End PBXProject section */
@@ -211,6 +265,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A10000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B2000000000000000000000A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -234,6 +295,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B20000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -241,6 +309,11 @@
 			isa = PBXTargetDependency;
 			target = A10000000000000000000006 /* 三句小组件 */;
 			targetProxy = A10000000000000000000007 /* PBXContainerItemProxy */;
+		};
+		B2000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 6F28B9D92F7BBF700065A3EC /* 三句 */;
+			targetProxy = B20000000000000000000003 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -512,6 +585,64 @@
 			};
 			name = Release;
 		};
+		B2000000000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = CY2ZLB7EF2;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yanglv.sanju.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/三句.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/三句";
+			};
+			name = Debug;
+		};
+		B2000000000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 8;
+				DEVELOPMENT_TEAM = CY2ZLB7EF2;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = com.yanglv.sanju.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/三句.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/三句";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -538,6 +669,15 @@
 			buildConfigurations = (
 				A1000000000000000000000B /* Debug */,
 				A1000000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B20000000000000000000008 /* Build configuration list for PBXNativeTarget "三句Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B2000000000000000000000C /* Debug */,
+				B2000000000000000000000D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
