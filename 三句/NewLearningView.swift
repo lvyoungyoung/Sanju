@@ -408,6 +408,9 @@ struct NewLearningView: View {
         let loadRequestID = UUID()
         photoLoadRequestID = loadRequestID
         isLoadingSelectedPhoto = true
+        if shouldClearGeneratedMemoryOnNextPhotoSelection {
+            clearDisplayedDraftForNewPhotoSelection()
+        }
         defer {
             if photoLoadRequestID == loadRequestID {
                 isLoadingSelectedPhoto = false
@@ -455,6 +458,18 @@ struct NewLearningView: View {
             }
             self.selectedItem = nil
         }
+    }
+
+    private func clearDisplayedDraftForNewPhotoSelection() {
+        appModel.draftLearningImageData = nil
+        appModel.draftLearningItemIdentifier = nil
+        appModel.draftGeneratedMemory = nil
+        appModel.draftGeneratedMemoryID = nil
+        isWaitingForRecoveredGeneration = false
+        errorMessage = nil
+        generationStep = 0
+        generationStatus = generationSteps[0]
+        resetRecoveryCancelButtonVisibility()
     }
 
     private func generateSentences() async {
