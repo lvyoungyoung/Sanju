@@ -33,6 +33,34 @@ struct CloudSyncPlan: Equatable {
 }
 
 struct CloudSyncManager {
+    func makeRemoteMemories(from records: [SupabaseMemoryRecord]) -> [MemoryEntry] {
+        records.compactMap { record -> MemoryEntry? in
+            guard let memoryID = UUID(uuidString: record.id) else { return nil }
+            let sentences = record.sentences
+                .sorted { $0.sortOrder < $1.sortOrder }
+                .compactMap { sentence -> SentenceRecord? in
+                    guard let sentenceID = UUID(uuidString: sentence.id) else { return nil }
+                    return SentenceRecord(
+                        id: sentenceID,
+                        english: sentence.english,
+                        chinese: sentence.chinese,
+                        isFavorite: sentence.isFavorite
+                    )
+                }
+
+            guard sentences.count == 3 else { return nil }
+
+            return MemoryEntry(
+                id: memoryID,
+                createdAt: record.createdAt,
+                imageData: Data(),
+                remoteImagePath: record.imagePath,
+                syncedToAccount: true,
+                sentences: sentences
+            )
+        }
+    }
+
     func makePlan(
         localMemories: [MemoryEntry],
         remoteMemories: [MemoryEntry],
