@@ -824,8 +824,6 @@ Deno.serve(async (req) => {
     return jsonResponse(
       {
         error: "生成失败，请稍后再试",
-        details: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : null,
       },
       500
     )
@@ -1085,7 +1083,6 @@ async function requestMimoOnce(
       internalError: "MiMo request failed",
       publicError: {
         error: "生成失败，请稍后再试",
-        details: data ?? rawText,
       },
     }
   }
@@ -1213,7 +1210,6 @@ async function requestKimiOnce(
       internalError: "Kimi request failed",
       publicError: {
         error: "生成失败，请稍后再试",
-        details: data ?? rawText,
       },
     }
   }
@@ -1462,12 +1458,6 @@ function buildRpcErrorResponse(
     internalError: `${fallbackMessage}: ${error.message}`,
     publicError: {
       error: "生成失败，请稍后再试",
-      details: {
-        message: error.message,
-        details: error.details ?? null,
-        hint: error.hint ?? null,
-        code: error.code ?? null,
-      },
     },
   }
 }
