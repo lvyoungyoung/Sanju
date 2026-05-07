@@ -7,9 +7,9 @@ enum NicknameValidationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .empty:
-            return "请输入昵称。"
+            return L10n.string("nickname_error.empty", "请输入昵称。")
         case .tooLong:
-            return "昵称长度不能超过 20 个字符。"
+            return L10n.string("nickname_error.too_long", "昵称长度不能超过 20 个字符。")
         }
     }
 }

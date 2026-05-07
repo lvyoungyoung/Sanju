@@ -180,11 +180,11 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
     var displayTitle: String {
         switch self {
         case .simple:
-            return "初级"
+            return L10n.string("english_level.simple", "初级")
         case .intermediate:
-            return "中级"
+            return L10n.string("english_level.intermediate", "中级")
         case .advanced:
-            return "高级"
+            return L10n.string("english_level.advanced", "高级")
         }
     }
 }
@@ -198,9 +198,9 @@ enum LanguageStyle: String, CaseIterable, Codable, Identifiable {
     var displayTitle: String {
         switch self {
         case .plain:
-            return "平铺直叙"
+            return L10n.string("language_style.plain", "平铺直叙")
         case .lyrical:
-            return "抒情优雅"
+            return L10n.string("language_style.lyrical", "抒情优雅")
         }
     }
 }
@@ -244,11 +244,11 @@ enum KimiServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidImage:
-            return "图片处理失败，请重新选择一张图片。"
+            return L10n.string("generation_error.invalid_image", "图片处理失败，请重新选择一张图片。")
         case .noCredits:
-            return "可用生成次数不足，请先购买。"
+            return L10n.string("generation_error.no_credits", "可用生成次数不足，请先购买。")
         case .sessionUnavailable:
-            return "暂时无法建立访客会话，请检查网络后重试。"
+            return L10n.string("generation_error.session_unavailable", "暂时无法建立访客会话，请检查网络后重试。")
         }
     }
 }

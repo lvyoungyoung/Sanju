@@ -839,23 +839,23 @@ extension AppModel {
                 normalized.contains("request timed out") ||
                 normalized.contains("timed out") ||
                 normalized.contains("timeout") {
-                return "网络连接超时，请检查当前网络后重试。"
+                return L10n.string("auth_error.network_timeout", "网络连接超时，请检查当前网络后重试。")
             }
             if normalized.contains("network connection was lost") ||
                 normalized.contains("connection was lost") ||
                 normalized.contains("network connection") && normalized.contains("lost") {
-                return "网络连接已中断，请检查当前网络后重试。"
+                return L10n.string("auth_error.network_lost", "网络连接已中断，请检查当前网络后重试。")
             }
             if normalized.contains("error sending recovery email") ||
                 normalized.contains("sending recovery email") {
-                return "验证码邮件发送失败，请稍后再试。"
+                return L10n.string("auth_error.recovery_email_failed", "验证码邮件发送失败，请稍后再试。")
             }
             if normalized.contains("bad gateway") ||
                 normalized.contains("gateway") ||
                 normalized.contains("service unavailable") ||
                 normalized.contains("server_error") ||
                 normalized.contains("internal server error") {
-                return "登录服务暂时异常，请稍后再试。"
+                return L10n.string("auth_error.service_unavailable", "登录服务暂时异常，请稍后再试。")
             }
         }
 
@@ -866,7 +866,7 @@ extension AppModel {
 
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         if message.isEmpty {
-            return "邮箱登录失败，请稍后重试。"
+            return L10n.string("auth_error.email_auth_failed", "邮箱登录失败，请稍后重试。")
         }
         return message
     }
@@ -885,14 +885,14 @@ extension AppModel {
             normalized.contains("email link is invalid") ||
             normalized.contains("invalid or expired") ||
             normalized.contains("expired or invalid") {
-            return "验证码不正确。"
+            return L10n.string("supabase_error.invalid_otp", "验证码不正确。")
         }
 
         if normalized.contains("otp_expired") ||
             normalized.contains("token has expired") ||
             normalized.contains("expired otp") ||
             normalized.contains("expired token") {
-            return "验证码已过期，请重新获取。"
+            return L10n.string("supabase_error.otp_expired", "验证码已过期，请重新获取。")
         }
 
         return normalizedEmailAuthenticationErrorMessage(for: error)

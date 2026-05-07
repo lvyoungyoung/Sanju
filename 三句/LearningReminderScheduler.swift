@@ -8,9 +8,9 @@ enum LearningReminderError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notificationsDenied:
-            return "通知权限没有开启，请在系统设置里允许通知后再试。"
+            return L10n.string("learning_reminder_error.notifications_denied", "通知权限没有开启，请在系统设置里允许通知后再试。")
         case .invalidTime:
-            return "提醒时间无效，请重新选择。"
+            return L10n.string("learning_reminder_error.invalid_time", "提醒时间无效，请重新选择。")
         }
     }
 }
@@ -43,8 +43,8 @@ enum LearningReminderScheduler {
         }
 
         let content = UNMutableNotificationContent()
-        content.title = "该学习啦"
-        content.body = "今天也花 2 分钟，把收藏里的句子练一遍。"
+        content.title = L10n.string("learning_reminder.notification_title", "该学习啦")
+        content.body = L10n.string("learning_reminder.notification_body", "今天也花 2 分钟，把收藏里的句子练一遍。")
         content.sound = .default
         content.userInfo = [
             notificationTypeUserInfoKey: learningReminderNotificationType

@@ -8,11 +8,11 @@ enum LocalRateLimitError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .generation:
-            return "操作频繁，请稍后再试。"
+            return L10n.string("rate_limit.operation_frequent", "操作频繁，请稍后再试。")
         case .passwordReset:
-            return "操作频繁，请稍后再试。"
+            return L10n.string("rate_limit.operation_frequent", "操作频繁，请稍后再试。")
         case .emailSignIn:
-            return "尝试次数过多，请1分钟后再试"
+            return L10n.string("rate_limit.email_sign_in", "尝试次数过多，请1分钟后再试")
         }
     }
 }

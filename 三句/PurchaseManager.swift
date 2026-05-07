@@ -39,15 +39,15 @@ enum PurchaseError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noProductsConfigured:
-            return "未配置可购买商品。"
+            return L10n.string("purchase_error.no_products_configured", "未配置可购买商品。")
         case .productNotFound:
-            return "未找到可购买商品。"
+            return L10n.string("purchase_error.product_not_found", "未找到可购买商品。")
         case .unverified:
-            return "支付校验失败，请稍后重试。"
+            return L10n.string("purchase_error.unverified", "支付校验失败，请稍后重试。")
         case .cancelled:
-            return "你已取消购买。"
+            return L10n.string("purchase_error.cancelled", "你已取消购买。")
         case .pending:
-            return "购买正在等待确认，请稍后查看。"
+            return L10n.string("purchase_error.pending", "购买正在等待确认，请稍后查看。")
         }
     }
 }

@@ -34,44 +34,44 @@ struct SignInView: View {
         var title: String {
             switch self {
             case .signIn:
-                return "邮箱登录"
+                return L10n.string("auth.mode.sign_in.title", "邮箱登录")
             case .signUp:
-                return "注册账号"
+                return L10n.string("auth.mode.sign_up.title", "注册账号")
             case .resetPassword:
-                return "重置密码"
+                return L10n.string("auth.mode.reset_password.title", "重置密码")
             }
         }
 
         var actionTitle: String {
             switch self {
             case .signIn:
-                return "登录"
+                return L10n.string("auth.mode.sign_in.action", "登录")
             case .signUp:
-                return "注册并登录"
+                return L10n.string("auth.mode.sign_up.action", "注册并登录")
             case .resetPassword:
-                return "确认重置"
+                return L10n.string("auth.mode.reset_password.action", "确认重置")
             }
         }
 
         var helperText: String {
             switch self {
             case .signIn:
-                return "还没有账号？"
+                return L10n.string("auth.mode.sign_in.helper", "还没有账号？")
             case .signUp:
-                return "已经有账号了？"
+                return L10n.string("auth.mode.sign_up.helper", "已经有账号了？")
             case .resetPassword:
-                return "想起密码了？"
+                return L10n.string("auth.mode.reset_password.helper", "想起密码了？")
             }
         }
 
         var switchTitle: String {
             switch self {
             case .signIn:
-                return "去注册"
+                return L10n.string("auth.mode.sign_in.switch", "去注册")
             case .signUp:
-                return "去登录"
+                return L10n.string("auth.mode.sign_up.switch", "去登录")
             case .resetPassword:
-                return "返回登录"
+                return L10n.string("auth.mode.reset_password.switch", "返回登录")
             }
         }
     }
@@ -79,6 +79,7 @@ struct SignInView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
     @Binding var preferredSheetHeight: CGFloat
+    let maxSheetHeight: CGFloat
     @State private var mode: Mode = .signIn
     @State private var nickname = ""
     @State private var email = ""
@@ -114,7 +115,6 @@ struct SignInView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onPreferenceChange(SignInSheetContentHeightKey.self) { measuredHeight in
             guard measuredHeight > 0 else { return }
-            let maxSheetHeight = UIScreen.main.bounds.height * 0.88
             preferredSheetHeight = min(max(measuredHeight + 24, 280), maxSheetHeight)
         }
         .onChange(of: appModel.isSignedIn) { _, isSignedIn in
@@ -187,7 +187,7 @@ struct SignInView: View {
                 Button {
                     switchToResetPassword()
                 } label: {
-                    Text("忘记密码？")
+                    Text(L10n.string("auth.forgot_password", "忘记密码？"))
                         .font(.system(size: AppFontSize.body))
                         .foregroundStyle(signInThemeAccentText)
                 }
@@ -212,7 +212,7 @@ struct SignInView: View {
             .padding(.top, 24)
 
             if !appModel.isNetworkAvailable {
-                Text("当前网络不可用，请连接网络后再登录。")
+                Text(L10n.string("auth.network_unavailable", "当前网络不可用，请连接网络后再登录。"))
                     .font(.system(size: AppFontSize.metadata))
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
@@ -248,9 +248,9 @@ struct SignInView: View {
         VStack(spacing: 16) {
             if mode == .signUp {
                 LabeledTextField(
-                    title: "昵称",
+                    title: L10n.string("auth.field.nickname", "昵称"),
                     text: $nickname,
-                    placeholder: "请输入昵称，最多 20 个字符",
+                    placeholder: L10n.string("auth.placeholder.nickname", "请输入昵称，最多 20 个字符"),
                     textContentType: .nickname,
                     submitLabel: .next,
                     focusedField: $focusedField,
@@ -259,7 +259,7 @@ struct SignInView: View {
             }
 
             LabeledTextField(
-                title: "邮箱",
+                title: L10n.string("auth.field.email", "邮箱"),
                 text: $email,
                 placeholder: "name@example.com",
                 keyboardType: .emailAddress,
@@ -272,9 +272,9 @@ struct SignInView: View {
             switch mode {
             case .signIn:
                 LabeledSecureField(
-                    title: "密码",
+                    title: L10n.string("auth.field.password", "密码"),
                     text: $password,
-                    placeholder: "请输入密码",
+                    placeholder: L10n.string("auth.placeholder.password", "请输入密码"),
                     textContentType: .password,
                     submitLabel: .go,
                     showsVisibilityToggle: true,
@@ -283,9 +283,9 @@ struct SignInView: View {
                 )
             case .signUp:
                 LabeledSecureField(
-                    title: "密码",
+                    title: L10n.string("auth.field.password", "密码"),
                     text: $password,
-                    placeholder: "至少 6 位",
+                    placeholder: L10n.string("auth.placeholder.password_min", "至少 6 位"),
                     textContentType: .newPassword,
                     submitLabel: .go,
                     showsVisibilityToggle: true,
@@ -294,9 +294,9 @@ struct SignInView: View {
                 )
             case .resetPassword:
                 LabeledTextField(
-                    title: "验证码",
+                    title: L10n.string("auth.field.verification_code", "验证码"),
                     text: $verificationCode,
-                    placeholder: "请输入邮件中的验证码",
+                    placeholder: L10n.string("auth.placeholder.verification_code", "请输入邮件中的验证码"),
                     keyboardType: .numberPad,
                     textContentType: .oneTimeCode,
                     submitLabel: .next,
@@ -363,9 +363,9 @@ struct SignInView: View {
                 }
 
                 LabeledSecureField(
-                    title: "新密码",
+                    title: L10n.string("auth.field.new_password", "新密码"),
                     text: $newPassword,
-                    placeholder: "至少 6 位",
+                    placeholder: L10n.string("auth.placeholder.password_min", "至少 6 位"),
                     textContentType: .newPassword,
                     submitLabel: .next,
                     focusedField: $focusedField,
@@ -373,9 +373,9 @@ struct SignInView: View {
                 )
 
                 LabeledSecureField(
-                    title: "确认密码",
+                    title: L10n.string("auth.field.confirm_password", "确认密码"),
                     text: $confirmPassword,
-                    placeholder: "再次输入新密码",
+                    placeholder: L10n.string("auth.placeholder.confirm_password", "再次输入新密码"),
                     textContentType: .newPassword,
                     submitLabel: .go,
                     focusedField: $focusedField,
@@ -413,24 +413,26 @@ struct SignInView: View {
 
     private var progressTitle: String {
         if appModel.isRequestingPasswordReset {
-            return "正在发送重置邮件..."
+            return L10n.string("auth.progress.sending_reset_email", "正在发送重置邮件...")
         }
         if appModel.isUpdatingPassword {
-            return "正在更新密码..."
+            return L10n.string("auth.progress.updating_password", "正在更新密码...")
         }
-        return mode == .signUp ? "正在创建账号..." : "正在登录..."
+        return mode == .signUp
+        ? L10n.string("auth.progress.creating_account", "正在创建账号...")
+        : L10n.string("auth.progress.signing_in", "正在登录...")
     }
 
     private var verificationCodeButtonTitle: String {
         if appModel.isRequestingPasswordReset {
-            return "正在发送..."
+            return L10n.string("auth.verification_code.sending", "正在发送...")
         }
 
         if verificationCodeCooldownSeconds > 0 {
-            return "发送验证码 (\(verificationCodeCooldownSeconds)s)"
+            return L10n.string("auth.verification_code.cooldown", "发送验证码 (%ds)", verificationCodeCooldownSeconds)
         }
 
-        return "发送验证码"
+        return L10n.string("auth.verification_code.send", "发送验证码")
     }
 
     private var isVerificationCodeRequestDisabled: Bool {
@@ -453,7 +455,7 @@ struct SignInView: View {
         if currentMode == .signIn {
             refreshEmailSignInLockoutCountdown()
             guard emailSignInLockoutRemainingSeconds == 0 else {
-                appModel.authErrorMessage = "尝试次数过多，请1分钟后再试"
+                appModel.authErrorMessage = L10n.string("rate_limit.email_sign_in", "尝试次数过多，请1分钟后再试")
                 return
             }
         }
@@ -667,7 +669,11 @@ private struct LabeledSecureField: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(isPasswordVisible ? "隐藏密码" : "显示密码")
+                    .accessibilityLabel(
+                        isPasswordVisible
+                        ? L10n.string("auth.accessibility.hide_password", "隐藏密码")
+                        : L10n.string("auth.accessibility.show_password", "显示密码")
+                    )
                 }
             }
                 .padding(.leading, AppControlPadding.regular)

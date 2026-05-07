@@ -232,31 +232,31 @@ enum SupabaseServiceError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
-            return "Supabase 配置缺失。"
+            return L10n.string("supabase_error.missing_configuration", "Supabase 配置缺失。")
         case .invalidToken:
-            return "登录凭据无效。"
+            return L10n.string("supabase_error.invalid_token", "登录凭据无效。")
         case .invalidResponse:
-            return "Supabase 返回了无法识别的数据。"
+            return L10n.string("supabase_error.invalid_response", "Supabase 返回了无法识别的数据。")
         case .apiError(let message):
             let normalized = message.lowercased()
             if normalized.contains("invalid login credentials") {
-                return "邮箱或密码不正确。"
+                return L10n.string("supabase_error.invalid_login_credentials", "邮箱或密码不正确。")
             }
             if normalized.contains("email not confirmed") ||
                 normalized.contains("email_not_confirmed") {
-                return "请先前往邮箱完成验证后再登录。"
+                return L10n.string("supabase_error.email_not_confirmed", "请先前往邮箱完成验证后再登录。")
             }
             if normalized.contains("user already registered") {
-                return "该邮箱已注册，请直接登录。"
+                return L10n.string("supabase_error.user_already_registered", "该邮箱已注册，请直接登录。")
             }
             if normalized.contains("error sending recovery email") {
-                return "验证码邮件发送失败，请稍后再试。"
+                return L10n.string("supabase_error.recovery_email_failed", "验证码邮件发送失败，请稍后再试。")
             }
             if normalized.contains("otp_expired") ||
                 normalized.contains("token has expired") ||
                 normalized.contains("expired otp") ||
                 normalized.contains("expired token") {
-                return "验证码已过期，请重新获取。"
+                return L10n.string("supabase_error.otp_expired", "验证码已过期，请重新获取。")
             }
             if normalized.contains("invalid otp") ||
                 normalized.contains("otp is invalid") ||
@@ -264,42 +264,42 @@ enum SupabaseServiceError: LocalizedError {
                 normalized.contains("token is invalid") ||
                 normalized.contains("invalid grant") ||
                 normalized.contains("email link is invalid") {
-                return "验证码不正确。"
+                return L10n.string("supabase_error.invalid_otp", "验证码不正确。")
             }
             if normalized.contains("password should be at least") ||
                 normalized.contains("password must be at least") {
-                return "密码长度不足，请至少输入 6 位。"
+                return L10n.string("supabase_error.password_too_short", "密码长度不足，请至少输入 6 位。")
             }
             if normalized.contains("signup is disabled") {
-                return "当前暂不支持邮箱注册。"
+                return L10n.string("supabase_error.signup_disabled", "当前暂不支持邮箱注册。")
             }
             if normalized.contains("generation_banned") ||
                 normalized.contains("当前账号暂时无法生成") {
-                return "当前账号暂时无法生成，请稍后再试。"
+                return L10n.string("supabase_error.generation_banned", "当前账号暂时无法生成，请稍后再试。")
             }
             if normalized.contains("generation_policy_violation") ||
                 normalized.contains("这张图片暂时无法生成") {
-                return "这张图片暂时无法生成，请更换图片后再试。请勿发送色情、裸露、涉政等图片，否则可能导致临时禁用或账号永久封禁。"
+                return L10n.string("supabase_error.generation_policy_violation", "这张图片暂时无法生成，请更换图片后再试。请勿发送色情、裸露、涉政等图片，否则可能导致临时禁用或账号永久封禁。")
             }
             if normalized.contains("image_moderation_unavailable") ||
                 normalized.contains("图片安全检查失败") {
-                return "图片安全检查失败，请稍后再试。"
+                return L10n.string("supabase_error.image_moderation_unavailable", "图片安全检查失败，请稍后再试。")
             }
             if normalized.contains("too many requests") ||
                 normalized.contains("rate limit") ||
                 normalized.contains("rate_limit") ||
                 normalized.contains("429") {
-                return "当前使用人数过多，请稍后重试。"
+                return L10n.string("supabase_error.too_many_requests", "当前使用人数过多，请稍后重试。")
             }
             if normalized.contains("engine overloaded") ||
                 normalized.contains("service unavailable") ||
                 normalized.contains("overloaded") {
-                return "当前生成服务较忙，请稍后再试。"
+                return L10n.string("supabase_error.generation_busy", "当前生成服务较忙，请稍后再试。")
             }
             if normalized.contains("upload image failed") ||
                 normalized.contains("upload failed") ||
                 normalized.contains("storage") && normalized.contains("upload") {
-                return "图片上传失败，请稍后重试。"
+                return L10n.string("supabase_error.image_upload_failed", "图片上传失败，请稍后重试。")
             }
             if normalized.contains("insert memory failed") ||
                 normalized.contains("insert sentences failed") ||
@@ -307,31 +307,31 @@ enum SupabaseServiceError: LocalizedError {
                 normalized.contains("insert transaction failed") ||
                 normalized.contains("memory save failed") ||
                 normalized.contains("save memory failed") {
-                return "结果保存失败，请稍后重试。"
+                return L10n.string("supabase_error.result_save_failed", "结果保存失败，请稍后重试。")
             }
             if normalized.contains("request time out") ||
                 normalized.contains("request timed out") ||
                 normalized.contains("timed out") ||
                 normalized.contains("timeout") {
-                return "当前使用人数过多，请稍后重试。"
+                return L10n.string("supabase_error.too_many_requests", "当前使用人数过多，请稍后重试。")
             }
             if normalized.contains("bad gateway") ||
                 normalized.contains("gateway") ||
                 normalized.contains("服务网关异常") {
-                return "当前生成服务异常，请稍后重试。"
+                return L10n.string("supabase_error.gateway_error", "当前生成服务异常，请稍后重试。")
             }
             if normalized.contains("network connection was lost") ||
                 normalized.contains("connection was lost") ||
                 normalized.contains("network connection") && normalized.contains("lost") {
-                return "网络连接已中断，请回到前台并重试。"
+                return L10n.string("supabase_error.network_lost", "网络连接已中断，请回到前台并重试。")
             }
             if normalized.contains("data couldn’t be read because it is missing") ||
                 normalized.contains("data couldn't be read because it is missing") {
-                return "服务返回不完整，请稍后重试。"
+                return L10n.string("supabase_error.missing_data", "服务返回不完整，请稍后重试。")
             }
             if normalized.contains("data couldn’t be read because it isn’t in the correct format") ||
                 normalized.contains("data couldn't be read because it isn't in the correct format") {
-                return "服务返回格式异常，请稍后重试。"
+                return L10n.string("supabase_error.invalid_data_format", "服务返回格式异常，请稍后重试。")
             }
             return message
         }

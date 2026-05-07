@@ -75,7 +75,7 @@ private struct MemoryExportCardView: View {
 
                 Spacer()
 
-                Text("create with 三句")
+                Text(L10n.string("memory_export.created_with", "create with 三句"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.42))
             }
@@ -95,11 +95,11 @@ private struct MemoryExportCardView: View {
 
 @MainActor
 enum MemoryExportRenderer {
-    static func render(memory: MemoryEntry) -> UIImage? {
+    static func render(memory: MemoryEntry, displayScale: CGFloat) -> UIImage? {
         let renderer = ImageRenderer(
             content: MemoryExportCardView(memory: memory)
         )
-        renderer.scale = UIScreen.main.scale
+        renderer.scale = displayScale
         renderer.isOpaque = true
         return renderer.uiImage
     }

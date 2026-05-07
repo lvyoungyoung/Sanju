@@ -11,15 +11,15 @@ extension AppModel {
         var errorDescription: String? {
             switch self {
             case .missingAppAccountToken:
-                return "购买记录缺少账号标识，无法安全同步。请重新发起购买。"
+                return L10n.string("purchase_apply_error.missing_account_token", "购买记录缺少账号标识，无法安全同步。请重新发起购买。")
             case .appAccountTokenMismatch:
-                return "这笔购买不属于当前账号，请切换回购买时的账号后重试。"
+                return L10n.string("purchase_apply_error.account_token_mismatch", "这笔购买不属于当前账号，请切换回购买时的账号后重试。")
             case .invalidPurchaseSession:
-                return "暂时无法建立购买会话，请检查网络后重试。"
+                return L10n.string("purchase_apply_error.invalid_session", "暂时无法建立购买会话，请检查网络后重试。")
             case .accountRestoreInProgress:
-                return "账号正在恢复中，请稍后再购买。"
+                return L10n.string("purchase_apply_error.account_restore_in_progress", "账号正在恢复中，请稍后再购买。")
             case .authenticatedProfileUnavailable:
-                return "账号信息还没有准备好，请稍后再购买。"
+                return L10n.string("purchase_apply_error.profile_unavailable", "账号信息还没有准备好，请稍后再购买。")
             }
         }
     }

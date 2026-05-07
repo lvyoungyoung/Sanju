@@ -13,40 +13,45 @@ struct ContentView: View {
     @State private var signInSheetHeight: CGFloat = 380
 
     var body: some View {
-        ZStack {
-            MainTabView()
-                .environmentObject(appModel)
-            if appModel.isDeletingAccount {
-                GlobalBlockingLoadingOverlay(title: "正在删除账号，请勿关闭应用")
+        GeometryReader { proxy in
+            ZStack {
+                MainTabView()
+                    .environmentObject(appModel)
+                if appModel.isDeletingAccount {
+                    GlobalBlockingLoadingOverlay(title: L10n.string("account.delete.loading", "正在删除账号，请勿关闭应用"))
+                }
             }
-        }
-        .alert("提示", isPresented: credentialWarningAlertBinding) {
-            Button("知道了", role: .cancel) {
-                appModel.credentialWarningMessage = nil
+            .alert(L10n.string("common.notice", "提示"), isPresented: credentialWarningAlertBinding) {
+                Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
+                    appModel.credentialWarningMessage = nil
+                }
+            } message: {
+                Text(appModel.credentialWarningMessage ?? "")
             }
-        } message: {
-            Text(appModel.credentialWarningMessage ?? "")
-        }
-        .sheet(isPresented: $appModel.isShowingSignInSheet) {
-            SignInView(preferredSheetHeight: $signInSheetHeight)
-                .environmentObject(appModel)
-                .presentationDetents([.height(signInSheetHeight)])
-                .presentationBackground(Color(red: 0.98, green: 0.95, blue: 0.91))
-                .presentationDragIndicator(.visible)
-        }
-        .onOpenURL { url in
-            appModel.handleIncomingURL(url)
-        }
-        .onAppear {
-            openFavoritesIfNeededFromLearningReminder()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: LearningReminderNotificationRoute.didRequestOpenFavorites)) { _ in
-            openFavoritesIfNeededFromLearningReminder()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active else { return }
-            openFavoritesIfNeededFromLearningReminder()
-            appModel.syncOnForegroundIfNeeded()
+            .sheet(isPresented: $appModel.isShowingSignInSheet) {
+                SignInView(
+                    preferredSheetHeight: $signInSheetHeight,
+                    maxSheetHeight: max(proxy.size.height * 0.88, 280)
+                )
+                    .environmentObject(appModel)
+                    .presentationDetents([.height(signInSheetHeight)])
+                    .presentationBackground(Color(red: 0.98, green: 0.95, blue: 0.91))
+                    .presentationDragIndicator(.visible)
+            }
+            .onOpenURL { url in
+                appModel.handleIncomingURL(url)
+            }
+            .onAppear {
+                openFavoritesIfNeededFromLearningReminder()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: LearningReminderNotificationRoute.didRequestOpenFavorites)) { _ in
+                openFavoritesIfNeededFromLearningReminder()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                openFavoritesIfNeededFromLearningReminder()
+                appModel.syncOnForegroundIfNeeded()
+            }
         }
     }
 

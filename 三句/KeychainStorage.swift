@@ -12,12 +12,15 @@ enum KeychainStorage {
     static func set(_ data: Data, for key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
+            kSecAttrAccount as String: key
         ]
+        let attributes: [String: Any] = query.merging([
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]) { _, new in new }
 
         SecItemDelete(query as CFDictionary)
-        SecItemAdd(query as CFDictionary, nil)
+        SecItemAdd(attributes as CFDictionary, nil)
     }
 
     static func get(for key: String) -> Data? {

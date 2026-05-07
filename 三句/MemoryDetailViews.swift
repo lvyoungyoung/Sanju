@@ -4,11 +4,13 @@ import UIKit
 struct MemoryDetailView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
     let memoryID: UUID
     @State private var currentMemoryID: UUID
     @State private var isShowingDeleteAlert = false
     @State private var isSavingToPhotos = false
     @State private var saveResultMessage: String?
+    @State private var saveResultIsSuccess = false
     @State private var saveResultTask: Task<Void, Never>?
 
     init(memoryID: UUID) {
@@ -54,7 +56,7 @@ struct MemoryDetailView: View {
                     .padding(.bottom, 26)
 
                     if let saveResultMessage {
-                        SaveResultHUD(message: saveResultMessage, isSuccess: saveResultMessage.contains("已保存"))
+                        SaveResultHUD(message: saveResultMessage, isSuccess: saveResultIsSuccess)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                             .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
@@ -130,24 +132,30 @@ struct MemoryDetailView: View {
         isSavingToPhotos = true
 
         Task { @MainActor in
-            guard let image = MemoryExportRenderer.render(memory: memory) else {
+            guard let image = MemoryExportRenderer.render(memory: memory, displayScale: displayScale) else {
                 isSavingToPhotos = false
-                showSaveResult("保存失败，请稍后重试。")
+                showSaveResult(L10n.string("memory_detail.save_failed", "保存失败，请稍后重试。"), isSuccess: false)
                 return
             }
 
             PhotoLibrarySaver.save(image: image) { error in
                 Task { @MainActor in
                     isSavingToPhotos = false
-                    showSaveResult(error == nil ? "已保存到系统相册。" : "保存失败，请检查相册权限后重试。")
+                    showSaveResult(
+                        error == nil
+                        ? L10n.string("memory_detail.save_succeeded", "已保存到系统相册。")
+                        : L10n.string("memory_detail.save_permission_failed", "保存失败，请检查相册权限后重试。"),
+                        isSuccess: error == nil
+                    )
                 }
             }
         }
     }
 
     @MainActor
-    private func showSaveResult(_ message: String) {
+    private func showSaveResult(_ message: String, isSuccess: Bool) {
         saveResultTask?.cancel()
+        saveResultIsSuccess = isSuccess
         withAnimation(.spring(response: 0.26, dampingFraction: 0.92)) {
             saveResultMessage = message
         }
