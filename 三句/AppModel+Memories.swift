@@ -300,6 +300,14 @@ extension AppModel {
             return
         }
 
+        guard !memoryImageLoadTaskIDs.contains(memoryID) else {
+            return
+        }
+        memoryImageLoadTaskIDs.insert(memoryID)
+        defer {
+            memoryImageLoadTaskIDs.remove(memoryID)
+        }
+
         guard let session = try? await ensureValidSession() else {
             return
         }

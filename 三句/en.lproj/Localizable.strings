@@ -36,6 +36,7 @@
 "auth.progress.sending_reset_email" = "Sending reset email...";
 "auth.progress.signing_in" = "Signing in...";
 "auth.progress.updating_password" = "Updating password...";
+"auth.reset_password.success" = "Password updated. Please sign in again.";
 "auth.verification_code.cooldown" = "Send Code (%ds)";
 "auth.verification_code.send" = "Send Code";
 "auth.verification_code.sending" = "Sending...";

@@ -286,7 +286,7 @@ extension AppModel {
                 token: trimmedCode
             )
             try await supabaseService.updatePassword(session: recoverySession, newPassword: trimmedPassword)
-            authFlowMessage = "密码已更新，请使用新密码登录。"
+            authFlowMessage = L10n.string("auth.reset_password.success", "密码修改成功，请重新登录")
             isUpdatingPassword = false
             return .updated
         } catch {

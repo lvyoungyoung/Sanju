@@ -337,6 +337,7 @@ final class AppModel: ObservableObject {
     var remoteMemoryImageHydrationTask: Task<Void, Never>?
     var cachedMemoryImageHydrationTask: Task<Void, Never>?
     var memoryWidgetSnapshotUpdateTask: Task<Void, Never>?
+    var memoryImageLoadTaskIDs: Set<UUID> = []
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
 

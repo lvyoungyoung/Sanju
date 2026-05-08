@@ -89,6 +89,8 @@ struct SignInView: View {
     @State private var confirmPassword = ""
     @State private var verificationCodeCooldownSeconds = 0
     @State private var emailSignInLockoutRemainingSeconds = 0
+    @State private var passwordResetSuccessMessage = ""
+    @State private var isShowingPasswordResetSuccessAlert = false
     @FocusState private var focusedField: SignInField?
     private let verificationCodeCooldownTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -130,6 +132,14 @@ struct SignInView: View {
         .task {
             refreshEmailSignInLockoutCountdown()
             await focusPrimaryFieldAfterPresentation()
+        }
+        .alert(
+            L10n.string("common.notice", "提示"),
+            isPresented: $isShowingPasswordResetSuccessAlert
+        ) {
+            Button(L10n.string("common.got_it", "知道了"), role: .cancel) {}
+        } message: {
+            Text(passwordResetSuccessMessage)
         }
     }
 
@@ -481,6 +491,11 @@ struct SignInView: View {
                     confirmPassword: confirmPassword
                 )
                 if outcome == .updated {
+                    passwordResetSuccessMessage = L10n.string(
+                        "auth.reset_password.success",
+                        "密码修改成功，请重新登录"
+                    )
+                    isShowingPasswordResetSuccessAlert = true
                     transition(to: .signIn, preserveEmail: true, preserveAuthFlowMessage: true)
                 }
             }
@@ -646,12 +661,13 @@ private struct LabeledSecureField: View {
                 Group {
                     if isPasswordVisible {
                         TextField(placeholder, text: $text)
+                            .textContentType(.oneTimeCode)
                     } else {
                         SecureField(placeholder, text: $text)
+                            .textContentType(textContentType)
                     }
                 }
                 .font(.system(size: AppFontSize.field))
-                .textContentType(textContentType)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(submitLabel)
@@ -660,7 +676,6 @@ private struct LabeledSecureField: View {
                 if showsVisibilityToggle {
                     Button {
                         isPasswordVisible.toggle()
-                        focusedField.wrappedValue = equals
                     } label: {
                         Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
                             .font(.system(size: 17, weight: .medium))

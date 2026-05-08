@@ -400,11 +400,13 @@ private struct MemorySectionItem: Identifiable {
 }
 
 private struct MemoryThumbnailTile: View {
+    @EnvironmentObject private var appModel: AppModel
     let memory: MemoryEntry
     let animationDelay: Double
     @State private var hasAppeared = false
     @State private var cachedImage: UIImage?
     @State private var imageLoadTask: Task<Void, Never>?
+    @State private var remoteImageLoadTask: Task<Void, Never>?
     @State private var imageLoadToken = UUID()
 
     var body: some View {
@@ -428,6 +430,7 @@ private struct MemoryThumbnailTile: View {
             .offset(y: hasAppeared ? 0 : 8)
             .onAppear {
                 loadImageIfNeeded()
+                loadRemoteImageIfNeeded()
                 guard !hasAppeared else { return }
                 withAnimation(.easeOut(duration: 0.28).delay(animationDelay)) {
                     hasAppeared = true
@@ -437,10 +440,13 @@ private struct MemoryThumbnailTile: View {
                 imageLoadTask?.cancel()
                 cachedImage = nil
                 loadImageIfNeeded()
+                loadRemoteImageIfNeeded()
             }
             .onDisappear {
                 imageLoadTask?.cancel()
                 imageLoadTask = nil
+                remoteImageLoadTask?.cancel()
+                remoteImageLoadTask = nil
             }
     }
 
@@ -474,6 +480,22 @@ private struct MemoryThumbnailTile: View {
             guard !Task.isCancelled, imageLoadToken == currentToken else { return }
             cachedImage = result?.1
             imageLoadTask = nil
+        }
+    }
+
+    private func loadRemoteImageIfNeeded() {
+        guard memory.imageData.isEmpty, memory.remoteImagePath != nil else {
+            remoteImageLoadTask?.cancel()
+            remoteImageLoadTask = nil
+            return
+        }
+        guard remoteImageLoadTask == nil else { return }
+
+        let memoryID = memory.id
+        remoteImageLoadTask = Task {
+            await appModel.ensureMemoryImageLoaded(memoryID: memoryID)
+            guard !Task.isCancelled else { return }
+            remoteImageLoadTask = nil
         }
     }
 }
