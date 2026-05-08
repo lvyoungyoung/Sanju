@@ -21,6 +21,9 @@ struct ProfileView: View {
     @State private var isSavingLearningReminder = false
     @State private var learningReminderStatusMessage: String?
     @State private var learningReminderStatusIsError = false
+#if DEBUG || STAGING
+    @State private var isShowingLocalTestResetAlert = false
+#endif
 
     private var deleteAccountConfirmationPhrase: String {
         L10n.string("account.delete.confirmation_phrase", "我已知晓后果，确定删除账号")
@@ -179,6 +182,17 @@ struct ProfileView: View {
         } message: {
             Text(deleteAccountErrorMessage ?? "")
         }
+#if DEBUG || STAGING
+        .alert("清理本机测试数据？", isPresented: $isShowingLocalTestResetAlert) {
+            Button("清理并恢复首次安装状态", role: .destructive) {
+                appModel.resetLocalTestDataForFreshInstall()
+                showTransientHint("已清理本机测试数据，现在是首次安装状态。")
+            }
+            Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
+        } message: {
+            Text("这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 5 次生成机会。仅用于测试。")
+        }
+#endif
         .onDisappear {
             transientHintTask?.cancel()
             transientHintTask = nil
@@ -322,6 +336,33 @@ struct ProfileView: View {
                 .buttonStyle(.plain)
                 .disabled(appModel.isDeletingAccount)
             }
+
+#if DEBUG || STAGING
+            Button(role: .destructive) {
+                isShowingLocalTestResetAlert = true
+            } label: {
+                HStack {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("清理本机测试数据")
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Text("测试")
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(Color.orange.opacity(0.16)))
+                }
+                .foregroundStyle(Color.orange)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(appModel.isDeletingAccount)
+#endif
         }
     }
 

@@ -120,4 +120,8 @@ enum LearningReminderNotificationRoute {
         UserDefaults.standard.removeObject(forKey: pendingOpenFavoritesKey)
         return true
     }
+
+    static func clearOpenFavoritesRequest() {
+        UserDefaults.standard.removeObject(forKey: pendingOpenFavoritesKey)
+    }
 }

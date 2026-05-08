@@ -837,6 +837,64 @@ extension AppModel {
     }
 #endif
 
+#if DEBUG || STAGING
+    func resetLocalTestDataForFreshInstall() {
+        resetLocalAccountState(resetCredits: false)
+        clearLearningDraft()
+        clearPersistedMemories()
+        clearPendingGuestMemoryMigrationQueue()
+        clearPendingGuestCreditMigration()
+        clearLocalSentenceStudyProgress()
+        disableLearningReminder()
+        LearningReminderNotificationRoute.clearOpenFavoritesRequest()
+
+        [
+            AppStorageKey.installMarker,
+            AppStorageKey.profile,
+            AppStorageKey.memories,
+            AppStorageKey.memoriesUserID,
+            AppStorageKey.pendingMemoryImageUploads,
+            AppStorageKey.pendingGeneratedMemoryImage,
+            AppStorageKey.pendingGuestMemoryMigrationQueue,
+            AppStorageKey.pendingFavoriteChanges,
+            AppStorageKey.pendingMemoryDeletions,
+            AppStorageKey.pendingGuestCreditMergeLegacy,
+            AppStorageKey.preserveLocalGuestCreditsAgainstAnonymousProfile,
+            AppStorageKey.pendingLocalAccountTransition,
+            AppStorageKey.generationAttemptTimestamps,
+            AppStorageKey.passwordResetAttemptTimestamps,
+            AppStorageKey.emailSignInFailureTimestamps,
+            AppStorageKey.remainingCredits,
+            AppStorageKey.remainingCreditsOwnerID,
+            AppStorageKey.englishLevel,
+            AppStorageKey.languageStyle,
+            AppStorageKey.learningReminderEnabled,
+            AppStorageKey.learningReminderHour,
+            AppStorageKey.learningReminderMinute,
+            AppStorageKey.localSentenceStudyProgress,
+            AppStorageKey.processedPurchaseTransactions
+        ].forEach(defaults.removeObject)
+
+        KeychainStorage.remove(for: AppStorageKey.supabaseSession)
+        KeychainStorage.remove(for: AppStorageKey.pendingGuestCreditMigration)
+        KeychainStorage.remove(for: AppStorageKey.initialCreditsGrantMarker)
+
+        profile = nil
+        memories = []
+        processedPurchaseTransactionIDs = []
+        processingPurchaseTransactionIDs = []
+        pendingGuestCreditMigration = nil
+        englishLevel = .simple
+        languageStyle = .plain
+        isLearningReminderEnabled = false
+        learningReminderHour = 20
+        learningReminderMinute = 30
+        remainingCredits = 5
+
+        handleFreshInstallIfNeeded()
+    }
+#endif
+
     private func normalizedEmailAuthenticationErrorMessage(for error: Error) -> String {
         if case let SupabaseServiceError.apiError(rawMessage) = error {
             let normalized = rawMessage.lowercased()
