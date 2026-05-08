@@ -141,6 +141,7 @@ struct ProfileView: View {
         }
         .alert(L10n.string("profile.sign_out.alert_title", "确定要退出登录吗？"), isPresented: $isShowingSignOutAlert) {
             Button(L10n.string("profile.sign_out.action", "退出登录"), role: .destructive) {
+                guard !interceptIfGenerationInProgress() else { return }
                 guard !interceptIfPendingCloudSyncInProgress() else { return }
                 appModel.signOut()
             }
@@ -159,6 +160,7 @@ struct ProfileView: View {
             Button(L10n.string("account.delete.confirm_action", "确定删除"), role: .destructive) {
                 Task {
                     do {
+                        guard !interceptIfGenerationInProgress() else { return }
                         try await appModel.deleteAccount()
                     } catch {
                         await MainActor.run {
@@ -499,6 +501,7 @@ struct ProfileView: View {
                 Spacer(minLength: 8)
 
                 Button {
+                    guard !interceptIfGenerationInProgress() else { return }
                     appModel.isShowingSignInSheet = true
                 } label: {
                     Text("登录")

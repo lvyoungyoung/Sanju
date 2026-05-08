@@ -282,6 +282,7 @@ final class AppModel: ObservableObject {
     @Published var isUpdatingPassword = false
     @Published var passwordResetErrorMessage: String?
     @Published var isShowingSignInSheet = false
+    @Published var isGeneratingMemory = false
     @Published var isNetworkAvailable = true
     @Published var purchaseErrorMessage: String?
     @Published var isStartingPurchase = false
@@ -392,6 +393,7 @@ final class AppModel: ObservableObject {
     }
 
     var hasActiveGenerationTask: Bool {
+        if isGeneratingMemory { return true }
         guard let pendingGeneratedMemoryImage else { return false }
         return !isPendingGeneratedRecoveryExpired(pendingGeneratedMemoryImage)
     }

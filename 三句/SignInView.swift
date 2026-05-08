@@ -296,7 +296,7 @@ struct SignInView: View {
                     title: L10n.string("auth.field.password", "密码"),
                     text: $password,
                     placeholder: L10n.string("auth.placeholder.password_min", "至少 6 位"),
-                    textContentType: .newPassword,
+                    textContentType: .oneTimeCode,
                     submitLabel: .go,
                     showsVisibilityToggle: true,
                     focusedField: $focusedField,

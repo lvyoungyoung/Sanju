@@ -336,12 +336,19 @@ extension AppModel {
     }
 
     func signOut() {
+        guard !hasActiveGenerationTask else {
+            credentialWarningMessage = L10n.string("profile.guard.generation_in_progress", "正在为您生成描述，请稍后操作。")
+            return
+        }
         guard !isSyncingPendingCloudChanges else { return }
         beginPendingLocalSignOutTransaction()
         completeLocalSignOutTransaction()
     }
 
     func deleteAccount() async throws {
+        guard !hasActiveGenerationTask else {
+            throw SupabaseServiceError.apiError(L10n.string("profile.guard.generation_in_progress", "正在为您生成描述，请稍后操作。"))
+        }
         let session = try await ensureValidSession()
         guard !session.isAnonymous else {
             throw SupabaseServiceError.apiError("当前是匿名状态，无需删除账号。")

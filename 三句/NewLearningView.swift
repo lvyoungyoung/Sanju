@@ -476,6 +476,7 @@ struct NewLearningView: View {
         guard let selectedImageData, !isRecoveryInteractionLocked else { return }
 
         isGenerating = true
+        appModel.isGeneratingMemory = true
         isWaitingForRecoveredGeneration = true
         generationStep = 0
         generationStatus = generationSteps[0]
@@ -483,6 +484,9 @@ struct NewLearningView: View {
         resetRecoveryCancelButtonVisibility()
         appModel.draftGeneratedMemory = nil
         appModel.draftGeneratedMemoryID = nil
+        defer {
+            appModel.isGeneratingMemory = false
+        }
 
         let statusTask = Task {
             for index in 1..<generationSteps.count {

@@ -28,7 +28,7 @@ struct ContentView: View {
             } message: {
                 Text(appModel.credentialWarningMessage ?? "")
             }
-            .sheet(isPresented: $appModel.isShowingSignInSheet) {
+            .sheet(isPresented: signInSheetBinding) {
                 SignInView(
                     preferredSheetHeight: $signInSheetHeight,
                     maxSheetHeight: max(proxy.size.height * 0.88, 280)
@@ -70,6 +70,29 @@ struct ContentView: View {
                 if !isPresented {
                     appModel.credentialWarningMessage = nil
                 }
+            }
+        )
+    }
+
+    private var signInSheetBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.isShowingSignInSheet },
+            set: { isPresented in
+                guard isPresented else {
+                    appModel.isShowingSignInSheet = false
+                    return
+                }
+
+                guard !appModel.hasActiveGenerationTask else {
+                    appModel.credentialWarningMessage = L10n.string(
+                        "profile.guard.generation_in_progress",
+                        "正在为您生成描述，请稍后操作。"
+                    )
+                    appModel.isShowingSignInSheet = false
+                    return
+                }
+
+                appModel.isShowingSignInSheet = true
             }
         )
     }
