@@ -815,18 +815,7 @@ extension AppModel {
         previousMemoryIDs: Set<UUID>,
         session: SupabaseSession
     ) async -> MemoryEntry? {
-        guard shouldAttemptGenerationRecovery(for: error) else {
-            return nil
-        }
-
-        if session.isAnonymous {
-            return await recoverAnonymousGeneratedMemoryIfNeeded(
-                previousMemoryIDs: previousMemoryIDs,
-                session: session
-            )
-        }
-
-        if let clientRequestID = pendingGeneratedMemoryImage?.clientRequestID {
+        if !session.isAnonymous, let clientRequestID = pendingGeneratedMemoryImage?.clientRequestID {
             return await recoverAuthenticatedGeneratedMemoryIfNeeded(
                 clientRequestID: clientRequestID,
                 previousMemoryIDs: previousMemoryIDs,
@@ -837,6 +826,17 @@ extension AppModel {
                     .seconds(3),
                     .seconds(4)
                 ]
+            )
+        }
+
+        guard shouldAttemptGenerationRecovery(for: error) else {
+            return nil
+        }
+
+        if session.isAnonymous {
+            return await recoverAnonymousGeneratedMemoryIfNeeded(
+                previousMemoryIDs: previousMemoryIDs,
+                session: session
             )
         }
 
