@@ -1515,6 +1515,7 @@ extension AppModel {
         await syncPendingFavoriteChangesIfNeeded()
         await syncFavoriteDifferencesIfNeeded(using: remoteMemories)
         await syncLocalSentenceStudyProgressIfNeeded()
+        await refreshSentenceStudyDueCount()
     }
 
     private func reconcileLocalMemoriesWithRemote(_ remoteMemories: [MemoryEntry], sessionUserID: String) {
