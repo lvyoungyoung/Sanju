@@ -224,6 +224,8 @@ enum AppStorageKey {
     static let generationAttemptTimestamps = "sanju.generationAttemptTimestamps"
     static let passwordResetAttemptTimestamps = "sanju.passwordResetAttemptTimestamps"
     static let emailSignInFailureTimestamps = "sanju.emailSignInFailureTimestamps"
+    static let preferenceChangeTimestamps = "sanju.preferenceChangeTimestamps"
+    static let preferenceChangeBlockedUntil = "sanju.preferenceChangeBlockedUntil"
     static let remainingCredits = "sanju.remainingCredits"
     static let remainingCreditsOwnerID = "sanju.remainingCreditsOwnerID"
     static let englishLevel = "sanju.englishLevel"
@@ -338,6 +340,7 @@ final class AppModel: ObservableObject {
     var remoteMemoryImageHydrationTask: Task<Void, Never>?
     var cachedMemoryImageHydrationTask: Task<Void, Never>?
     var memoryWidgetSnapshotUpdateTask: Task<Void, Never>?
+    var preferenceSyncTask: Task<Void, Never>?
     var memoryImageLoadTaskIDs: Set<UUID> = []
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
@@ -446,6 +449,7 @@ final class AppModel: ObservableObject {
         remoteMemoryImageHydrationTask?.cancel()
         cachedMemoryImageHydrationTask?.cancel()
         memoryWidgetSnapshotUpdateTask?.cancel()
+        preferenceSyncTask?.cancel()
         networkStatusMonitor.cancel()
     }
 

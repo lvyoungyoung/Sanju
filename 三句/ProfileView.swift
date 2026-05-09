@@ -215,14 +215,30 @@ struct ProfileView: View {
     private var englishLevelBinding: Binding<EnglishLevel> {
         Binding(
             get: { appModel.englishLevel },
-            set: { appModel.updateEnglishLevel($0) }
+            set: { level in
+                guard appModel.updateEnglishLevel(level) else {
+                    showTransientHint(
+                        L10n.string("rate_limit.operation_frequent", "操作频繁，请稍后再试。"),
+                        style: .warning
+                    )
+                    return
+                }
+            }
         )
     }
 
     private var languageStyleBinding: Binding<LanguageStyle> {
         Binding(
             get: { appModel.languageStyle },
-            set: { appModel.updateLanguageStyle($0) }
+            set: { style in
+                guard appModel.updateLanguageStyle(style) else {
+                    showTransientHint(
+                        L10n.string("rate_limit.operation_frequent", "操作频繁，请稍后再试。"),
+                        style: .warning
+                    )
+                    return
+                }
+            }
         )
     }
 

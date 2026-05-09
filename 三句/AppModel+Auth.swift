@@ -297,19 +297,86 @@ extension AppModel {
         }
     }
 
-    func updateEnglishLevel(_ level: EnglishLevel) {
+    @discardableResult
+    func updateEnglishLevel(_ level: EnglishLevel) -> Bool {
+        guard level != englishLevel else { return true }
+        guard consumePreferenceChangeAllowance() else { return false }
+
         englishLevel = level
         defaults.set(level.rawValue, forKey: AppStorageKey.englishLevel)
-        Task {
-            await syncPreferences()
-        }
+        schedulePreferenceSync()
+        return true
     }
 
-    func updateLanguageStyle(_ style: LanguageStyle) {
+    @discardableResult
+    func updateLanguageStyle(_ style: LanguageStyle) -> Bool {
+        guard style != languageStyle else { return true }
+        guard consumePreferenceChangeAllowance() else { return false }
+
         languageStyle = style
         defaults.set(style.rawValue, forKey: AppStorageKey.languageStyle)
-        Task {
-            await syncPreferences()
+        schedulePreferenceSync()
+        return true
+    }
+
+    private func consumePreferenceChangeAllowance(now: Date = .now) -> Bool {
+        if let blockedUntil = defaults.object(forKey: AppStorageKey.preferenceChangeBlockedUntil) as? Date {
+            if blockedUntil > now {
+                return false
+            }
+            defaults.removeObject(forKey: AppStorageKey.preferenceChangeBlockedUntil)
+        }
+
+        var timestamps = loadPreferenceChangeTimestamps(now: now)
+        guard timestamps.count < 10 else {
+            defaults.set(now.addingTimeInterval(5 * 60), forKey: AppStorageKey.preferenceChangeBlockedUntil)
+            savePreferenceChangeTimestamps(timestamps)
+            return false
+        }
+
+        timestamps.append(now)
+        savePreferenceChangeTimestamps(timestamps)
+        return true
+    }
+
+    private func loadPreferenceChangeTimestamps(now: Date = .now) -> [Date] {
+        guard let data = defaults.data(forKey: AppStorageKey.preferenceChangeTimestamps) else {
+            return []
+        }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let timestamps = PersistenceDiagnostics.decode(
+            [Date].self,
+            from: data,
+            using: decoder,
+            operation: "Decode preference change timestamps"
+        ) ?? []
+
+        return timestamps
+            .filter { now.timeIntervalSince($0) < 60 }
+            .sorted()
+    }
+
+    private func savePreferenceChangeTimestamps(_ timestamps: [Date]) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let data = PersistenceDiagnostics.encode(
+            timestamps,
+            using: encoder,
+            operation: "Encode preference change timestamps"
+        )
+        defaults.set(data, forKey: AppStorageKey.preferenceChangeTimestamps)
+    }
+
+    private func schedulePreferenceSync() {
+        preferenceSyncTask?.cancel()
+        preferenceSyncTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(0.8))
+            guard !Task.isCancelled, let self else { return }
+            await self.syncPreferences()
+            guard !Task.isCancelled else { return }
+            self.preferenceSyncTask = nil
         }
     }
 
@@ -871,6 +938,8 @@ extension AppModel {
             AppStorageKey.generationAttemptTimestamps,
             AppStorageKey.passwordResetAttemptTimestamps,
             AppStorageKey.emailSignInFailureTimestamps,
+            AppStorageKey.preferenceChangeTimestamps,
+            AppStorageKey.preferenceChangeBlockedUntil,
             AppStorageKey.remainingCredits,
             AppStorageKey.remainingCreditsOwnerID,
             AppStorageKey.englishLevel,
