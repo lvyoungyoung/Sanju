@@ -48,8 +48,13 @@ protocol SupabaseServicing {
         imageData: Data,
         englishLevel: EnglishLevel,
         languageStyle: LanguageStyle,
-        guestJobID: String?
+        guestJobID: String?,
+        clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult
+    func fetchGenerationJob(
+        session: SupabaseSession,
+        clientRequestID: String
+    ) async throws -> SupabaseGenerationJobRecord?
     func recoverGuestGeneration(
         session: SupabaseSession,
         imageData: Data,
@@ -416,7 +421,8 @@ struct SupabaseService: SupabaseServicing {
         imageData: Data,
         englishLevel: EnglishLevel,
         languageStyle: LanguageStyle,
-        guestJobID: String?
+        guestJobID: String?,
+        clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult {
         let request = try makeRequest(
             path: "/functions/v1/generate-memory-v2",
@@ -426,7 +432,8 @@ struct SupabaseService: SupabaseServicing {
                 imageBase64: imageData.base64EncodedString(),
                 englishLevel: englishLevel.rawValue,
                 languageStyle: languageStyle.rawValue,
-                guestJobID: guestJobID
+                guestJobID: guestJobID,
+                clientRequestID: clientRequestID
             )
         )
 
@@ -463,8 +470,26 @@ struct SupabaseService: SupabaseServicing {
                 sentences: sentences
             ),
             remainingCredits: response.remainingCredits,
-            guestJobID: response.guestJobID
+            guestJobID: response.guestJobID,
+            clientRequestID: response.clientRequestID
         )
+    }
+
+    func fetchGenerationJob(
+        session: SupabaseSession,
+        clientRequestID: String
+    ) async throws -> SupabaseGenerationJobRecord? {
+        let select = "id,client_request_id,status,memory_id,error_message,remaining_credits"
+        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
+        let path = "/rest/v1/generation_jobs?select=\(encodedSelect)&client_request_id=eq.\(clientRequestID)&user_id=eq.\(session.userID)&limit=1"
+        let request = try makeRequest(
+            path: path,
+            method: "GET",
+            bearerToken: session.accessToken
+        )
+
+        let records: [SupabaseGenerationJobRecord] = try await perform(request)
+        return records.first
     }
 
     func recoverGuestGeneration(

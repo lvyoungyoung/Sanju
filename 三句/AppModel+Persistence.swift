@@ -115,6 +115,7 @@ extension AppModel {
         let startedAt: Date
         let previousMemoryIDs: [UUID]
         let guestJobID: String?
+        let clientRequestID: String?
     }
 
     private struct PersistedPendingGuestMemoryMigrationEntry: Codable {
@@ -476,12 +477,13 @@ extension AppModel {
             removePendingGeneratedImageData()
         }
         let persistedValue = pendingGeneratedMemoryImage.map {
-            PersistedPendingGeneratedMemoryImage(
-                startedAt: $0.startedAt,
-                previousMemoryIDs: $0.previousMemoryIDs,
-                guestJobID: $0.guestJobID
-            )
-        }
+                PersistedPendingGeneratedMemoryImage(
+                    startedAt: $0.startedAt,
+                    previousMemoryIDs: $0.previousMemoryIDs,
+                    guestJobID: $0.guestJobID,
+                    clientRequestID: $0.clientRequestID
+                )
+            }
         let data = PersistenceDiagnostics.encode(
             persistedValue,
             using: encoder,
@@ -877,6 +879,7 @@ extension AppModel {
                     startedAt: persistedValue.startedAt,
                     previousMemoryIDs: persistedValue.previousMemoryIDs,
                     guestJobID: persistedValue.guestJobID,
+                    clientRequestID: persistedValue.clientRequestID,
                     imageData: $0
                 )
             }

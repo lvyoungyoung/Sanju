@@ -350,6 +350,17 @@ function jsonResponse(data: unknown, status = 200) {
   })
 }
 
+function normalizeOptionalUUID(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined
+  }
+
+  const trimmed = value.trim().toLowerCase()
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(trimmed)
+    ? trimmed
+    : undefined
+}
+
 
 
 interface RequestBody {
@@ -357,6 +368,7 @@ interface RequestBody {
   englishLevel?: "简单" | "中等" | "高级"
   languageStyle?: "平铺直叙" | "抒情优美"
   guestJobID?: string
+  clientRequestID?: string
 }
 
 const MIMO_TIMEOUT_MS = 20000
@@ -372,6 +384,7 @@ Deno.serve(async (req) => {
   let adminClient: any = null
   let generationSlotRequestID: string | null = null
   let generationSlotAcquired = false
+  let authenticatedClientRequestID: string | null = null
 
   try {
     if (req.method !== "POST") {
@@ -460,6 +473,9 @@ Deno.serve(async (req) => {
     const languageStyle = body.languageStyle ?? "平铺直叙"
     const isAnonymous = user.is_anonymous === true
     const guestJobID = isAnonymous ? body.guestJobID?.trim() : undefined
+    authenticatedClientRequestID = isAnonymous
+      ? null
+      : normalizeOptionalUUID(body.clientRequestID) ?? null
 
     if (isAnonymous && !guestJobID) {
       return jsonResponse({ error: "guestJobID is required for anonymous users" }, 400)
@@ -483,6 +499,41 @@ Deno.serve(async (req) => {
     }
 
     const createdAt = new Date().toISOString()
+
+    if (!isAnonymous && authenticatedClientRequestID) {
+      const completedResponse = await loadCompletedAuthenticatedGenerationResponseIfNeeded(
+        adminClient,
+        {
+          clientRequestID: authenticatedClientRequestID,
+          userID: user.id,
+          fallbackRemainingCredits: profile.available_generations,
+        }
+      )
+
+      if (completedResponse) {
+        return completedResponse
+      }
+
+      const { error: jobError } = await adminClient.from("generation_jobs").upsert(
+        {
+          client_request_id: authenticatedClientRequestID,
+          user_id: user.id,
+          status: "pending",
+          updated_at: createdAt,
+        },
+        { onConflict: "client_request_id" }
+      )
+
+      if (jobError) {
+        return jsonResponse(
+          {
+            error: "Failed to create generation job",
+            details: jobError.message,
+          },
+          500
+        )
+      }
+    }
 
     let guestImagePath: string | null = null
     let guestImageUploaded = false
@@ -633,6 +684,14 @@ Deno.serve(async (req) => {
         await removeStoragePathQuietly(adminClient, guestImagePath)
       }
 
+      if (authenticatedClientRequestID) {
+        await markAuthenticatedGenerationJobFailed(
+          adminClient,
+          authenticatedClientRequestID,
+          serializedError
+        )
+      }
+
       return jsonResponse(
         moderationResult.policyViolation
           ? buildGenerationPolicyViolationError(violationRecord)
@@ -679,6 +738,14 @@ Deno.serve(async (req) => {
 
       if (guestImageUploaded && guestImagePath) {
         await adminClient.storage.from("memories").remove([guestImagePath])
+      }
+
+      if (authenticatedClientRequestID) {
+        await markAuthenticatedGenerationJobFailed(
+          adminClient,
+          authenticatedClientRequestID,
+          serializedError
+        )
       }
 
       if (completionResult.policyViolation) {
@@ -760,6 +827,14 @@ Deno.serve(async (req) => {
       })
 
     if (uploadError) {
+      if (authenticatedClientRequestID) {
+        await markAuthenticatedGenerationJobFailed(
+          adminClient,
+          authenticatedClientRequestID,
+          `upload image failed: ${uploadError.message}`
+        )
+      }
+
       return jsonResponse(
         {
           error: "upload image failed",
@@ -789,6 +864,14 @@ Deno.serve(async (req) => {
       console.error("[generate-memory-v2]", serializedError)
       await adminClient.storage.from("memories").remove([imagePath])
 
+      if (authenticatedClientRequestID) {
+        await markAuthenticatedGenerationJobFailed(
+          adminClient,
+          authenticatedClientRequestID,
+          serializedError
+        )
+      }
+
       return jsonResponse(finalizeResult.publicError, finalizeResult.statusCode)
     }
 
@@ -799,6 +882,18 @@ Deno.serve(async (req) => {
       mimoFailureReason,
     })
 
+    if (authenticatedClientRequestID) {
+      await markAuthenticatedGenerationJobCompleted(adminClient, {
+        clientRequestID: authenticatedClientRequestID,
+        userID: user.id,
+        memoryID,
+        imagePath,
+        provider,
+        mimoFailureReason,
+        remainingCredits: finalizeResult.remainingCredits,
+      })
+    }
+
     return jsonResponse({
       memory: {
         id: memoryID,
@@ -808,8 +903,17 @@ Deno.serve(async (req) => {
         sentences: finalizedSentences,
       },
       remainingCredits: finalizeResult.remainingCredits,
+      clientRequestID: authenticatedClientRequestID,
     })
   } catch (error) {
+    if (adminClient && authenticatedClientRequestID) {
+      await markAuthenticatedGenerationJobFailed(
+        adminClient,
+        authenticatedClientRequestID,
+        error instanceof Error ? error.message : String(error)
+      )
+    }
+
     console.error(
       "[generate-memory-v2]",
       JSON.stringify({
@@ -1383,6 +1487,157 @@ async function updateGuestGenerationDiagnostics(
       serializeGenerationError({
         provider: args.provider,
         code: "guest_generation_diagnostics_update_failed",
+        statusCode: 500,
+        internalError: error instanceof Error ? error.message : String(error),
+      })
+    )
+  }
+}
+
+async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
+  adminClient: any,
+  args: {
+    clientRequestID: string
+    userID: string
+    fallbackRemainingCredits: number
+  }
+): Promise<Response | null> {
+  const { data: job, error: jobError } = await adminClient
+    .from("generation_jobs")
+    .select("status, memory_id, remaining_credits")
+    .eq("client_request_id", args.clientRequestID)
+    .eq("user_id", args.userID)
+    .maybeSingle()
+
+  if (jobError || job?.status !== "completed" || !job.memory_id) {
+    return null
+  }
+
+  const { data: memory, error: memoryError } = await adminClient
+    .from("memories")
+    .select(
+      `
+      id,
+      image_url,
+      created_at,
+      provider,
+      memory_sentences (
+        id,
+        english,
+        chinese,
+        is_favorite,
+        sort_order
+      )
+    `
+    )
+    .eq("id", job.memory_id)
+    .eq("user_id", args.userID)
+    .maybeSingle()
+
+  if (memoryError || !memory) {
+    return null
+  }
+
+  const sentences = Array.isArray(memory.memory_sentences)
+    ? [...memory.memory_sentences].sort(
+        (left: any, right: any) => (left.sort_order ?? 0) - (right.sort_order ?? 0)
+      )
+    : []
+
+  if (sentences.length !== 3) {
+    return null
+  }
+
+  return jsonResponse({
+    memory: {
+      id: memory.id,
+      imagePath: memory.image_url ?? "",
+      createdAt: memory.created_at,
+      provider: memory.provider ?? null,
+      sentences: sentences.map((sentence: any) => ({
+        id: sentence.id,
+        english: String(sentence.english ?? "").trim(),
+        chinese: String(sentence.chinese ?? "").trim(),
+        is_favorite: sentence.is_favorite === true,
+      })),
+    },
+    remainingCredits: job.remaining_credits ?? args.fallbackRemainingCredits,
+    clientRequestID: args.clientRequestID,
+  })
+}
+
+async function markAuthenticatedGenerationJobCompleted(
+  adminClient: any,
+  args: {
+    clientRequestID: string
+    userID: string
+    memoryID: string
+    imagePath: string
+    provider: ProviderName
+    mimoFailureReason: string | null
+    remainingCredits: number
+  }
+): Promise<void> {
+  try {
+    const now = new Date().toISOString()
+    const { error } = await adminClient
+      .from("generation_jobs")
+      .update({
+        status: "completed",
+        memory_id: args.memoryID,
+        image_path: args.imagePath,
+        provider: args.provider,
+        mimo_failure_reason: args.mimoFailureReason,
+        remaining_credits: args.remainingCredits,
+        error_message: null,
+        updated_at: now,
+        completed_at: now,
+        failed_at: null,
+      })
+      .eq("client_request_id", args.clientRequestID)
+      .eq("user_id", args.userID)
+
+    if (error) {
+      throw error
+    }
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2]",
+      serializeGenerationError({
+        provider: args.provider,
+        code: "authenticated_generation_job_complete_failed",
+        statusCode: 500,
+        internalError: error instanceof Error ? error.message : String(error),
+      })
+    )
+  }
+}
+
+async function markAuthenticatedGenerationJobFailed(
+  adminClient: any,
+  clientRequestID: string,
+  errorMessage: string
+): Promise<void> {
+  try {
+    const now = new Date().toISOString()
+    const { error } = await adminClient
+      .from("generation_jobs")
+      .update({
+        status: "failed",
+        error_message: truncateDiagnosticText(errorMessage, 1000),
+        updated_at: now,
+        failed_at: now,
+      })
+      .eq("client_request_id", clientRequestID)
+
+    if (error) {
+      throw error
+    }
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2]",
+      serializeGenerationError({
+        code: "authenticated_generation_job_fail_update_failed",
         statusCode: 500,
         internalError: error instanceof Error ? error.message : String(error),
       })

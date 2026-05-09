@@ -198,12 +198,31 @@ struct SupabaseGenerateMemoryResult {
     let memory: MemoryEntry
     let remainingCredits: Int
     let guestJobID: String?
+    let clientRequestID: String?
 }
 
 struct SupabaseGuestGenerationRecoveryResult {
     let guestJobID: String
     let memory: MemoryEntry
     let remainingCredits: Int
+}
+
+struct SupabaseGenerationJobRecord: Decodable {
+    let id: String
+    let clientRequestID: String
+    let status: String
+    let memoryID: String?
+    let errorMessage: String?
+    let remainingCredits: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case clientRequestID = "client_request_id"
+        case status
+        case memoryID = "memory_id"
+        case errorMessage = "error_message"
+        case remainingCredits = "remaining_credits"
+    }
 }
 
 enum SupabaseEmailSignUpResult {

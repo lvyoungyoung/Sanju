@@ -144,6 +144,7 @@ struct PendingGeneratedMemoryImage: Codable, Hashable {
     let startedAt: Date
     let previousMemoryIDs: [UUID]
     let guestJobID: String?
+    let clientRequestID: String?
     let imageData: Data
 }
 

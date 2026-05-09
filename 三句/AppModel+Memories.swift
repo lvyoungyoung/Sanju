@@ -10,6 +10,7 @@ private struct GenerationRequestContext {
     var session: SupabaseSession
     let existingMemoryIDs: Set<UUID>
     let guestJobID: String?
+    let clientRequestID: String?
 }
 
 private enum GenerationRequestOutcome {
@@ -80,11 +81,13 @@ extension AppModel {
         let session = try await ensureValidSession()
         let existingMemoryIDs = Set(memories.map(\.id))
         let guestJobID = session.isAnonymous ? UUID().uuidString.lowercased() : nil
+        let clientRequestID = UUID().uuidString.lowercased()
 
         pendingGeneratedMemoryImage = PendingGeneratedMemoryImage(
             startedAt: .now,
             previousMemoryIDs: Array(existingMemoryIDs),
             guestJobID: guestJobID,
+            clientRequestID: clientRequestID,
             imageData: memoryImageData
         )
         persistPendingGeneratedMemoryImage()
@@ -92,7 +95,8 @@ extension AppModel {
         return GenerationRequestContext(
             session: session,
             existingMemoryIDs: existingMemoryIDs,
-            guestJobID: guestJobID
+            guestJobID: guestJobID,
+            clientRequestID: clientRequestID
         )
     }
 
@@ -104,7 +108,8 @@ extension AppModel {
             let result = try await requestGeneratedMemorySentences(
                 session: context.session,
                 imageData: images.analysisImageData,
-                guestJobID: context.guestJobID
+                guestJobID: context.guestJobID,
+                clientRequestID: context.clientRequestID
             )
             return .generated(result, context.session)
         } catch {
@@ -144,7 +149,8 @@ extension AppModel {
             let result = try await requestGeneratedMemorySentences(
                 session: refreshedSession,
                 imageData: images.analysisImageData,
-                guestJobID: context.guestJobID
+                guestJobID: context.guestJobID,
+                clientRequestID: context.clientRequestID
             )
             return .generated(result, refreshedSession)
         } catch {
@@ -156,14 +162,16 @@ extension AppModel {
     private func requestGeneratedMemorySentences(
         session: SupabaseSession,
         imageData: Data,
-        guestJobID: String?
+        guestJobID: String?,
+        clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult {
         try await supabaseService.generateMemorySentences(
             session: session,
             imageData: imageData,
             englishLevel: englishLevel,
             languageStyle: languageStyle,
-            guestJobID: guestJobID
+            guestJobID: guestJobID,
+            clientRequestID: clientRequestID
         )
     }
 
@@ -818,6 +826,20 @@ extension AppModel {
             )
         }
 
+        if let clientRequestID = pendingGeneratedMemoryImage?.clientRequestID {
+            return await recoverAuthenticatedGeneratedMemoryIfNeeded(
+                clientRequestID: clientRequestID,
+                previousMemoryIDs: previousMemoryIDs,
+                session: session,
+                retryDelays: [
+                    .milliseconds(800),
+                    .seconds(2),
+                    .seconds(3),
+                    .seconds(4)
+                ]
+            )
+        }
+
         let retryDelays: [Duration] = [
             .milliseconds(800),
             .seconds(2),
@@ -865,6 +887,21 @@ extension AppModel {
                 session: session
             )
         }
+
+        if let clientRequestID = pendingRecovery.clientRequestID {
+            return await recoverAuthenticatedGeneratedMemoryIfNeeded(
+                clientRequestID: clientRequestID,
+                previousMemoryIDs: previousMemoryIDs,
+                session: session,
+                retryDelays: [
+                    .zero,
+                    .seconds(5),
+                    .seconds(10),
+                    .seconds(20)
+                ]
+            )
+        }
+
         let retryDelays: [Duration] = [
             .zero,
             .seconds(5),
@@ -888,6 +925,86 @@ extension AppModel {
         }
 
         return nil
+    }
+
+    private func recoverAuthenticatedGeneratedMemoryIfNeeded(
+        clientRequestID: String,
+        previousMemoryIDs: Set<UUID>,
+        session: SupabaseSession,
+        retryDelays: [Duration]
+    ) async -> MemoryEntry? {
+        guard !clientRequestID.isEmpty else { return nil }
+
+        for delay in retryDelays {
+            if delay != .zero {
+                try? await Task.sleep(for: delay)
+            }
+
+            guard let job = await fetchGenerationJobForRecovery(
+                session: session,
+                clientRequestID: clientRequestID
+            ) else {
+                continue
+            }
+
+            switch job.status {
+            case "completed":
+                if let remainingCredits = job.remainingCredits {
+                    self.remainingCredits = remainingCredits
+                    persistCredits()
+                }
+
+                guard let memoryIDString = job.memoryID,
+                      let memoryID = UUID(uuidString: memoryIDString) else {
+                    continue
+                }
+
+                let didRefresh = await runRecoveryAttemptWithTimeout {
+                    await self.syncMemoriesFromRemote(refreshCounts: true, downloadsImages: false)
+                }
+                guard didRefresh else { continue }
+
+                if let recoveredMemory = memory(withID: memoryID) {
+                    return recoveredMemory
+                }
+
+                if let recoveredMemory = firstRecoveredMemory(after: previousMemoryIDs) {
+                    return recoveredMemory
+                }
+
+            case "failed":
+                clearPendingGeneratedMemoryImage()
+                return nil
+
+            default:
+                continue
+            }
+        }
+
+        return nil
+    }
+
+    private func fetchGenerationJobForRecovery(
+        session: SupabaseSession,
+        clientRequestID: String
+    ) async -> SupabaseGenerationJobRecord? {
+        await withTaskGroup(of: SupabaseGenerationJobRecord?.self) { group in
+            group.addTask {
+                try? await self.supabaseService.fetchGenerationJob(
+                    session: session,
+                    clientRequestID: clientRequestID
+                )
+            }
+
+            group.addTask { [recoveryRequestTimeout] in
+                try? await Task.sleep(for: recoveryRequestTimeout)
+                return nil
+            }
+
+            let result = await group.next() ?? nil
+            group.cancelAll()
+            return result
+        }
     }
 
     private func recoverAnonymousGeneratedMemoryIfNeeded(

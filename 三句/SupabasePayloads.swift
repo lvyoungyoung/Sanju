@@ -182,12 +182,14 @@ struct SupabaseGenerateMemoryRequest: Encodable {
     let englishLevel: String
     let languageStyle: String
     let guestJobID: String?
+    let clientRequestID: String?
 
     enum CodingKeys: String, CodingKey {
         case imageBase64
         case englishLevel
         case languageStyle
         case guestJobID
+        case clientRequestID
     }
 }
 
@@ -195,11 +197,13 @@ struct SupabaseGenerateMemoryResponse: Decodable {
     let memory: SupabaseGeneratedMemory
     let remainingCredits: Int
     let guestJobID: String?
+    let clientRequestID: String?
 
     enum CodingKeys: String, CodingKey {
         case memory
         case remainingCredits
         case guestJobID
+        case clientRequestID
     }
 }
 
