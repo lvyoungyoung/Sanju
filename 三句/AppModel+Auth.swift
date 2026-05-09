@@ -299,6 +299,10 @@ extension AppModel {
 
     func updateEnglishLevel(_ level: EnglishLevel) {
         englishLevel = level
+        if !languageStyle.isAvailable(for: level) {
+            languageStyle = .plain
+            defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
+        }
         defaults.set(level.rawValue, forKey: AppStorageKey.englishLevel)
         Task {
             await syncPreferences()
@@ -306,8 +310,8 @@ extension AppModel {
     }
 
     func updateLanguageStyle(_ style: LanguageStyle) {
-        languageStyle = style
-        defaults.set(style.rawValue, forKey: AppStorageKey.languageStyle)
+        languageStyle = style.isAvailable(for: englishLevel) ? style : .plain
+        defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
         Task {
             await syncPreferences()
         }
@@ -490,6 +494,10 @@ extension AppModel {
         if let rawStyle = defaults.string(forKey: AppStorageKey.languageStyle),
            let storedStyle = LanguageStyle(rawValue: rawStyle) {
             languageStyle = storedStyle
+        }
+        if !languageStyle.isAvailable(for: englishLevel) {
+            languageStyle = .plain
+            defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
         }
 
         loadLearningReminderSettings()
@@ -691,6 +699,9 @@ extension AppModel {
         remainingCredits = remoteProfile.availableGenerations
         englishLevel = EnglishLevel(rawValue: remoteProfile.englishLevel) ?? englishLevel
         languageStyle = LanguageStyle(rawValue: remoteProfile.languageStyle) ?? languageStyle
+        if !languageStyle.isAvailable(for: englishLevel) {
+            languageStyle = .plain
+        }
         defaults.set(englishLevel.rawValue, forKey: AppStorageKey.englishLevel)
         defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
     }

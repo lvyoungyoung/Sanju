@@ -77,7 +77,9 @@ struct ProfileView: View {
                     PreferenceCard(title: "语言风格", systemImage: "paintpalette") {
                         Picker("语言风格", selection: languageStyleBinding) {
                             ForEach(LanguageStyle.allCases) { style in
-                                Text(style.displayTitle).tag(style)
+                                Text(style.displayTitle)
+                                    .tag(style)
+                                    .disabled(!style.isAvailable(for: appModel.englishLevel))
                             }
                         }
                         .pickerStyle(.segmented)

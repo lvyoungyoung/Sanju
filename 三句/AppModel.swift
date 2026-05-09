@@ -203,6 +203,15 @@ enum LanguageStyle: String, CaseIterable, Codable, Identifiable {
             return L10n.string("language_style.lyrical", "抒情优雅")
         }
     }
+
+    func isAvailable(for englishLevel: EnglishLevel) -> Bool {
+        switch (englishLevel, self) {
+        case (.simple, .lyrical):
+            return false
+        default:
+            return true
+        }
+    }
 }
 
 enum AppStorageKey {
