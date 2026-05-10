@@ -446,21 +446,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Profile not found" }, 404)
     }
 
-    if ((profile.available_generations ?? 0) <= 0) {
-      return jsonResponse({ error: "No credits left" }, 403)
-    }
-
-    if (isGenerationViolationBanEnabled() && isFutureTimestamp(profile.generation_banned_until)) {
-      return jsonResponse(
-        {
-          error: "当前账号暂时无法生成，请稍后再试。",
-          code: "generation_banned",
-          bannedUntil: profile.generation_banned_until,
-        },
-        403
-      )
-    }
-
     const body = (await req.json()) as RequestBody
     const imageBase64 = body.imageBase64?.replace(/\s+/g, "").trim()
 
@@ -481,6 +466,101 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "guestJobID is required for anonymous users" }, 400)
     }
 
+    const createdAt = new Date().toISOString()
+    let existingGuestJob: { id: string; status: string; provider?: string | null } | null = null
+
+    if (!isAnonymous && authenticatedClientRequestID) {
+      const completedResponse = await loadCompletedAuthenticatedGenerationResponseIfNeeded(
+        adminClient,
+        {
+          clientRequestID: authenticatedClientRequestID,
+          userID: user.id,
+          fallbackRemainingCredits: profile.available_generations,
+        }
+      )
+
+      if (completedResponse) {
+        return completedResponse
+      }
+    }
+
+    if (isAnonymous) {
+      const { data: loadedGuestJob, error: existingGuestJobError } = await adminClient
+        .from("guest_generation_jobs")
+        .select("id, status, provider")
+        .eq("id", guestJobID)
+        .eq("user_id", user.id)
+        .maybeSingle()
+
+      if (existingGuestJobError) {
+        return jsonResponse(
+          {
+            error: "Failed to load guest generation job",
+            details: existingGuestJobError.message,
+          },
+          500
+        )
+      }
+
+      existingGuestJob = loadedGuestJob
+
+      if (
+        existingGuestJob?.status === "completed" ||
+        existingGuestJob?.status === "acknowledged"
+      ) {
+        const completedResponse = await loadCompletedGuestGenerationResponseIfNeeded(
+          adminClient,
+          {
+            guestJobID: guestJobID!,
+            userID: user.id,
+            fallbackCreatedAt: createdAt,
+            fallbackRemainingCredits: profile.available_generations,
+          }
+        )
+
+        if (completedResponse) {
+          return completedResponse
+        }
+      }
+
+      if (existingGuestJob?.status === "pending") {
+        return jsonResponse(
+          {
+            error: "生成仍在处理中，请稍后查看回忆。",
+            code: "generation_in_progress",
+            provider: "generation_job",
+          },
+          409
+        )
+      }
+
+      if (existingGuestJob?.status === "failed") {
+        return jsonResponse(
+          {
+            error: "生成失败，请重新生成。",
+            code: "generation_failed",
+            provider: "generation_job",
+          },
+          500
+        )
+      }
+    }
+
+    if ((profile.available_generations ?? 0) <= 0) {
+      return jsonResponse({ error: "No credits left" }, 403)
+    }
+
+    if (isGenerationViolationBanEnabled() && isFutureTimestamp(profile.generation_banned_until)) {
+      return jsonResponse(
+        {
+          error: "当前账号暂时无法生成，请稍后再试。",
+          code: "generation_banned",
+          bannedUntil: profile.generation_banned_until,
+        },
+        403
+      )
+    }
+
     generationSlotRequestID = crypto.randomUUID()
     generationSlotAcquired = await tryAcquireGenerationSlot(adminClient, {
       requestID: generationSlotRequestID,
@@ -498,22 +578,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const createdAt = new Date().toISOString()
-
     if (!isAnonymous && authenticatedClientRequestID) {
-      const completedResponse = await loadCompletedAuthenticatedGenerationResponseIfNeeded(
-        adminClient,
-        {
-          clientRequestID: authenticatedClientRequestID,
-          userID: user.id,
-          fallbackRemainingCredits: profile.available_generations,
-        }
-      )
-
-      if (completedResponse) {
-        return completedResponse
-      }
-
       const { error: jobError } = await adminClient.from("generation_jobs").upsert(
         {
           client_request_id: authenticatedClientRequestID,
@@ -540,23 +605,6 @@ Deno.serve(async (req) => {
 
     if (isAnonymous) {
       guestImagePath = `${user.id}/guest/${guestJobID}.jpg`
-
-      const { data: existingGuestJob, error: existingGuestJobError } = await adminClient
-        .from("guest_generation_jobs")
-        .select("id, status, provider")
-        .eq("id", guestJobID)
-        .eq("user_id", user.id)
-        .maybeSingle()
-
-      if (existingGuestJobError) {
-        return jsonResponse(
-          {
-            error: "Failed to load guest generation job",
-            details: existingGuestJobError.message,
-          },
-          500
-        )
-      }
 
       if (!existingGuestJob) {
         const { error: insertJobError } = await adminClient
@@ -604,48 +652,6 @@ Deno.serve(async (req) => {
         }
 
         guestImageUploaded = true
-      } else if (
-        existingGuestJob.status === "completed" ||
-        existingGuestJob.status === "acknowledged"
-      ) {
-        const { data: completedJob, error: completedJobError } = await adminClient
-          .from("guest_generation_jobs")
-          .select("id, created_at, remaining_credits, sentences, provider")
-          .eq("id", guestJobID)
-          .eq("user_id", user.id)
-          .maybeSingle()
-
-        if (completedJobError) {
-          return jsonResponse(
-            {
-              error: "Failed to load completed guest generation job",
-              details: completedJobError.message,
-            },
-            500
-          )
-        }
-
-        const sentences = Array.isArray(completedJob?.sentences) ? completedJob.sentences : []
-        if (sentences.length !== 3) {
-          return jsonResponse({ error: "Completed guest generation job is invalid" }, 500)
-        }
-
-        return jsonResponse({
-          memory: {
-            id: crypto.randomUUID(),
-            imagePath: "",
-            createdAt: completedJob?.created_at ?? createdAt,
-            provider: completedJob?.provider ?? null,
-            sentences: sentences.map((sentence: any) => ({
-              id: crypto.randomUUID(),
-              english: String(sentence?.english ?? "").trim(),
-              chinese: String(sentence?.chinese ?? "").trim(),
-              is_favorite: false,
-            })),
-          },
-          remainingCredits: completedJob?.remaining_credits ?? profile.available_generations,
-          guestJobID,
-        })
       }
     }
 
@@ -847,6 +853,7 @@ Deno.serve(async (req) => {
     const finalizeResult = await finalizeAuthenticatedGeneration(adminClient, {
       memoryID,
       userID: user.id,
+      clientRequestID: authenticatedClientRequestID,
       imagePath,
       createdAt,
       provider,
@@ -1355,6 +1362,7 @@ async function finalizeAuthenticatedGeneration(
   args: {
     memoryID: string
     userID: string
+    clientRequestID: string | null
     imagePath: string
     createdAt: string
     provider: ProviderName
@@ -1373,6 +1381,7 @@ async function finalizeAuthenticatedGeneration(
   const { data, error } = await adminClient.rpc("finalize_authenticated_generation", {
     p_memory_id: args.memoryID,
     p_user_id: args.userID,
+    p_client_request_id: args.clientRequestID,
     p_image_path: args.imagePath,
     p_created_at: args.createdAt,
     p_provider: args.provider,
@@ -1563,6 +1572,55 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     },
     remainingCredits: job.remaining_credits ?? args.fallbackRemainingCredits,
     clientRequestID: args.clientRequestID,
+  })
+}
+
+async function loadCompletedGuestGenerationResponseIfNeeded(
+  adminClient: any,
+  args: {
+    guestJobID: string
+    userID: string
+    fallbackCreatedAt: string
+    fallbackRemainingCredits: number
+  }
+): Promise<Response | null> {
+  const { data: completedJob, error: completedJobError } = await adminClient
+    .from("guest_generation_jobs")
+    .select("id, created_at, remaining_credits, sentences, provider")
+    .eq("id", args.guestJobID)
+    .eq("user_id", args.userID)
+    .maybeSingle()
+
+  if (completedJobError) {
+    return jsonResponse(
+      {
+        error: "Failed to load completed guest generation job",
+        details: completedJobError.message,
+      },
+      500
+    )
+  }
+
+  const sentences = Array.isArray(completedJob?.sentences) ? completedJob.sentences : []
+  if (sentences.length !== 3) {
+    return null
+  }
+
+  return jsonResponse({
+    memory: {
+      id: crypto.randomUUID(),
+      imagePath: "",
+      createdAt: completedJob?.created_at ?? args.fallbackCreatedAt,
+      provider: completedJob?.provider ?? null,
+      sentences: sentences.map((sentence: any) => ({
+        id: crypto.randomUUID(),
+        english: String(sentence?.english ?? "").trim(),
+        chinese: String(sentence?.chinese ?? "").trim(),
+        is_favorite: false,
+      })),
+    },
+    remainingCredits: completedJob?.remaining_credits ?? args.fallbackRemainingCredits,
+    guestJobID: args.guestJobID,
   })
 }
 
