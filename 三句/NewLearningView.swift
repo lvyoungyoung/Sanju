@@ -509,15 +509,16 @@ struct NewLearningView: View {
             resetRecoveryCancelButtonVisibility()
         } catch {
             let localizedError = error.localizedDescription
-            if !isTransientGenerationError(localizedError) {
+            if appModel.hasPendingGeneratedMemoryRecoveryCandidate() ||
+                isTransientGenerationError(localizedError) {
+                statusTask.cancel()
+                startPendingRecoveryTaskIfNeeded()
+            } else {
                 statusTask.cancel()
                 appModel.clearPendingGeneratedMemoryImage()
                 errorMessage = localizedError
                 isWaitingForRecoveredGeneration = false
                 resetRecoveryCancelButtonVisibility()
-            } else {
-                statusTask.cancel()
-                startPendingRecoveryTaskIfNeeded()
             }
         }
 

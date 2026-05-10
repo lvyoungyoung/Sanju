@@ -181,9 +181,23 @@ extension AppModel {
     }
 
     private func clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for error: Error) {
+        if hasPendingGeneratedMemoryRecoveryCandidate() {
+            return
+        }
+
         if !shouldAttemptGenerationRecovery(for: error) {
             clearPendingGeneratedMemoryImage()
         }
+    }
+
+    func hasPendingGeneratedMemoryRecoveryCandidate() -> Bool {
+        guard let pendingGeneratedMemoryImage,
+              !isPendingGeneratedRecoveryExpired(pendingGeneratedMemoryImage) else {
+            return false
+        }
+
+        return pendingGeneratedMemoryImage.guestJobID?.isEmpty == false ||
+            pendingGeneratedMemoryImage.clientRequestID != nil
     }
 
     private func finalizeRecoveredGeneratedMemory(
