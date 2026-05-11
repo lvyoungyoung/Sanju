@@ -896,14 +896,15 @@ extension AppModel {
         let previousMemoryIDs = Set(pendingRecovery.previousMemoryIDs)
         guard let session = try? await ensureValidSession() else { return nil }
         if session.isAnonymous {
-            return await recoverAnonymousGeneratedMemoryIfNeeded(
+            let recoveredMemory = await recoverAnonymousGeneratedMemoryIfNeeded(
                 previousMemoryIDs: previousMemoryIDs,
                 session: session
             )
+            return finalizeExplicitPendingRecoveryResult(recoveredMemory)
         }
 
         if let clientRequestID = pendingRecovery.clientRequestID {
-            return await recoverAuthenticatedGeneratedMemoryIfNeeded(
+            let recoveredMemory = await recoverAuthenticatedGeneratedMemoryIfNeeded(
                 clientRequestID: clientRequestID,
                 previousMemoryIDs: previousMemoryIDs,
                 session: session,
@@ -914,6 +915,7 @@ extension AppModel {
                     .seconds(20)
                 ]
             )
+            return finalizeExplicitPendingRecoveryResult(recoveredMemory)
         }
 
         let retryDelays: [Duration] = [
@@ -934,11 +936,20 @@ extension AppModel {
             guard didRefresh else { continue }
 
             if let recoveredMemory = firstRecoveredMemory(after: previousMemoryIDs) {
-                return recoveredMemory
+                return finalizeExplicitPendingRecoveryResult(recoveredMemory)
             }
         }
 
-        return nil
+        return finalizeExplicitPendingRecoveryResult(nil)
+    }
+
+    private func finalizeExplicitPendingRecoveryResult(_ recoveredMemory: MemoryEntry?) -> MemoryEntry? {
+        guard let recoveredMemory else {
+            clearPendingGeneratedMemoryImage()
+            return nil
+        }
+
+        return recoveredMemory
     }
 
     private func recoverAuthenticatedGeneratedMemoryIfNeeded(

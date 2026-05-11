@@ -4,6 +4,8 @@ import UIKit
 
 struct NewLearningView: View {
     private let recoveryResultUnavailableMessage = "暂未从云端获取到结果，请重试。"
+    private let networkUnavailableMessage = "当前网络不可用，请连接网络后再试。"
+    private let networkUnavailableRecoveryMessage = "当前网络不可用，请连接网络后获取结果。"
     private let generationStepDisplayDuration: Duration = .seconds(2)
     private let photoLoadTimeout: Duration = .seconds(20)
 
@@ -126,7 +128,9 @@ struct NewLearningView: View {
                                 }
                             }
                         }
-                    } else if !shouldHideActionsForRecoveryFailure {
+                    } else if shouldShowRecoveryFailureActions {
+                        recoveryFailureActions
+                    } else {
                         VStack(spacing: AppSpacing.medium) {
                             Button {
                                 guard !isRecoveryInteractionLocked else { return }
@@ -202,6 +206,10 @@ struct NewLearningView: View {
         .toolbar(.hidden, for: .navigationBar)
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
+            startPendingRecoveryTaskIfNeeded()
+        }
+        .onChange(of: appModel.isNetworkAvailable) { _, isAvailable in
+            guard isAvailable else { return }
             startPendingRecoveryTaskIfNeeded()
         }
         .onChange(of: displayedMemory?.id) { _, _ in
@@ -369,6 +377,48 @@ struct NewLearningView: View {
         }
     }
 
+    private var recoveryFailureActions: some View {
+        VStack(spacing: AppSpacing.medium) {
+            Button {
+                guard !isRecoveryInteractionLocked else { return }
+                startPendingRecoveryTaskIfNeeded()
+            } label: {
+                Text("重新获取结果")
+                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.large)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 1.00, green: 0.72, blue: 0.10),
+                                        Color(red: 0.98, green: 0.56, blue: 0.00)
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!appModel.isNetworkAvailable)
+            .opacity(appModel.isNetworkAvailable ? 1 : 0.55)
+
+            Text(appModel.isNetworkAvailable ? "不会重新生成，只会尝试获取刚才那次生成的结果。" : "网络恢复后会自动尝试获取结果。")
+                .font(.system(size: AppFontSize.caption))
+                .foregroundStyle(AppTextColor.subtle)
+                .multilineTextAlignment(.center)
+        }
+        .padding(AppSpacing.xLarge)
+        .background(
+            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                .fill(Color.white)
+        )
+        .appCardShadow()
+    }
+
     private enum PhotoLoadError: Error {
         case timedOut
     }
@@ -474,6 +524,13 @@ struct NewLearningView: View {
 
     private func generateSentences() async {
         guard let selectedImageData, !isRecoveryInteractionLocked else { return }
+        guard appModel.isNetworkAvailable else {
+            errorMessage = appModel.hasPendingGeneratedMemoryRecoveryCandidate()
+                ? networkUnavailableRecoveryMessage
+                : networkUnavailableMessage
+            isWaitingForRecoveredGeneration = false
+            return
+        }
 
         isGenerating = true
         appModel.isGeneratingMemory = true
@@ -610,10 +667,12 @@ struct NewLearningView: View {
         shouldShowRecoveryLoadingState || shouldShowPendingRecoveryLoadingState
     }
 
-    private var shouldHideActionsForRecoveryFailure: Bool {
+    private var shouldShowRecoveryFailureActions: Bool {
         selectedImageData != nil &&
             displayedMemory == nil &&
-            errorMessage == recoveryResultUnavailableMessage
+            appModel.hasPendingGeneratedMemoryRecoveryCandidate() &&
+            (errorMessage == recoveryResultUnavailableMessage ||
+                errorMessage == networkUnavailableRecoveryMessage)
     }
 
     private func scheduleRecoveryCancelButtonReveal() {
@@ -652,6 +711,12 @@ struct NewLearningView: View {
         guard displayedMemory == nil else { return }
         guard !appModel.isPendingGeneratedRecoveryExpired(pendingGeneratedMemoryImage) else {
             appModel.clearPendingGeneratedMemoryImage()
+            return
+        }
+        guard appModel.isNetworkAvailable else {
+            isWaitingForRecoveredGeneration = false
+            resetRecoveryCancelButtonVisibility()
+            errorMessage = networkUnavailableRecoveryMessage
             return
         }
 

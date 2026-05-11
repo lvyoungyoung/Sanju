@@ -88,6 +88,8 @@ struct ProfileView: View {
 
                 learningReminderSection
 
+                aboutSection
+
                 accountSection
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -311,50 +313,6 @@ struct ProfileView: View {
                     .padding(.vertical, 4)
             }
 
-            if let termsOfServiceURL = AppLinks.termsOfService {
-                Link(destination: termsOfServiceURL) {
-                    HStack {
-                        Image(systemName: "doc.text")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("用户服务协议")
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground))
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(appModel.isDeletingAccount)
-            }
-
-            if let privacyPolicyURL = AppLinks.privacyPolicy {
-                Link(destination: privacyPolicyURL) {
-                    HStack {
-                        Image(systemName: "hand.raised")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("隐私协议")
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                            .fill(Color(.secondarySystemGroupedBackground))
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(appModel.isDeletingAccount)
-            }
-
 #if DEBUG || STAGING
             Button(role: .destructive) {
                 isShowingLocalTestResetAlert = true
@@ -381,6 +339,36 @@ struct ProfileView: View {
             .buttonStyle(.plain)
             .disabled(appModel.isDeletingAccount)
 #endif
+        }
+    }
+
+    private var aboutSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("关于")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.black.opacity(0.5))
+
+            NavigationLink {
+                AboutUsView()
+            } label: {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("关于我们")
+                        .font(.system(size: 16, weight: .semibold))
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+                .foregroundStyle(Color(.secondaryLabel))
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                        .fill(Color(.secondarySystemGroupedBackground))
+                )
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -1415,6 +1403,99 @@ private struct PurchaseMiniPill: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(Color.white.opacity(0.84), in: Capsule())
+    }
+}
+
+private struct AboutUsView: View {
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: AppSpacing.large) {
+                VStack(spacing: 0) {
+                    AboutInfoRow(title: "运营主体", value: "三言信息智能")
+                    Divider()
+                    AboutInfoRow(title: "备案号", value: "暂未填写")
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                        .fill(Color.white)
+                )
+                .appCardShadow()
+
+                VStack(spacing: AppSpacing.medium) {
+                    if let termsOfServiceURL = AppLinks.termsOfService {
+                        AboutLinkRow(
+                            title: "用户服务协议",
+                            systemImage: "doc.text",
+                            destination: termsOfServiceURL
+                        )
+                    }
+
+                    if let privacyPolicyURL = AppLinks.privacyPolicy {
+                        AboutLinkRow(
+                            title: "隐私协议",
+                            systemImage: "hand.raised",
+                            destination: privacyPolicyURL
+                        )
+                    }
+                }
+            }
+            .padding(AppSpacing.xLarge)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("关于我们")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+    }
+}
+
+private struct AboutInfoRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.large) {
+            Text(title)
+                .font(.system(size: AppFontSize.body, weight: .semibold))
+                .foregroundStyle(AppTextColor.secondary)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: AppFontSize.body, weight: .medium))
+                .foregroundStyle(AppTextColor.primary)
+                .multilineTextAlignment(.trailing)
+        }
+        .padding(.horizontal, AppSpacing.xLarge)
+        .padding(.vertical, AppSpacing.large)
+    }
+}
+
+private struct AboutLinkRow: View {
+    let title: String
+    let systemImage: String
+    let destination: URL
+
+    var body: some View {
+        Link(destination: destination) {
+            HStack {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                Spacer()
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .foregroundStyle(Color(.secondaryLabel))
+            .padding(18)
+            .background(
+                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                    .fill(Color.white)
+            )
+            .appCardShadow()
+        }
+        .buttonStyle(.plain)
     }
 }
 
