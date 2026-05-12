@@ -6,6 +6,7 @@ struct NewLearningView: View {
     private let recoveryResultUnavailableMessage = "暂未从云端获取到结果，请重试。"
     private let networkUnavailableMessage = "当前网络不可用，请连接网络后再试。"
     private let networkUnavailableRecoveryMessage = "当前网络不可用，请连接网络后获取结果。"
+    private let photoSelectionNetworkRequiredMessage = "请连接网络"
     private let generationStepDisplayDuration: Duration = .seconds(2)
     private let photoLoadTimeout: Duration = .seconds(20)
 
@@ -42,14 +43,12 @@ struct NewLearningView: View {
 
                 if selectedImageData == nil && !isLoadingSelectedPhoto {
                     Button {
-                        guard !isRecoveryInteractionLocked else { return }
-                        selectedItem = nil
-                        isShowingPhotoPicker = true
+                        beginPhotoSelection()
                     } label: {
                         uploadCard
                     }
                     .buttonStyle(.plain)
-                    .disabled(isRecoveryInteractionLocked)
+                    .disabled(isPhotoSelectionDisabled)
 
                     Text("图片会被发送给AI分析，请谨慎上传包含敏感信息的图片")
                         .font(.system(size: AppFontSize.metadata))
@@ -108,23 +107,20 @@ struct NewLearningView: View {
                                         .multilineTextAlignment(.center)
 
                                     Button {
-                                        guard !isRecoveryInteractionLocked else { return }
-                                        selectedItem = nil
-                                        shouldClearGeneratedMemoryOnNextPhotoSelection = true
-                                        isShowingPhotoPicker = true
+                                        beginPhotoSelection(clearingGeneratedMemory: true)
                                     } label: {
                                         Text("再来一张")
                                             .font(.system(size: AppFontSize.field, weight: .semibold))
-                                            .foregroundStyle(.orange)
+                                            .foregroundStyle(appModel.isNetworkAvailable ? .orange : Color(.tertiaryLabel))
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, AppSpacing.medium)
                                             .background(
                                                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                                    .fill(Color(red: 1.0, green: 0.98, blue: 0.95))
+                                                    .fill(appModel.isNetworkAvailable ? Color(red: 1.0, green: 0.98, blue: 0.95) : Color(.secondarySystemGroupedBackground))
                                             )
                                     }
                                     .buttonStyle(.plain)
-                                    .disabled(isRecoveryInteractionLocked)
+                                    .disabled(isPhotoSelectionDisabled)
                                 }
                             }
                         }
@@ -327,29 +323,31 @@ struct NewLearningView: View {
                     }
                     .appCardShadow()
             } else {
+                let isNetworkAvailable = appModel.isNetworkAvailable
+                let accentColor = isNetworkAvailable ? Color(red: 0.98, green: 0.65, blue: 0.00) : Color(.tertiaryLabel)
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                     .fill(Color(.secondarySystemGroupedBackground))
                     .frame(height: 266)
                     .overlay {
                         RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                             .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [7]))
-                            .foregroundStyle(Color(red: 0.92, green: 0.66, blue: 0.49))
+                            .foregroundStyle(isNetworkAvailable ? Color(red: 0.92, green: 0.66, blue: 0.49) : Color(.tertiaryLabel))
                     }
                     .overlay {
                         VStack(spacing: AppSpacing.xLarge) {
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(Color(red: 0.98, green: 0.95, blue: 0.91))
+                                .fill(isNetworkAvailable ? Color(red: 0.98, green: 0.95, blue: 0.91) : Color(.systemGray5))
                                 .frame(width: 108, height: 104)
                                 .overlay {
                                     Image(systemName: "square.and.arrow.up")
                                         .font(.system(size: AppFontSize.pageTitle, weight: .medium))
-                                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                                        .foregroundStyle(accentColor)
                                 }
 
                             VStack(spacing: AppSpacing.small) {
-                                Text("点击上传照片")
+                                Text(isNetworkAvailable ? "点击上传照片" : photoSelectionNetworkRequiredMessage)
                                     .font(.system(size: AppFontSize.field, weight: .semibold))
-                                    .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                                    .foregroundStyle(accentColor)
                             }
                         }
                         .padding(.horizontal, AppSpacing.section)
@@ -510,6 +508,13 @@ struct NewLearningView: View {
         }
     }
 
+    private func beginPhotoSelection(clearingGeneratedMemory: Bool = false) {
+        guard !isPhotoSelectionDisabled else { return }
+        selectedItem = nil
+        shouldClearGeneratedMemoryOnNextPhotoSelection = clearingGeneratedMemory
+        isShowingPhotoPicker = true
+    }
+
     private func clearDisplayedDraftForNewPhotoSelection() {
         appModel.draftLearningImageData = nil
         appModel.draftLearningItemIdentifier = nil
@@ -665,6 +670,10 @@ struct NewLearningView: View {
 
     private var isRecoveryInteractionLocked: Bool {
         shouldShowRecoveryLoadingState || shouldShowPendingRecoveryLoadingState
+    }
+
+    private var isPhotoSelectionDisabled: Bool {
+        isRecoveryInteractionLocked || !appModel.isNetworkAvailable
     }
 
     private var shouldShowRecoveryFailureActions: Bool {
