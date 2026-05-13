@@ -42,14 +42,14 @@ struct MemoriesView: View {
                     if appModel.memories.isEmpty {
                         if appModel.isSyncingRemoteMemories || shouldShowInitialLoadingState {
                             SyncLoadingState(
-                                title: "正在同步回忆...",
-                                subtitle: "马上就好，正在更新你的回忆内容"
+                                title: L10n.string("memories.syncing.title", "正在同步回忆..."),
+                                subtitle: L10n.string("memories.syncing.subtitle", "马上就好，正在更新你的回忆内容")
                             )
                             .padding(.top, 80)
                         } else {
                             EmptyStateView(
-                                title: "还没有回忆",
-                                subtitle: "在“新的”里上传第一张照片，生成你的第一组三句英语。"
+                                title: L10n.string("memories.empty.title", "还没有回忆"),
+                                subtitle: L10n.string("memories.empty.subtitle", "在“新的”里上传第一张照片，生成你的第一组三句话。")
                             )
                             .padding(.top, 36)
                         }
@@ -79,7 +79,7 @@ struct MemoriesView: View {
                                                 Button(role: .destructive) {
                                                     memoryPendingDeletion = item.memory
                                                 } label: {
-                                                    Label("删除", systemImage: "trash")
+                                                    Label(L10n.string("common.delete", "删除"), systemImage: "trash")
                                                 }
                                             }
                                         }
@@ -118,18 +118,18 @@ struct MemoriesView: View {
                 guard appModel.isSignedIn else { return }
                 await appModel.refreshRemoteContent()
             }
-            .alert("删除这条回忆？", isPresented: memoryDeleteAlertBinding) {
-                Button("删除", role: .destructive) {
+            .alert(L10n.string("memory.delete.alert_title", "删除这条回忆？"), isPresented: memoryDeleteAlertBinding) {
+                Button(L10n.string("common.delete", "删除"), role: .destructive) {
                     if let memoryID = memoryPendingDeletion?.id {
                         appModel.deleteMemory(memoryID: memoryID)
                     }
                     memoryPendingDeletion = nil
                 }
-                Button("取消", role: .cancel) {
+                Button(L10n.string("common.cancel", "取消"), role: .cancel) {
                     memoryPendingDeletion = nil
                 }
             } message: {
-                Text("删除后，这张图片和对应的三句话都会被移除。")
+                Text(L10n.string("memory.delete.alert_message", "删除后，这张图片和对应的三句话都会被移除。"))
             }
         }
     }
@@ -161,11 +161,11 @@ struct MemoriesView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    Text("回忆")
+                    Text(L10n.string("memories.hero.eyebrow", "回忆"))
                         .font(.system(size: AppFontSize.sectionLabel, weight: .bold))
                         .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
 
-                    Text("把你记录过的画面留成一页一页可回看的学习素材")
+                    Text(L10n.string("memories.hero.title", "把你记录过的画面留成一页一页可回看的学习素材"))
                         .font(.system(size: heroTitleFontSize, weight: .bold))
                         .foregroundStyle(AppTextColor.primary)
                         .lineSpacing(4)
@@ -182,7 +182,7 @@ struct MemoriesView: View {
                     .font(.system(size: AppFontSize.heroStat, weight: .bold))
                     .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
 
-                Text("已记录")
+                Text(L10n.string("memories.hero.count_label", "已记录"))
                     .font(.system(size: AppFontSize.badge, weight: .medium))
                     .foregroundStyle(AppTextColor.tertiary)
             }
@@ -254,7 +254,11 @@ struct MemoriesView: View {
         Group {
             if hasMoreMemoriesToDisplay {
                 VStack(spacing: 6) {
-                    Text(isLoadingMoreMemories ? "正在加载更多回忆..." : "继续下滑以加载更多回忆")
+                    Text(
+                        isLoadingMoreMemories
+                        ? L10n.string("memories.load_more.loading", "正在加载更多回忆...")
+                        : L10n.string("memories.load_more.prompt", "继续下滑以加载更多回忆")
+                    )
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -353,7 +357,7 @@ private struct PendingCloudSyncProgressCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text("正在同步本地改动到云端")
+                Text(L10n.string("memories.pending_sync.title", "正在同步本地改动到云端"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
 
@@ -386,8 +390,8 @@ private struct MemorySection: Identifiable {
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日"
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("yMMMMd")
         return formatter
     }()
 }

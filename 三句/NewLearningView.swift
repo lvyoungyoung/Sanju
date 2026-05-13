@@ -3,10 +3,10 @@ import SwiftUI
 import UIKit
 
 struct NewLearningView: View {
-    private let recoveryResultUnavailableMessage = "暂未从云端获取到结果，请重试。"
-    private let networkUnavailableMessage = "当前网络不可用，请连接网络后再试。"
-    private let networkUnavailableRecoveryMessage = "当前网络不可用，请连接网络后获取结果。"
-    private let photoSelectionNetworkRequiredMessage = "请连接网络"
+    private let recoveryResultUnavailableMessage = L10n.string("new.recovery.result_unavailable", "暂未从云端获取到结果，请重试。")
+    private let networkUnavailableMessage = L10n.string("new.network.unavailable", "当前网络不可用，请连接网络后再试。")
+    private let networkUnavailableRecoveryMessage = L10n.string("new.recovery.network_unavailable", "当前网络不可用，请连接网络后获取结果。")
+    private let photoSelectionNetworkRequiredMessage = L10n.string("new.photo_selection.network_required", "请连接网络")
     private let generationStepDisplayDuration: Duration = .seconds(2)
     private let photoLoadTimeout: Duration = .seconds(20)
 
@@ -18,12 +18,13 @@ struct NewLearningView: View {
     @State private var shouldClearGeneratedMemoryOnNextPhotoSelection = false
     @State private var isLoadingSelectedPhoto = false
     @State private var isGenerating = false
-    @State private var generationStatus = "正在识别图片内容..."
+    @State private var generationStatus = L10n.string("new.generation.initial_status", "正在识别图片内容...")
     @State private var generationStep = 0
     @State private var errorMessage: String?
     @State private var isShowingPurchasePrompt = false
     @State private var isShowingPurchaseSheet = false
     @State private var isWaitingForRecoveredGeneration = false
+    @State private var recoveryFailureState: RecoveryFailureState?
     @State private var hasAttemptedPendingRecovery = false
     @State private var isRecoveryCancelButtonVisible = false
     @State private var recoveryCancelButtonRevealTask: Task<Void, Never>?
@@ -50,7 +51,7 @@ struct NewLearningView: View {
                     .buttonStyle(.plain)
                     .disabled(isPhotoSelectionDisabled)
 
-                    Text("图片会被发送给AI分析，请谨慎上传包含敏感信息的图片")
+                    Text(L10n.string("new.upload.safety_hint", "图片会被发送给AI分析，请谨慎上传包含敏感信息的图片"))
                         .font(.system(size: AppFontSize.metadata))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -74,13 +75,13 @@ struct NewLearningView: View {
                         NewLearningResultPanel {
                             VStack(alignment: .leading, spacing: AppSpacing.large) {
                                 GenerationProgressCard(
-                                    title: isGenerating ? generationStatus : "正在尝试获取上次结果，请稍等"
+                                    title: isGenerating ? generationStatus : L10n.string("new.recovery.loading_title", "正在尝试获取上次结果，请稍等")
                                 )
                                 if isRecoveryCancelButtonVisible {
                                     Button {
                                         cancelPendingRecovery()
                                     } label: {
-                                        Text("放弃本次恢复")
+                                        Text(L10n.string("new.recovery.cancel", "放弃本次恢复"))
                                             .font(.system(size: AppFontSize.body, weight: .semibold))
                                             .foregroundStyle(Color(red: 0.72, green: 0.42, blue: 0.08))
                                             .frame(maxWidth: .infinity)
@@ -101,7 +102,7 @@ struct NewLearningView: View {
                                 NewLearningSentenceList(memory: displayedMemory)
 
                                 VStack(spacing: AppSpacing.large) {
-                                    Text("内容已保存到「回忆」中，你可以选择其他图片继续使用")
+                                    Text(L10n.string("new.result.saved_hint", "内容已保存到「回忆」中，你可以选择其他图片继续使用"))
                                         .font(.system(size: AppFontSize.sectionLabel))
                                         .foregroundStyle(AppTextColor.secondary)
                                         .multilineTextAlignment(.center)
@@ -109,7 +110,7 @@ struct NewLearningView: View {
                                     Button {
                                         beginPhotoSelection(clearingGeneratedMemory: true)
                                     } label: {
-                                        Text("再来一张")
+                                        Text(L10n.string("new.result.choose_another", "再来一张"))
                                             .font(.system(size: AppFontSize.field, weight: .semibold))
                                             .foregroundStyle(appModel.isNetworkAvailable ? .orange : Color(.tertiaryLabel))
                                             .frame(maxWidth: .infinity)
@@ -141,7 +142,7 @@ struct NewLearningView: View {
                                 HStack {
                                     Image(systemName: "sparkles")
                                         .font(.system(size: AppFontSize.body, weight: .semibold))
-                                    Text("用三句描述一下")
+                                    Text(L10n.string("new.generate.action", "用三句描述一下"))
                                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                                 }
                                 .foregroundStyle(.white)
@@ -165,11 +166,11 @@ struct NewLearningView: View {
                             .disabled(selectedImageData.isEmpty || isRecoveryInteractionLocked)
 
                             HStack {
-                                Text("剩余可用次数：\(appModel.remainingCredits)")
+                                Text(L10n.string("new.credits.remaining", "剩余可用次数：%d", appModel.remainingCredits))
                                     .font(.system(size: AppFontSize.caption, weight: .medium))
                                     .foregroundStyle(AppTextColor.secondary)
                                 Spacer()
-                                Text("生成后自动保存到回忆")
+                                Text(L10n.string("new.generate.auto_save_hint", "生成后自动保存到回忆"))
                                     .font(.system(size: AppFontSize.caption))
                                     .foregroundStyle(AppTextColor.subtle)
                             }
@@ -211,15 +212,16 @@ struct NewLearningView: View {
         .onChange(of: displayedMemory?.id) { _, _ in
             if displayedMemory != nil {
                 errorMessage = nil
+                recoveryFailureState = nil
             }
         }
         .sheet(isPresented: $isShowingPurchaseSheet) {
             PurchaseSheet()
                 .environmentObject(appModel)
         }
-        .alert("可用生成次数不足，是否购买", isPresented: $isShowingPurchasePrompt) {
-            Button("取消", role: .cancel) { }
-            Button("购买") {
+        .alert(L10n.string("new.purchase_prompt.title", "可用生成次数不足，是否购买"), isPresented: $isShowingPurchasePrompt) {
+            Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
+            Button(L10n.string("common.purchase", "购买")) {
                 isShowingPurchaseSheet = true
             }
         }
@@ -241,11 +243,11 @@ struct NewLearningView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    Text("新的")
+                    Text(L10n.string("new.hero.eyebrow", "新的"))
                         .font(.system(size: AppFontSize.sectionLabel, weight: .bold))
                         .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
 
-                    Text("把今天拍到的画面变成可学习的英语表达")
+                    Text(L10n.string("new.hero.title", "用今天拍到的画面来学习你喜欢的语言"))
                         .font(.system(size: heroTitleFontSize, weight: .bold))
                         .foregroundStyle(AppTextColor.primary)
                         .lineSpacing(4)
@@ -310,11 +312,11 @@ struct NewLearningView: View {
                             ThinkingIndicator()
                                 .scaleEffect(1.15)
 
-                            Text("正在读取照片...")
+                            Text(L10n.string("new.photo.loading", "正在读取照片..."))
                                 .font(.system(size: AppFontSize.field, weight: .semibold))
                                 .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
 
-                            Text("如果本地没有原图，从 iCloud 获取图片会花点时间。")
+                            Text(L10n.string("new.photo.icloud_hint", "如果本地没有原图，从 iCloud 获取图片会花点时间。"))
                                 .font(.system(size: AppFontSize.metadata, weight: .medium))
                                 .foregroundStyle(AppTextColor.secondary)
                                 .multilineTextAlignment(.center)
@@ -345,7 +347,7 @@ struct NewLearningView: View {
                                 }
 
                             VStack(spacing: AppSpacing.small) {
-                                Text(isNetworkAvailable ? "点击上传照片" : photoSelectionNetworkRequiredMessage)
+                                Text(isNetworkAvailable ? L10n.string("new.upload.action", "点击上传照片") : photoSelectionNetworkRequiredMessage)
                                     .font(.system(size: AppFontSize.field, weight: .semibold))
                                     .foregroundStyle(accentColor)
                             }
@@ -361,13 +363,13 @@ struct NewLearningView: View {
     private var agreementHint: some View {
         if let termsOfServiceURL = AppLinks.termsOfService,
            let privacyPolicyURL = AppLinks.privacyPolicy {
-            Text(.init("使用本应用即表示你同意《[用户服务协议](\(termsOfServiceURL.absoluteString))》和《[隐私政策](\(privacyPolicyURL.absoluteString))》"))
+            Text(.init(L10n.string("new.agreement.markdown", "使用本应用即表示你同意《[用户服务协议](%@)》和《[隐私政策](%@)》", termsOfServiceURL.absoluteString, privacyPolicyURL.absoluteString)))
                 .font(.system(size: AppFontSize.metadata))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
         } else {
-            Text("使用本应用即表示你同意《用户服务协议》和《隐私政策》")
+            Text(L10n.string("new.agreement.plain", "使用本应用即表示你同意《用户服务协议》和《隐私政策》"))
                 .font(.system(size: AppFontSize.metadata))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -381,7 +383,7 @@ struct NewLearningView: View {
                 guard !isRecoveryInteractionLocked else { return }
                 startPendingRecoveryTaskIfNeeded()
             } label: {
-                Text("重新获取结果")
+                Text(L10n.string("new.recovery.retry", "重新获取结果"))
                     .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
@@ -404,7 +406,7 @@ struct NewLearningView: View {
             .disabled(!appModel.isNetworkAvailable)
             .opacity(appModel.isNetworkAvailable ? 1 : 0.55)
 
-            Text(appModel.isNetworkAvailable ? "不会重新生成，只会尝试获取刚才那次生成的结果。" : "网络恢复后会自动尝试获取结果。")
+            Text(appModel.isNetworkAvailable ? L10n.string("new.recovery.retry_hint", "不会重新生成，只会尝试获取刚才那次生成的结果。") : L10n.string("new.recovery.waiting_network_hint", "网络恢复后会自动尝试获取结果。"))
                 .font(.system(size: AppFontSize.caption))
                 .foregroundStyle(AppTextColor.subtle)
                 .multilineTextAlignment(.center)
@@ -419,6 +421,11 @@ struct NewLearningView: View {
 
     private enum PhotoLoadError: Error {
         case timedOut
+    }
+
+    private enum RecoveryFailureState {
+        case networkUnavailable
+        case resultUnavailable
     }
 
     private func loadTransferableData(
@@ -471,7 +478,7 @@ struct NewLearningView: View {
                 timeout: photoLoadTimeout
             ) else {
                 guard photoLoadRequestID == loadRequestID else { return }
-                errorMessage = "无法读取这张图片。"
+                errorMessage = L10n.string("new.photo.read_unavailable", "无法读取这张图片。")
                 self.selectedItem = nil
                 return
             }
@@ -497,12 +504,14 @@ struct NewLearningView: View {
                 appModel.draftGeneratedMemoryID = nil
             }
             errorMessage = nil
+            recoveryFailureState = nil
         } catch {
             guard photoLoadRequestID == loadRequestID else { return }
+            recoveryFailureState = nil
             if error is PhotoLoadError {
-                errorMessage = "读取照片超时，请确认原图已下载后重试。"
+                errorMessage = L10n.string("new.photo.read_timeout", "读取照片超时，请确认原图已下载后重试。")
             } else {
-                errorMessage = "读取图片失败，请重试。"
+                errorMessage = L10n.string("new.photo.read_failed", "读取图片失败，请重试。")
             }
             self.selectedItem = nil
         }
@@ -521,6 +530,7 @@ struct NewLearningView: View {
         appModel.draftGeneratedMemory = nil
         appModel.draftGeneratedMemoryID = nil
         isWaitingForRecoveredGeneration = false
+        recoveryFailureState = nil
         errorMessage = nil
         generationStep = 0
         generationStatus = generationSteps[0]
@@ -530,9 +540,13 @@ struct NewLearningView: View {
     private func generateSentences() async {
         guard let selectedImageData, !isRecoveryInteractionLocked else { return }
         guard appModel.isNetworkAvailable else {
-            errorMessage = appModel.hasPendingGeneratedMemoryRecoveryCandidate()
-                ? networkUnavailableRecoveryMessage
-                : networkUnavailableMessage
+            if appModel.hasPendingGeneratedMemoryRecoveryCandidate() {
+                recoveryFailureState = .networkUnavailable
+                errorMessage = networkUnavailableRecoveryMessage
+            } else {
+                recoveryFailureState = nil
+                errorMessage = networkUnavailableMessage
+            }
             isWaitingForRecoveredGeneration = false
             return
         }
@@ -540,6 +554,7 @@ struct NewLearningView: View {
         isGenerating = true
         appModel.isGeneratingMemory = true
         isWaitingForRecoveredGeneration = true
+        recoveryFailureState = nil
         generationStep = 0
         generationStatus = generationSteps[0]
         errorMessage = nil
@@ -578,6 +593,7 @@ struct NewLearningView: View {
             } else {
                 statusTask.cancel()
                 appModel.clearPendingGeneratedMemoryImage()
+                recoveryFailureState = nil
                 errorMessage = localizedError
                 isWaitingForRecoveredGeneration = false
                 resetRecoveryCancelButtonVisibility()
@@ -595,6 +611,7 @@ struct NewLearningView: View {
         isLoadingSelectedPhoto = false
         shouldClearGeneratedMemoryOnNextPhotoSelection = false
         isWaitingForRecoveredGeneration = false
+        recoveryFailureState = nil
         appModel.clearLearningDraft()
         errorMessage = nil
         generationStep = 0
@@ -615,6 +632,7 @@ struct NewLearningView: View {
         activePendingRecoveryTask = nil
         selectedItem = nil
         isWaitingForRecoveredGeneration = false
+        recoveryFailureState = nil
         errorMessage = nil
         generationStep = 0
         generationStatus = generationSteps[0]
@@ -623,11 +641,11 @@ struct NewLearningView: View {
 
     private var generationSteps: [String] {
         [
-            "正在观察图片...",
-            "正在理解画面...",
-            "正在组织表达...",
-            "正在检查翻译...",
-            "正在完成最后整理..."
+            L10n.string("new.generation.step.observing", "正在观察图片..."),
+            L10n.string("new.generation.step.understanding", "正在理解画面..."),
+            L10n.string("new.generation.step.writing", "正在组织表达..."),
+            L10n.string("new.generation.step.checking", "正在检查翻译..."),
+            L10n.string("new.generation.step.finishing", "正在完成最后整理...")
         ]
     }
 
@@ -680,8 +698,7 @@ struct NewLearningView: View {
         selectedImageData != nil &&
             displayedMemory == nil &&
             appModel.hasPendingGeneratedMemoryRecoveryCandidate() &&
-            (errorMessage == recoveryResultUnavailableMessage ||
-                errorMessage == networkUnavailableRecoveryMessage)
+            recoveryFailureState != nil
     }
 
     private func scheduleRecoveryCancelButtonReveal() {
@@ -725,6 +742,7 @@ struct NewLearningView: View {
         guard appModel.isNetworkAvailable else {
             isWaitingForRecoveredGeneration = false
             resetRecoveryCancelButtonVisibility()
+            recoveryFailureState = .networkUnavailable
             errorMessage = networkUnavailableRecoveryMessage
             return
         }
@@ -735,6 +753,7 @@ struct NewLearningView: View {
         appModel.draftGeneratedMemory = nil
         appModel.draftGeneratedMemoryID = nil
         isWaitingForRecoveredGeneration = true
+        recoveryFailureState = nil
         errorMessage = nil
         scheduleRecoveryCancelButtonReveal()
 
@@ -750,6 +769,7 @@ struct NewLearningView: View {
                     appModel.draftGeneratedMemory = recoveredMemory
                     appModel.draftGeneratedMemoryID = recoveredMemory.id
                     appModel.clearPendingGeneratedMemoryImage()
+                    recoveryFailureState = nil
                     errorMessage = nil
                     isWaitingForRecoveredGeneration = false
                     resetRecoveryCancelButtonVisibility()
@@ -758,6 +778,7 @@ struct NewLearningView: View {
 
                 isWaitingForRecoveredGeneration = false
                 resetRecoveryCancelButtonVisibility()
+                recoveryFailureState = .resultUnavailable
                 errorMessage = recoveryResultUnavailableMessage
             }
         }

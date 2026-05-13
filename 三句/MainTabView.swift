@@ -10,7 +10,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.newLearning)
             .tabItem {
-                Label("新的", systemImage: "sparkles.rectangle.stack")
+                Label(L10n.string("tab.new", "新的"), systemImage: "sparkles.rectangle.stack")
             }
 
             NavigationStack(path: $appModel.memoriesNavigationPath) {
@@ -21,7 +21,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.memories)
             .tabItem {
-                Label("回忆", systemImage: "photo.on.rectangle")
+                Label(L10n.string("tab.memories", "回忆"), systemImage: "photo.on.rectangle")
             }
 
             NavigationStack {
@@ -29,7 +29,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.favorites)
             .tabItem {
-                Label("收藏", systemImage: "heart")
+                Label(L10n.string("tab.favorites", "收藏"), systemImage: "heart")
             }
             .badge(favoritesTabBadgeValue)
 
@@ -38,7 +38,7 @@ struct MainTabView: View {
             }
             .tag(AppTab.profile)
             .tabItem {
-                Label("我的", systemImage: "person.circle")
+                Label(L10n.string("tab.profile", "我的"), systemImage: "person.circle")
             }
         }
         .tint(.orange)

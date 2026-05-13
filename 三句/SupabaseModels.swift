@@ -248,6 +248,21 @@ enum SupabaseServiceError: LocalizedError {
     case invalidResponse
     case apiError(String)
 
+    enum GenerationRecoveryDisposition {
+        case recoverable
+        case nonRecoverable
+        case unknown
+    }
+
+    var generationRecoveryDisposition: GenerationRecoveryDisposition {
+        switch self {
+        case .missingConfiguration, .invalidToken, .invalidResponse:
+            return .unknown
+        case .apiError(let message):
+            return Self.classifyGenerationRecoveryDisposition(for: message)
+        }
+    }
+
     var errorDescription: String? {
         switch self {
         case .missingConfiguration:
@@ -354,5 +369,64 @@ enum SupabaseServiceError: LocalizedError {
             }
             return message
         }
+    }
+
+    private static func classifyGenerationRecoveryDisposition(for message: String) -> GenerationRecoveryDisposition {
+        let normalized = message.lowercased()
+        let nonRecoverableMarkers = [
+            "generation_policy_violation",
+            "generation_banned",
+            "image_moderation_unavailable",
+            "no_credits_left",
+            "rate_limit_exceeded",
+            "too many requests",
+            "rate limit",
+            "rate_limit",
+            "429"
+        ]
+        if nonRecoverableMarkers.contains(where: { normalized.contains($0) }) {
+            return .nonRecoverable
+        }
+
+        let recoverableMarkers = [
+            "request time out",
+            "request timed out",
+            "timed out",
+            "timeout",
+            "bad gateway",
+            "gateway",
+            "service unavailable",
+            "network connection was lost",
+            "connection was lost"
+        ]
+        if recoverableMarkers.contains(where: { normalized.contains($0) }) {
+            return .recoverable
+        }
+
+        return .unknown
+    }
+}
+
+extension Error {
+    var generationRecoveryDisposition: SupabaseServiceError.GenerationRecoveryDisposition {
+        if let serviceError = self as? SupabaseServiceError {
+            return serviceError.generationRecoveryDisposition
+        }
+
+        if let urlError = self as? URLError {
+            switch urlError.code {
+            case .timedOut,
+                 .networkConnectionLost,
+                 .cannotConnectToHost,
+                 .cannotFindHost,
+                 .dnsLookupFailed,
+                 .notConnectedToInternet:
+                return .recoverable
+            default:
+                return .unknown
+            }
+        }
+
+        return .unknown
     }
 }

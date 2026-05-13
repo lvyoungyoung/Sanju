@@ -146,11 +146,19 @@ struct MemoryDetailPagerControls: View {
 
     var body: some View {
         HStack {
-            MemoryDetailPagerButton(title: "上一张", isEnabled: canGoPrevious, action: onPrevious)
+            MemoryDetailPagerButton(
+                title: L10n.string("memory_detail.pager.previous", "上一张"),
+                isEnabled: canGoPrevious,
+                action: onPrevious
+            )
 
             Spacer()
 
-            MemoryDetailPagerButton(title: "下一张", isEnabled: canGoNext, action: onNext)
+            MemoryDetailPagerButton(
+                title: L10n.string("memory_detail.pager.next", "下一张"),
+                isEnabled: canGoNext,
+                action: onNext
+            )
         }
     }
 }

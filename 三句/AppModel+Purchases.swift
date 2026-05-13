@@ -119,7 +119,10 @@ extension AppModel {
             if let applicationError = error as? PurchaseGrantApplicationError {
                 purchaseErrorMessage = applicationError.localizedDescription
             } else {
-                purchaseErrorMessage = "购买已完成，但次数同步失败。请保持网络连接后重新打开应用重试。"
+                purchaseErrorMessage = L10n.string(
+                    "purchase.sync_failed_after_purchase",
+                    "购买已完成，但次数同步失败。请保持网络连接后重新打开应用重试。"
+                )
             }
             return false
         }

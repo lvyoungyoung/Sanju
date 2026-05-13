@@ -2,10 +2,10 @@ import Foundation
 
 extension AppModel {
     private static let guestCreditRecoveryWarningMessages: Set<String> = [
-        "登录成功，但访客可用次数仍在恢复中。请保持网络连接后重新打开应用。",
-        "访客可用次数仍在恢复中，请保持网络连接后稍后再试。"
+        L10n.string("auth.guest_credit_recovery.reopen", "登录成功，但访客可用次数仍在恢复中。请保持网络连接后重新打开应用。"),
+        L10n.string("auth.guest_credit_recovery.retry_later", "访客可用次数仍在恢复中，请保持网络连接后稍后再试。")
     ]
-    private static let interruptedSignInRecoveryMessage = "上次登录未完成，请重新登录。"
+    private static let interruptedSignInRecoveryMessage = L10n.string("auth.interrupted_sign_in", "上次登录未完成，请重新登录。")
 
     private var initialInstallCredits: Int { 5 }
 
@@ -27,7 +27,7 @@ extension AppModel {
         case unavailable
 
         var errorDescription: String? {
-            "暂时无法安全迁移访客可用次数，请稍后在网络稳定时重试登录。"
+            L10n.string("auth.guest_credit_migration.unavailable", "暂时无法安全迁移访客可用次数，请稍后在网络稳定时重试登录。")
         }
     }
 
@@ -76,17 +76,17 @@ extension AppModel {
         let normalizedNickname = nickname.map(NicknameValidator.normalize)
 
         guard !normalizedEmail.isEmpty else {
-            authErrorMessage = "请输入邮箱地址。"
+            authErrorMessage = L10n.string("auth_error.email_required", "请输入邮箱地址。")
             return .failed
         }
 
         guard normalizedEmail.contains("@"), normalizedEmail.contains(".") else {
-            authErrorMessage = "请输入正确的邮箱地址。"
+            authErrorMessage = L10n.string("auth_error.email_invalid", "请输入正确的邮箱地址。")
             return .failed
         }
 
         guard !trimmedPassword.isEmpty else {
-            authErrorMessage = "请输入密码。"
+            authErrorMessage = L10n.string("auth_error.password_required", "请输入密码。")
             return .failed
         }
 
@@ -100,7 +100,7 @@ extension AppModel {
         }
 
         if shouldCreateAccount && trimmedPassword.count < 6 {
-            authErrorMessage = "密码长度不足，请至少输入 6 位。"
+            authErrorMessage = L10n.string("supabase_error.password_too_short", "密码长度不足，请至少输入 6 位。")
             return .failed
         }
 
@@ -119,7 +119,7 @@ extension AppModel {
 
         guard isNetworkAvailable else {
             authDebugLog("Email auth blocked before request :: network unavailable :: \(currentNetworkDebugDescription)")
-            authErrorMessage = "当前网络不可用，请连接网络后再登录。"
+            authErrorMessage = L10n.string("auth.network_unavailable", "当前网络不可用，请连接网络后再登录。")
             return .failed
         }
 
@@ -145,7 +145,7 @@ extension AppModel {
                 case .session(let signedUpSession):
                     session = signedUpSession
                 case .requiresEmailConfirmation:
-                    authFlowMessage = "注册成功，请前往邮箱完成验证后再登录。"
+                    authFlowMessage = L10n.string("auth.signup.confirm_email", "注册成功，请前往邮箱完成验证后再登录。")
                     authErrorMessage = nil
                     isAuthenticating = false
                     return .requiresEmailConfirmation
@@ -192,18 +192,18 @@ extension AppModel {
             .lowercased()
 
         guard !normalizedEmail.isEmpty else {
-            passwordResetErrorMessage = "请先输入邮箱地址。"
+            passwordResetErrorMessage = L10n.string("auth_error.email_required_first", "请先输入邮箱地址。")
             return false
         }
 
         guard normalizedEmail.contains("@"), normalizedEmail.contains(".") else {
-            passwordResetErrorMessage = "请输入正确的邮箱地址。"
+            passwordResetErrorMessage = L10n.string("auth_error.email_invalid", "请输入正确的邮箱地址。")
             return false
         }
 
         guard isNetworkAvailable else {
             authDebugLog("Password reset request blocked before request :: network unavailable :: \(currentNetworkDebugDescription)")
-            passwordResetErrorMessage = "当前网络不可用，请连接网络后再操作。"
+            passwordResetErrorMessage = L10n.string("auth_error.network_unavailable_action", "当前网络不可用，请连接网络后再操作。")
             return false
         }
 
@@ -221,7 +221,7 @@ extension AppModel {
         credentialWarningMessage = nil
         do {
             try await supabaseService.requestPasswordReset(email: normalizedEmail)
-            authFlowMessage = "如果该邮箱已注册，我们会发送验证码邮件，请查收后输入验证码重置密码。"
+            authFlowMessage = L10n.string("auth.reset_password.email_sent_if_registered", "如果该邮箱已注册，我们会发送验证码邮件，请查收后输入验证码重置密码。")
             isRequestingPasswordReset = false
             return true
         } catch {
@@ -246,33 +246,33 @@ extension AppModel {
         let trimmedConfirmation = confirmPassword.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !normalizedEmail.isEmpty else {
-            passwordResetErrorMessage = "请输入邮箱地址。"
+            passwordResetErrorMessage = L10n.string("auth_error.email_required", "请输入邮箱地址。")
             return .failed
         }
 
         guard !trimmedCode.isEmpty else {
-            passwordResetErrorMessage = "请输入验证码。"
+            passwordResetErrorMessage = L10n.string("auth_error.verification_code_required", "请输入验证码。")
             return .failed
         }
 
         guard !trimmedPassword.isEmpty else {
-            passwordResetErrorMessage = "请输入新密码。"
+            passwordResetErrorMessage = L10n.string("auth_error.new_password_required", "请输入新密码。")
             return .failed
         }
 
         guard trimmedPassword.count >= 6 else {
-            passwordResetErrorMessage = "密码长度不足，请至少输入 6 位。"
+            passwordResetErrorMessage = L10n.string("supabase_error.password_too_short", "密码长度不足，请至少输入 6 位。")
             return .failed
         }
 
         guard trimmedPassword == trimmedConfirmation else {
-            passwordResetErrorMessage = "两次输入的密码不一致。"
+            passwordResetErrorMessage = L10n.string("auth_error.password_confirmation_mismatch", "两次输入的密码不一致。")
             return .failed
         }
 
         guard isNetworkAvailable else {
             authDebugLog("Password reset completion blocked before request :: network unavailable :: \(currentNetworkDebugDescription)")
-            passwordResetErrorMessage = "当前网络不可用，请连接网络后再操作。"
+            passwordResetErrorMessage = L10n.string("auth_error.network_unavailable_action", "当前网络不可用，请连接网络后再操作。")
             return .failed
         }
 
@@ -384,7 +384,9 @@ extension AppModel {
         let validatedNickname = try NicknameValidator.validate(nickname)
         let session = try await ensureValidSession()
         guard !session.isAnonymous else {
-            throw SupabaseServiceError.apiError("请先登录后再修改昵称。")
+            throw SupabaseServiceError.apiError(
+                L10n.string("auth.nickname_update.sign_in_required", "请先登录后再修改昵称。")
+            )
         }
 
         guard let updatedProfile = try await supabaseService.updateProfile(
@@ -418,7 +420,9 @@ extension AppModel {
         }
         let session = try await ensureValidSession()
         guard !session.isAnonymous else {
-            throw SupabaseServiceError.apiError("当前是匿名状态，无需删除账号。")
+            throw SupabaseServiceError.apiError(
+                L10n.string("auth.delete_account.guest_noop", "当前是匿名状态，无需删除账号。")
+            )
         }
         beginPendingDeleteAccountLocalClear(session: session)
         isDeletingAccount = true
@@ -747,7 +751,7 @@ extension AppModel {
             profile = nil
         } else {
             let resolvedNickname = Self.isSystemGeneratedNickname(remoteProfile.nickname)
-                ? "用户"
+                ? L10n.string("profile.default_nickname", "用户")
                 : remoteProfile.nickname
             profile = UserProfile(
                 appleUserID: remoteProfile.appleUserID ?? fallbackAppleUserID,
@@ -1290,7 +1294,7 @@ extension AppModel {
             clearGuestCreditRecoveryWarningIfNeeded()
             return profile
         } catch {
-            credentialWarningMessage = "访客可用次数仍在恢复中，请保持网络连接后稍后再试。"
+            credentialWarningMessage = L10n.string("auth.guest_credit_recovery.retry_later", "访客可用次数仍在恢复中，请保持网络连接后稍后再试。")
             return nil
         }
     }
@@ -1351,7 +1355,7 @@ extension AppModel {
                 }
                 removePendingGuestMemoryMigration(memoryID: guestMemory.id)
             } catch {
-                authErrorMessage = "本地回忆同步失败：\(error.localizedDescription)"
+                authErrorMessage = L10n.string("sync.local_memories.failed", "本地回忆同步失败：%@", error.localizedDescription)
                 continue
             }
         }

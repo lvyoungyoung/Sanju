@@ -96,6 +96,7 @@ struct ContentView: View {
             }
         )
     }
+
 }
 
 struct SyncLoadingState: View {
@@ -172,7 +173,11 @@ struct ContentFooterHint: View {
                     .controlSize(.small)
             }
 
-            Text(isLoading ? "正在同步，请稍后" : "已显示全部内容")
+            Text(
+                isLoading
+                ? L10n.string("common.status.syncing_footer", "正在同步，请稍后")
+                : L10n.string("common.status.all_content_displayed", "已显示全部内容")
+            )
                 .font(.system(size: AppFontSize.metadata))
                 .foregroundStyle(.secondary)
         }

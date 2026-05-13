@@ -63,7 +63,7 @@ struct MemoryDetailView: View {
                 }
                 .background(Color(.systemGroupedBackground))
                 .toolbar(.hidden, for: .tabBar)
-                .navigationTitle("详情")
+                .navigationTitle(L10n.string("memory_detail.title", "详情"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -71,14 +71,14 @@ struct MemoryDetailView: View {
                             Button {
                                 saveMemoryToPhotos(memory)
                             } label: {
-                                Label("保存到本地", systemImage: "square.and.arrow.down")
+                                Label(L10n.string("memory_detail.save_to_photos", "保存到本地"), systemImage: "square.and.arrow.down")
                             }
                             .disabled(isSavingToPhotos)
 
                             Button(role: .destructive) {
                                 isShowingDeleteAlert = true
                             } label: {
-                                Label("删除", systemImage: "trash")
+                                Label(L10n.string("common.delete", "删除"), systemImage: "trash")
                             }
                         } label: {
                             Image(systemName: "ellipsis")
@@ -87,20 +87,23 @@ struct MemoryDetailView: View {
                         }
                     }
                 }
-                .alert("删除这条回忆？", isPresented: $isShowingDeleteAlert) {
-                    Button("删除", role: .destructive) {
+                .alert(L10n.string("memory.delete.alert_title", "删除这条回忆？"), isPresented: $isShowingDeleteAlert) {
+                    Button(L10n.string("common.delete", "删除"), role: .destructive) {
                         appModel.deleteMemory(memoryID: memory.id)
                         dismiss()
                     }
-                    Button("取消", role: .cancel) { }
+                    Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
                 } message: {
-                    Text("删除后，这张图片和对应的三句话都会被移除。")
+                    Text(L10n.string("memory.delete.alert_message", "删除后，这张图片和对应的三句话都会被移除。"))
                 }
                 .task(id: currentMemoryID) {
                     await appModel.ensureMemoryImageLoaded(memoryID: currentMemoryID)
                 }
             } else {
-                EmptyStateView(title: "内容不存在", subtitle: "这条历史记录可能已被删除。")
+                EmptyStateView(
+                    title: L10n.string("memory_detail.missing.title", "内容不存在"),
+                    subtitle: L10n.string("memory_detail.missing.subtitle", "这条历史记录可能已被删除。")
+                )
             }
         }
     }

@@ -58,8 +58,8 @@ struct SentenceStudySessionView: View {
                     .id(currentItem.id)
                 } else {
                     EmptyStateView(
-                        title: "今天没有待学习句子",
-                        subtitle: "先回到收藏页挑几句想学的内容，再开始今天这一轮。"
+                        title: L10n.string("study.empty.title", "今天没有待学习句子"),
+                        subtitle: L10n.string("study.empty.subtitle", "先回到收藏页挑几句想学的内容，再开始今天这一轮。")
                     )
                 }
             }
@@ -82,7 +82,21 @@ struct SentenceStudySessionView: View {
                     Spacer()
 
                     if !isShowingCompletion, let currentItem {
-                        Text("\(isReviewingToday ? "再练句子" : "学习句子") \(min(currentIndex + 1, activeQueue.count))/\(activeQueue.count)")
+                        Text(
+                            isReviewingToday
+                            ? L10n.string(
+                                "study.progress.review",
+                                "再练句子 %d/%d",
+                                min(currentIndex + 1, activeQueue.count),
+                                activeQueue.count
+                            )
+                            : L10n.string(
+                                "study.progress.active",
+                                "学习句子 %d/%d",
+                                min(currentIndex + 1, activeQueue.count),
+                                activeQueue.count
+                            )
+                        )
                             .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
                             .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
                             .padding(.horizontal, AppControlPadding.regular)
@@ -111,13 +125,13 @@ struct SentenceStudySessionView: View {
             do {
                 let reviewQueue = try await appModel.loadSentenceStudyTodayReviewQueue()
                 guard !reviewQueue.isEmpty else {
-                    reviewQueueErrorMessage = "今天学过的句子暂时无法加载，请稍后再试。"
+                    reviewQueueErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
                     isPreparingReviewQueue = false
                     return
                 }
                 restartReview(with: reviewQueue)
             } catch {
-                reviewQueueErrorMessage = "今天学过的句子暂时无法加载，请稍后再试。"
+                reviewQueueErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
             }
             isPreparingReviewQueue = false
         }
@@ -253,7 +267,7 @@ private struct SentenceStudyQuestionView: View {
                         onAdvance: onAdvance
                     )
                 } else {
-                    Text("点击对应的单词，填写到高亮的空格中。")
+                    Text(L10n.string("study.question.hint", "点击对应的单词，填写到高亮的空格中。"))
                         .font(.system(size: 14))
                         .foregroundStyle(Color.black.opacity(0.46))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -418,7 +432,7 @@ private struct SentenceStudySolvedState: View {
                 .font(.system(size: AppFontSize.display, weight: .semibold))
                 .foregroundStyle(Color(red: 0.23, green: 0.70, blue: 0.42))
 
-            Text("填空完成")
+            Text(L10n.string("study.solved.title", "填空完成"))
                 .font(.system(size: AppFontSize.field, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)
 
@@ -439,7 +453,7 @@ private struct SentenceStudySolvedState: View {
                 Button {
                     onSpeak()
                 } label: {
-                    Label("朗读句子", systemImage: "speaker.wave.2.fill")
+                    Label(L10n.string("study.solved.speak", "朗读句子"), systemImage: "speaker.wave.2.fill")
                         .font(.system(size: AppFontSize.body, weight: .semibold))
                         .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
                         .frame(maxWidth: .infinity)
@@ -465,7 +479,7 @@ private struct SentenceStudySolvedState: View {
                                 .controlSize(.small)
                                 .tint(.white)
                         }
-                        Text(isRetrying ? "重试同步" : "下一句")
+                        Text(isRetrying ? L10n.string("study.solved.retry_sync", "重试同步") : L10n.string("study.solved.next", "下一句"))
                             .font(.system(size: AppFontSize.body, weight: .semibold))
                     }
                     .foregroundStyle(.white)
@@ -514,18 +528,18 @@ private struct SentenceStudyCompletionView: View {
                 .padding(.top, 40)
 
             VStack(spacing: AppSpacing.medium) {
-                Text("你已完成学习")
+                Text(L10n.string("study.completion.title", "你已完成学习"))
                     .font(.system(size: AppFontSize.pageTitle, weight: .bold))
                     .foregroundStyle(AppTextColor.title)
 
-                Text("今天已经学习了 \(todayCompletedCount) 句")
+                Text(L10n.string("study.completion.today_count", "今天已经学习了 %d 句", todayCompletedCount))
                     .font(.system(size: AppFontSize.body))
                     .foregroundStyle(AppTextColor.secondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
 
                 if todayCompletedCount >= SentenceStudyPolicy.dailyLimit {
-                    Text("今天已经学习了很多，休息一下吧")
+                    Text(L10n.string("study.completion.daily_limit_hint", "今天已经学习了很多，休息一下吧"))
                         .font(.system(size: AppFontSize.body, weight: .semibold))
                         .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
                         .multilineTextAlignment(.center)
@@ -544,7 +558,7 @@ private struct SentenceStudyCompletionView: View {
                                     .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
                             }
 
-                            Text(isPreparingReviewQueue ? "正在准备..." : "再学习一遍")
+                            Text(isPreparingReviewQueue ? L10n.string("study.completion.preparing_review", "正在准备...") : L10n.string("study.completion.review_again", "再学习一遍"))
                                 .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         }
                         .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
@@ -569,7 +583,7 @@ private struct SentenceStudyCompletionView: View {
                 Button {
                     onClose()
                 } label: {
-                    Text("返回")
+                    Text(L10n.string("common.back", "返回"))
                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
@@ -619,10 +633,14 @@ private struct SentenceStudyCompletionView: View {
 
     private var learningReminderHintText: String {
         if appModel.isLearningReminderEnabled {
-            return "你已开启定时提醒，将在每天\(appModel.learningReminderDisplayText)提醒你学习"
+            return L10n.string(
+                "study.reminder.enabled_hint",
+                "你已开启定时提醒，将在每天%@提醒你学习",
+                appModel.learningReminderDisplayText
+            )
         }
 
-        return "你可以在设置中开启定时提醒，每天提醒你学习。"
+        return L10n.string("study.reminder.disabled_hint", "你可以在设置中开启定时提醒，每天提醒你学习。")
     }
 }
 

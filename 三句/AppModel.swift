@@ -346,8 +346,8 @@ final class AppModel: ObservableObject {
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
 
-    init(supabaseService: SupabaseServicing = SupabaseService()) {
-        self.supabaseService = supabaseService
+    init(supabaseService: SupabaseServicing? = nil) {
+        self.supabaseService = supabaseService ?? SupabaseService()
 #if DEBUG
         // resetInitialCreditsGrantForDebug()
 #endif
@@ -451,7 +451,6 @@ final class AppModel: ObservableObject {
         cachedMemoryImageHydrationTask?.cancel()
         memoryWidgetSnapshotUpdateTask?.cancel()
         preferenceSyncTask?.cancel()
-        networkStatusMonitor.cancel()
     }
 
     func syncOnForegroundIfNeeded() {

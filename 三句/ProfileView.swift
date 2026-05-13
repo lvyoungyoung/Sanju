@@ -61,12 +61,16 @@ struct ProfileView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("生成偏好")
+                    Text(L10n.string("profile.section.preferences", "生成偏好"))
                         .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
                         .foregroundStyle(.secondary)
 
-                    PreferenceCard(title: "英语水平", systemImage: "gauge.with.dots.needle.33percent") {
-                        Picker("英语水平", selection: englishLevelBinding) {
+                    PreferenceCard(
+                        title: L10n.string("profile.preference.english_level", "级别"),
+                        systemImage: "gauge.with.dots.needle.33percent",
+                        accentColor: Color(red: 0.17, green: 0.73, blue: 0.76)
+                    ) {
+                        Picker(L10n.string("profile.preference.english_level", "级别"), selection: englishLevelBinding) {
                             ForEach(EnglishLevel.allCases) { level in
                                 Text(level.displayTitle).tag(level)
                             }
@@ -74,8 +78,12 @@ struct ProfileView: View {
                         .pickerStyle(.segmented)
                     }
 
-                    PreferenceCard(title: "语言风格", systemImage: "paintpalette") {
-                        Picker("语言风格", selection: languageStyleBinding) {
+                    PreferenceCard(
+                        title: L10n.string("profile.preference.language_style", "语言风格"),
+                        systemImage: "paintpalette",
+                        accentColor: Color(red: 0.18, green: 0.53, blue: 1.00)
+                    ) {
+                        Picker(L10n.string("profile.preference.language_style", "语言风格"), selection: languageStyleBinding) {
                             ForEach(LanguageStyle.allCases) { style in
                                 Text(style.displayTitle).tag(style)
                             }
@@ -187,14 +195,17 @@ struct ProfileView: View {
             Text(deleteAccountErrorMessage ?? "")
         }
 #if DEBUG || STAGING
-        .alert("清理本机测试数据？", isPresented: $isShowingLocalTestResetAlert) {
-            Button("清理并恢复首次安装状态", role: .destructive) {
+        .alert(L10n.string("profile.debug.reset.alert_title", "清理本机测试数据？"), isPresented: $isShowingLocalTestResetAlert) {
+            Button(L10n.string("profile.debug.reset.action", "清理并恢复首次安装状态"), role: .destructive) {
                 appModel.resetLocalTestDataForFreshInstall()
-                showTransientHint("已清理本机测试数据，现在是首次安装状态。")
+                showTransientHint(L10n.string("profile.debug.reset.success", "已清理本机测试数据，现在是首次安装状态。"))
             }
             Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
         } message: {
-            Text("这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 5 次生成机会。仅用于测试。")
+            Text(L10n.string(
+                "profile.debug.reset.alert_message",
+                "这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 5 次生成机会。仅用于测试。"
+            ))
         }
 #endif
         .onDisappear {
@@ -247,7 +258,7 @@ struct ProfileView: View {
     private var accountSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             if shouldShowAuthenticatedRestoreSkeleton {
-                Text("账户")
+                Text(L10n.string("profile.section.account", "账户"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.5))
 
@@ -262,7 +273,7 @@ struct ProfileView: View {
                 Divider()
                     .padding(.vertical, 4)
             } else if authenticatedProfile != nil {
-                Text("账户")
+                Text(L10n.string("profile.section.account", "账户"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.5))
 
@@ -274,7 +285,7 @@ struct ProfileView: View {
                     HStack {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .font(.system(size: 16, weight: .semibold))
-                        Text("退出登录")
+                        Text(L10n.string("profile.sign_out.action", "退出登录"))
                             .font(.system(size: 16, weight: .semibold))
                         Spacer()
                     }
@@ -296,7 +307,7 @@ struct ProfileView: View {
                     HStack {
                         Image(systemName: "person.crop.circle.badge.xmark")
                             .font(.system(size: 16, weight: .semibold))
-                        Text("删除账号")
+                        Text(L10n.string("account.delete.entry", "删除账号"))
                             .font(.system(size: 16, weight: .semibold))
                         Spacer()
                     }
@@ -320,10 +331,10 @@ struct ProfileView: View {
                 HStack {
                     Image(systemName: "wrench.and.screwdriver")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("清理本机测试数据")
+                    Text(L10n.string("profile.debug.reset.entry", "清理本机测试数据"))
                         .font(.system(size: 16, weight: .semibold))
                     Spacer()
-                    Text("测试")
+                    Text(L10n.string("profile.debug.badge", "测试"))
                         .font(.system(size: 12, weight: .bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -344,7 +355,7 @@ struct ProfileView: View {
 
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("关于")
+            Text(L10n.string("profile.section.about", "关于"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.5))
 
@@ -354,7 +365,7 @@ struct ProfileView: View {
                 HStack {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("关于我们")
+                    Text(L10n.string("profile.about.entry", "关于我们"))
                         .font(.system(size: 16, weight: .semibold))
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -374,7 +385,7 @@ struct ProfileView: View {
 
     private var widgetSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("桌面小组件")
+            Text(L10n.string("profile.section.widget", "桌面小组件"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.5))
 
@@ -386,7 +397,7 @@ struct ProfileView: View {
 
     private var learningReminderSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("学习提醒")
+            Text(L10n.string("profile.section.learning_reminder", "学习提醒"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.5))
 
@@ -475,7 +486,7 @@ struct ProfileView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                    Text("在这里管理你的可用次数、调整生成偏好，也可以继续购买新的生成次数。")
+                    Text(L10n.string("profile.hero.subtitle", "在这里管理你的可用次数、调整生成偏好，也可以继续购买新的生成次数。"))
                         .font(.system(size: 14))
                         .foregroundStyle(AppTextColor.secondary)
                         .lineSpacing(3)
@@ -491,11 +502,11 @@ struct ProfileView: View {
                 ProfileAvatarView(isMonochrome: true)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("未登录")
+                    Text(L10n.string("profile.guest.title", "未登录"))
                         .font(.system(size: AppFontSize.stat, weight: .bold))
                         .foregroundStyle(AppTextColor.primary)
 
-                    Text("登录后可以跨设备同步回忆和收藏")
+                    Text(L10n.string("profile.guest.subtitle", "登录后可以跨设备同步回忆和收藏"))
                         .font(.system(size: AppFontSize.metadata))
                         .foregroundStyle(AppTextColor.tertiary)
                         .lineLimit(2)
@@ -508,7 +519,7 @@ struct ProfileView: View {
                     guard !interceptIfGenerationInProgress() else { return }
                     appModel.isShowingSignInSheet = true
                 } label: {
-                    Text("登录")
+                    Text(L10n.string("auth.mode.sign_in.action", "登录"))
                         .font(.system(size: AppFontSize.body, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, AppSpacing.xLarge)
@@ -519,7 +530,7 @@ struct ProfileView: View {
             }
 
             if appModel.hasPurchaseHistory {
-                Text("请尽快登录，以免换设备时丢失您购买的可用次数。")
+                Text(L10n.string("profile.guest.purchase_warning", "请尽快登录，以免换设备时丢失您购买的可用次数。"))
                     .font(.system(size: AppFontSize.caption, weight: .medium))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
@@ -569,7 +580,7 @@ struct ProfileView: View {
             }
 
             HStack(spacing: AppSpacing.small) {
-                Text("正在恢复账号信息")
+                Text(L10n.string("profile.restoring.title", "正在恢复账号信息"))
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.black.opacity(0.48))
 
@@ -628,7 +639,7 @@ struct ProfileView: View {
                 await MainActor.run {
                     isUpdatingNickname = false
                     isShowingNicknameEditor = false
-                    showTransientHint("昵称已更新。")
+                    showTransientHint(L10n.string("profile.nickname.updated", "昵称已更新。"))
                 }
             } catch {
                 await MainActor.run {
@@ -652,7 +663,7 @@ struct ProfileView: View {
             } catch {
                 appModel.disableLearningReminder()
                 learningReminderStatusIsError = true
-                learningReminderStatusMessage = (error as? LocalizedError)?.errorDescription ?? "提醒设置失败，请稍后再试。"
+                learningReminderStatusMessage = (error as? LocalizedError)?.errorDescription ?? L10n.string("profile.learning_reminder.save_failed", "提醒设置失败，请稍后再试。")
             }
             isSavingLearningReminder = false
         }
@@ -679,16 +690,16 @@ private struct NicknameEditorSheet: View {
                 .ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: AppSpacing.xLarge) {
-                Text("修改昵称")
+                Text(L10n.string("profile.nickname.sheet_title", "修改昵称"))
                     .font(.system(size: AppFontSize.panelTitle, weight: .semibold))
                     .foregroundStyle(Color(red: 0.30, green: 0.30, blue: 0.28))
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("昵称")
+                    Text(L10n.string("auth.field.nickname", "昵称"))
                         .font(.system(size: AppFontSize.body, weight: .medium))
                         .foregroundStyle(isNicknameFocused ? Color(red: 0.45, green: 0.31, blue: 0.10) : Color.black.opacity(0.55))
 
-                    TextField("请输入昵称，最多 20 个字符", text: $nickname)
+                    TextField(L10n.string("auth.placeholder.nickname", "请输入昵称，最多 20 个字符"), text: $nickname)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($isNicknameFocused)
@@ -708,7 +719,7 @@ private struct NicknameEditorSheet: View {
                         )
                 }
 
-                Text("昵称最长 20 个字符。")
+                Text(L10n.string("profile.nickname.helper", "昵称最长 20 个字符。"))
                     .font(.system(size: AppFontSize.metadata))
                     .foregroundStyle(AppTextColor.secondary)
 
@@ -719,7 +730,7 @@ private struct NicknameEditorSheet: View {
                 }
 
                 HStack(spacing: 12) {
-                    Button("取消") {
+                    Button(L10n.string("common.cancel", "取消")) {
                         dismiss()
                     }
                     .buttonStyle(.plain)
@@ -728,7 +739,7 @@ private struct NicknameEditorSheet: View {
                     .background(Color.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
 
                     Button(action: onSave) {
-                        Text(isSaving ? "保存中..." : "保存")
+                        Text(isSaving ? L10n.string("common.saving", "保存中...") : L10n.string("common.save", "保存"))
                             .font(.system(size: AppFontSize.field, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -871,11 +882,11 @@ private struct WidgetSetupLinkCard: View {
                 .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("添加桌面小组件")
+                    Text(L10n.string("profile.widget.title", "添加桌面小组件"))
                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         .foregroundStyle(AppTextColor.primary)
 
-                    Text("把随机回忆放到桌面，点开就能继续学习。")
+                    Text(L10n.string("profile.widget.subtitle", "把随机回忆放到桌面，点开就能继续学习。"))
                         .font(.system(size: AppFontSize.metadata))
                         .foregroundStyle(AppTextColor.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -924,7 +935,7 @@ private struct WidgetSetupSheet: View {
 
     private var previewSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("效果预览")
+            Text(L10n.string("profile.widget.preview", "效果预览"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.5))
 
@@ -975,17 +986,17 @@ private struct WidgetSetupSheet: View {
 
     private var stepsCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("添加步骤")
+            Text(L10n.string("profile.widget.steps", "添加步骤"))
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Color.black.opacity(0.5))
 
             WidgetSetupMethodCard(
                 title: nil,
                 steps: [
-                    "长按桌面空白处，直到 App 开始晃动，再点击左上角的“编辑”或“+”。",
-                    "在小组件列表里搜索“三句”。",
-                    "选择“随机回忆”小组件并点击“添加小组件”。",
-                    "把它放到你想要的位置后，再点“完成”。"
+                    L10n.string("profile.widget.step_1", "长按桌面空白处，直到 App 开始晃动，再点击左上角的“编辑”或“+”。"),
+                    L10n.string("profile.widget.step_2", "在小组件列表里搜索“三句”。"),
+                    L10n.string("profile.widget.step_3", "选择“随机回忆”小组件并点击“添加小组件”。"),
+                    L10n.string("profile.widget.step_4", "把它放到你想要的位置后，再点“完成”。")
                 ]
             )
         }
@@ -1108,13 +1119,13 @@ private struct LearningReminderTimePickerSheet: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                Text("选择提醒时间")
+                Text(L10n.string("profile.learning_reminder.time_picker_title", "选择提醒时间"))
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.84))
                     .padding(.top, 32)
 
                 DatePicker(
-                    "提醒时间",
+                    L10n.string("profile.learning_reminder.time", "提醒时间"),
                     selection: $selectedTime,
                     displayedComponents: .hourAndMinute
                 )
@@ -1136,7 +1147,7 @@ private struct LearningReminderTimePickerSheet: View {
                                 .controlSize(.small)
                                 .tint(.white)
                         }
-                        Text(isSaving ? "正在保存" : "保存")
+                        Text(isSaving ? L10n.string("common.saving", "正在保存") : L10n.string("common.save", "保存"))
                             .font(.system(size: AppFontSize.body, weight: .semibold))
                     }
                     .frame(width: 228)
@@ -1166,7 +1177,7 @@ private struct ProfileCreditCard: View {
     var body: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("可用次数")
+                Text(L10n.string("profile.credits.title", "可用次数"))
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.black.opacity(0.48))
 
@@ -1178,7 +1189,7 @@ private struct ProfileCreditCard: View {
             Spacer()
 
             Button(action: onPurchase) {
-                Text(isPurchaseDisabled ? "账号恢复中" : "购买次数")
+                Text(isPurchaseDisabled ? L10n.string("profile.credits.restoring", "账号恢复中") : L10n.string("profile.credits.purchase", "购买次数"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
@@ -1227,6 +1238,7 @@ private struct ProfileCreditCardSkeleton: View {
 private struct PreferenceCard<Content: View>: View {
     let title: String
     let systemImage: String
+    let accentColor: Color
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -1234,7 +1246,7 @@ private struct PreferenceCard<Content: View>: View {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(title == "英语水平" ? Color(red: 0.17, green: 0.73, blue: 0.76) : Color(red: 0.18, green: 0.53, blue: 1.00))
+                    .foregroundStyle(accentColor)
                     .frame(width: 20, height: 20)
 
                 Text(title)
@@ -1261,8 +1273,8 @@ struct PurchaseSheet: View {
             Group {
                 if appModel.purchaseManager.offers.isEmpty && (!hasLoadedOffers || appModel.purchaseManager.isLoading) {
                     SyncLoadingState(
-                        title: "正在准备购买方案...",
-                        subtitle: "马上就好，正在同步最新价格"
+                        title: L10n.string("purchase.loading.title", "正在准备购买方案..."),
+                        subtitle: L10n.string("purchase.loading.subtitle", "马上就好，正在同步最新价格")
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(purchaseSheetBackground)
@@ -1272,7 +1284,7 @@ struct PurchaseSheet: View {
                             purchaseHero
 
                             if appModel.purchaseManager.offers.isEmpty {
-                                PurchaseEmptyState(message: appModel.purchaseErrorMessage ?? "暂时没有可购买商品。")
+                                PurchaseEmptyState(message: appModel.purchaseErrorMessage ?? L10n.string("purchase.empty", "暂时没有可购买商品。"))
                             } else {
                                 VStack(spacing: 16) {
                                     ForEach(Array(appModel.purchaseManager.offers.enumerated()), id: \.element.id) { index, offer in
@@ -1301,7 +1313,7 @@ struct PurchaseSheet: View {
                                     .padding(.horizontal, 4)
                             }
 
-                            Text("购买后次数会同步到你的账号，可在多设备继续使用。")
+                            Text(L10n.string("purchase.footer", "购买后次数会同步到你的账号，可在多设备继续使用。"))
                                 .font(.system(size: 12))
                                 .foregroundStyle(Color.black.opacity(0.42))
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -1313,7 +1325,7 @@ struct PurchaseSheet: View {
                 }
             }
             .background(purchaseSheetBackground)
-            .navigationTitle("购买次数")
+            .navigationTitle(L10n.string("profile.credits.purchase", "购买次数"))
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 if appModel.purchaseManager.offers.isEmpty {
@@ -1328,7 +1340,7 @@ struct PurchaseSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("关闭") {
+                    Button(L10n.string("common.close", "关闭")) {
                         dismiss()
                     }
                 }
@@ -1360,18 +1372,18 @@ struct PurchaseSheet: View {
                 .offset(x: 28, y: -28)
 
             VStack(alignment: .leading, spacing: 16) {
-                Text("继续记录你的生活\n也继续积累你的英语表达")
+                Text(L10n.string("purchase.hero.title", "继续记录你的生活\n也继续把瞬间变成可学习内容"))
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Color(red: 0.30, green: 0.23, blue: 0.14))
                     .lineSpacing(4)
 
-                Text("每次上传一张照片，都会生成三句适合学习的英文描述与中文翻译。")
+                Text(L10n.string("purchase.hero.subtitle", "每次上传一张照片，都会生成三句适合学习的简洁描述与对应翻译。"))
                     .font(.system(size: 14))
                     .foregroundStyle(Color(red: 0.39, green: 0.31, blue: 0.20))
                     .lineSpacing(3)
 
                 HStack(spacing: 10) {
-                    PurchaseMiniPill(text: "当前剩余 \(appModel.remainingCredits) 次")
+                    PurchaseMiniPill(text: L10n.string("purchase.hero.remaining", "当前剩余 %d 次", appModel.remainingCredits))
                 }
             }
             .padding(AppSpacing.xLarge)
@@ -1411,20 +1423,26 @@ private struct AboutUsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 VStack(spacing: 0) {
-                    AboutInfoRow(title: "运营主体", value: "三言信息智能")
+                    AboutInfoRow(
+                        title: L10n.string("about.operator.title", "运营主体"),
+                        value: L10n.string("about.operator.value", "三言信息智能")
+                    )
                     Divider()
-                    AboutInfoRow(title: "备案号", value: "暂未填写")
+                    AboutInfoRow(
+                        title: L10n.string("about.icp.title", "备案号"),
+                        value: L10n.string("about.icp.value", "暂未填写")
+                    )
                 }
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                        .fill(Color.white)
+                            .fill(Color.white)
                 )
                 .appCardShadow()
 
                 VStack(spacing: AppSpacing.medium) {
                     if let termsOfServiceURL = AppLinks.termsOfService {
                         AboutLinkRow(
-                            title: "用户服务协议",
+                            title: L10n.string("about.terms", "用户服务协议"),
                             systemImage: "doc.text",
                             destination: termsOfServiceURL
                         )
@@ -1432,7 +1450,7 @@ private struct AboutUsView: View {
 
                     if let privacyPolicyURL = AppLinks.privacyPolicy {
                         AboutLinkRow(
-                            title: "隐私协议",
+                            title: L10n.string("about.privacy", "隐私协议"),
                             systemImage: "hand.raised",
                             destination: privacyPolicyURL
                         )
@@ -1442,7 +1460,7 @@ private struct AboutUsView: View {
             .padding(AppSpacing.xLarge)
         }
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("关于我们")
+        .navigationTitle(L10n.string("profile.about.entry", "关于我们"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
     }
@@ -1517,7 +1535,7 @@ private struct PurchaseOfferCard: View {
                             .foregroundStyle(Color(red: 0.23, green: 0.23, blue: 0.23))
 
                         if isRecommended {
-                            Text("推荐")
+                            Text(L10n.string("purchase.recommended", "推荐"))
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 10)
@@ -1526,7 +1544,7 @@ private struct PurchaseOfferCard: View {
                         }
                     }
 
-                    Text("增加 \(offer.credits) 次生成机会")
+                    Text(L10n.string("purchase.offer.credits", "增加 %d 次生成机会", offer.credits))
                         .font(.system(size: 14))
                         .foregroundStyle(Color.black.opacity(0.5))
                 }
@@ -1585,18 +1603,18 @@ private struct PurchaseOfferCard: View {
 
     private var buttonTitle: String {
         if isPreparingPurchaseSession {
-            return "正在恢复账号..."
+            return L10n.string("purchase.button.restoring", "正在恢复账号...")
         }
 
         if isCompletingPurchase {
-            return "正在完成购买..."
+            return L10n.string("purchase.button.completing", "正在完成购买...")
         }
 
         if isConnectingToAppStore {
-            return "正在连接 App Store..."
+            return L10n.string("purchase.button.connecting_app_store", "正在连接 App Store...")
         }
 
-        return "立即购买"
+        return L10n.string("purchase.button.buy_now", "立即购买")
     }
 }
 

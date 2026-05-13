@@ -375,7 +375,7 @@ extension AppModel {
                 await refreshSentenceStudyDueCount()
             } else {
                 queuePendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
-                authErrorMessage = "收藏状态同步失败，会在下次同步时重试。"
+                authErrorMessage = L10n.string("sync.favorite.failed", "收藏状态同步失败，会在下次同步时重试。")
             }
         }
     }
@@ -396,7 +396,7 @@ extension AppModel {
                 await refreshSentenceStudyDueCount()
             } else {
                 queuePendingFavoriteChange(sentenceID: sentenceID, isFavorite: false)
-                authErrorMessage = "取消收藏失败，会在下次同步时重试。"
+                authErrorMessage = L10n.string("sync.unfavorite.failed", "取消收藏失败，会在下次同步时重试。")
             }
         }
     }
@@ -424,7 +424,7 @@ extension AppModel {
                 persistPendingMemoryDeletions()
                 await refreshSentenceStudyDueCount()
             } else {
-                authErrorMessage = "删除回忆失败，会在下次同步时重试。"
+                authErrorMessage = L10n.string("sync.delete_memory.failed", "删除回忆失败，会在下次同步时重试。")
             }
         }
     }
@@ -1096,34 +1096,12 @@ extension AppModel {
     }
 
     func shouldAttemptGenerationRecovery(for error: Error) -> Bool {
-        let message = error.localizedDescription.lowercased()
-        let nonRecoverableMarkers = [
-            "generation_policy_violation",
-            "generation_banned",
-            "image_moderation_unavailable",
-            "no_credits_left",
-            "rate_limit_exceeded",
-            "这张图片暂时无法生成",
-            "当前账号暂时无法生成",
-            "图片安全检查失败",
-            "当前使用人数过多",
-            "操作频繁",
-            "no credits left"
-        ]
-        if nonRecoverableMarkers.contains(where: { message.contains($0) }) {
+        switch error.generationRecoveryDisposition {
+        case .recoverable:
+            return true
+        case .nonRecoverable, .unknown:
             return false
         }
-
-        return message.contains("超时") ||
-            message.contains("timed out") ||
-            message.contains("timeout") ||
-            message.contains("网关") ||
-            message.contains("gateway") ||
-            message.contains("bad gateway") ||
-            message.contains("service unavailable") ||
-            message.contains("network connection was lost") ||
-            message.contains("连接已中断") ||
-            message.contains("requested timed out")
     }
 
     func isPendingGeneratedRecoveryExpired(_ pendingRecovery: PendingGeneratedMemoryImage) -> Bool {
@@ -1433,14 +1411,14 @@ extension AppModel {
         }
 
         guard isNetworkAvailable else {
-            sentenceStudyErrorMessage = "当前网络不可用，请连接网络后再开始学习。"
+            sentenceStudyErrorMessage = L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
             return
         }
 
         do {
             let session = try await ensureValidSession()
             guard !session.isAnonymous else {
-                sentenceStudyErrorMessage = "登录后就可以同步学习记录了。"
+                sentenceStudyErrorMessage = L10n.string("study.error.sign_in_required", "登录后就可以同步学习记录了。")
                 isShowingSignInSheet = true
                 return
             }
@@ -1462,7 +1440,7 @@ extension AppModel {
 
                 if queue.isEmpty {
                     sentenceStudyDueCount = 0
-                    sentenceStudyErrorMessage = "今天该学的收藏句子已经完成了。"
+                    sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
                     isShowingSentenceStudySession = false
                     return
                 }
@@ -1474,7 +1452,7 @@ extension AppModel {
             guard reviewableTodayCount > 0 else {
                 sentenceStudyDueCount = 0
                 sentenceStudyReviewableTodayCount = 0
-                sentenceStudyErrorMessage = "今天该学的收藏句子已经完成了。"
+                sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
                 isShowingSentenceStudySession = false
                 return
             }
@@ -1489,7 +1467,7 @@ extension AppModel {
             guard !shuffledReviewQueue.isEmpty else {
                 isRepeatingSentenceStudyQueue = false
                 sentenceStudyReviewableTodayCount = 0
-                sentenceStudyErrorMessage = "今天学过的句子暂时无法加载，请稍后再试。"
+                sentenceStudyErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
                 isShowingSentenceStudySession = false
                 return
             }
@@ -1501,7 +1479,7 @@ extension AppModel {
             print("[SentenceStudy] start failed :: \(error.localizedDescription)")
             #endif
             isRepeatingSentenceStudyQueue = false
-            sentenceStudyErrorMessage = "暂时无法加载学习内容，请稍后再试。"
+            sentenceStudyErrorMessage = L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
         }
     }
 
@@ -1572,7 +1550,7 @@ extension AppModel {
 
             guard !queue.isEmpty else {
                 sentenceStudyDueCount = 0
-                sentenceStudyErrorMessage = "今天该学的收藏句子已经完成了。"
+                sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
                 isShowingSentenceStudySession = false
                 return
             }
@@ -1584,7 +1562,7 @@ extension AppModel {
         guard sentenceStudyReviewableTodayCount > 0 else {
             sentenceStudyDueCount = 0
             sentenceStudyReviewableTodayCount = 0
-            sentenceStudyErrorMessage = "今天该学的收藏句子已经完成了。"
+            sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
             isShowingSentenceStudySession = false
             return
         }
@@ -1595,7 +1573,7 @@ extension AppModel {
         guard !reviewQueue.isEmpty else {
             isRepeatingSentenceStudyQueue = false
             sentenceStudyReviewableTodayCount = 0
-            sentenceStudyErrorMessage = "今天学过的句子暂时无法加载，请稍后再试。"
+            sentenceStudyErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
             isShowingSentenceStudySession = false
             return
         }
