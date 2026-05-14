@@ -294,103 +294,43 @@ private struct FavoriteSentenceListItem: Identifiable, Hashable {
 private struct FavoriteSentenceCard: View {
     @EnvironmentObject private var appModel: AppModel
     let item: FavoriteSentenceListItem
-    @State private var horizontalOffset: CGFloat = 0
-
-    private let unfavoriteSwipeThreshold: CGFloat = 96
-    private let maxSwipeOffset: CGFloat = 124
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(Color(red: 0.96, green: 0.42, blue: 0.28))
-
-            HStack(spacing: AppSpacing.small) {
-                Image(systemName: "star.slash")
-                    .font(.system(size: AppIconSize.regular, weight: .semibold))
-
-                Text(L10n.string("favorites.action.unfavorite", "取消收藏"))
-                    .font(.system(size: AppFontSize.caption, weight: .bold))
-            }
-            .foregroundStyle(.white)
-            .padding(.trailing, AppSpacing.xLarge)
-            .opacity(unfavoriteActionOpacity)
-
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                HStack(alignment: .top) {
-                    Text(item.favorite.sentence.english)
-                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                        .foregroundStyle(AppTextColor.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Button {
-                        appModel.speech.speak(item.favorite.sentence.english)
-                    } label: {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: AppIconSize.regular, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
-                            .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
-                            .background(Color(red: 0.99, green: 0.95, blue: 0.90), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text(item.favorite.sentence.chinese)
-                    .font(.system(size: AppFontSize.sectionLabel))
-                    .foregroundStyle(AppTextColor.secondary)
+        VStack(alignment: .leading, spacing: AppSpacing.large) {
+            HStack(alignment: .top) {
+                Text(item.favorite.sentence.english)
+                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack {
-                    if let createdDateText = item.createdDateText {
-                        Label(createdDateText, systemImage: "calendar")
-                            .font(.system(size: AppFontSize.caption, weight: .medium))
-                            .foregroundStyle(AppTextColor.tertiary)
-                    }
+                Button {
+                    appModel.speech.speak(item.favorite.sentence.english)
+                } label: {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: AppIconSize.regular, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                        .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
+                        .background(Color(red: 0.99, green: 0.95, blue: 0.90), in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(item.favorite.sentence.chinese)
+                .font(.system(size: AppFontSize.sectionLabel))
+                .foregroundStyle(AppTextColor.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                if let createdDateText = item.createdDateText {
+                    Label(createdDateText, systemImage: "calendar")
+                        .font(.system(size: AppFontSize.caption, weight: .medium))
+                        .foregroundStyle(AppTextColor.tertiary)
                 }
             }
-            .padding(AppSpacing.xLarge)
-            .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-            .offset(x: horizontalOffset)
-            .gesture(unfavoriteSwipeGesture)
         }
+        .padding(AppSpacing.xLarge)
+        .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .appCardShadow()
-    }
-
-    private var unfavoriteSwipeGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else {
-                    return
-                }
-                guard value.translation.width < 0 else {
-                    horizontalOffset = 0
-                    return
-                }
-                horizontalOffset = max(value.translation.width, -maxSwipeOffset)
-            }
-            .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
-                        horizontalOffset = 0
-                    }
-                    return
-                }
-
-                if value.translation.width <= -unfavoriteSwipeThreshold {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        horizontalOffset = -maxSwipeOffset
-                    }
-                    appModel.deleteFavorite(sentenceID: item.favorite.id)
-                } else {
-                    withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
-                        horizontalOffset = 0
-                    }
-                }
-            }
-    }
-
-    private var unfavoriteActionOpacity: Double {
-        let progress = min(max(-horizontalOffset / unfavoriteSwipeThreshold, 0), 1)
-        return 0.35 + (progress * 0.65)
     }
 
     static func formattedDate(for date: Date) -> String {
