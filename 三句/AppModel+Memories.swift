@@ -825,6 +825,10 @@ extension AppModel {
         previousMemoryIDs: Set<UUID>,
         session: SupabaseSession
     ) async -> MemoryEntry? {
+        guard shouldAttemptGenerationRecovery(for: error) else {
+            return nil
+        }
+
         if session.isAnonymous, pendingGeneratedMemoryImage?.guestJobID?.isEmpty == false {
             return await recoverAnonymousGeneratedMemoryIfNeeded(
                 previousMemoryIDs: previousMemoryIDs,
@@ -844,10 +848,6 @@ extension AppModel {
                     .seconds(4)
                 ]
             )
-        }
-
-        guard shouldAttemptGenerationRecovery(for: error) else {
-            return nil
         }
 
         let retryDelays: [Duration] = [
