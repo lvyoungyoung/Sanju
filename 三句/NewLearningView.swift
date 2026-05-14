@@ -586,8 +586,8 @@ struct NewLearningView: View {
             resetRecoveryCancelButtonVisibility()
         } catch {
             let localizedError = error.localizedDescription
-            if appModel.hasPendingGeneratedMemoryRecoveryCandidate() ||
-                isTransientGenerationError(localizedError) {
+            if error.generationRecoveryDisposition == .recoverable,
+               appModel.hasPendingGeneratedMemoryRecoveryCandidate() {
                 statusTask.cancel()
                 startPendingRecoveryTaskIfNeeded()
             } else {

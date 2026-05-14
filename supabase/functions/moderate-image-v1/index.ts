@@ -531,25 +531,13 @@ function isSevereImageModerationLabel(label: {
 }
 
 function buildImageModerationUnavailableResult(internalError: string): ImageModerationResult {
-  const publicError: Record<string, unknown> = {
-    error: "图片安全检查失败，请稍后再试。",
-    code: "image_moderation_unavailable",
-    debugVersion: "2026-05-02-moderate-image-v1-oss-upload",
-  }
-
-  if (isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_DEBUG"))) {
-    publicError.details = internalError
-  }
-
-  return {
-    allowed: false,
-    code: "image_moderation_unavailable",
-    policyViolation: false,
-    countedViolation: false,
-    statusCode: 503,
+  console.warn(JSON.stringify({
+    code: "image_moderation_unavailable_allow",
     internalError,
-    publicError,
-  }
+    at: new Date().toISOString(),
+  }))
+
+  return { allowed: true }
 }
 
 async function fetchWithTimeout(

@@ -181,10 +181,6 @@ extension AppModel {
     }
 
     private func clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for error: Error) {
-        if hasPendingGeneratedMemoryRecoveryCandidate() {
-            return
-        }
-
         if !shouldAttemptGenerationRecovery(for: error) {
             clearPendingGeneratedMemoryImage()
         }
