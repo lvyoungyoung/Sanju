@@ -41,6 +41,7 @@ on:
           - migrate-guest-credits
           - moderate-image-v1
           - recover-guest-generation
+          - update-profile-avatar
 
 jobs:
   check:
