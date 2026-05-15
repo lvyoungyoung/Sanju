@@ -30,6 +30,11 @@ extension AppModel {
 
     func loadLearningReminderSettings() {
         isLearningReminderEnabled = defaults.bool(forKey: AppStorageKey.learningReminderEnabled)
+        if defaults.object(forKey: AppStorageKey.autoSpeakSolvedSentence) != nil {
+            isAutoSpeakingSolvedSentenceEnabled = defaults.bool(forKey: AppStorageKey.autoSpeakSolvedSentence)
+        } else {
+            isAutoSpeakingSolvedSentenceEnabled = true
+        }
 
         if defaults.object(forKey: AppStorageKey.learningReminderHour) != nil {
             learningReminderHour = defaults.integer(forKey: AppStorageKey.learningReminderHour)
@@ -38,6 +43,11 @@ extension AppModel {
         if defaults.object(forKey: AppStorageKey.learningReminderMinute) != nil {
             learningReminderMinute = defaults.integer(forKey: AppStorageKey.learningReminderMinute)
         }
+    }
+
+    func setAutoSpeakingSolvedSentenceEnabled(_ isEnabled: Bool) {
+        isAutoSpeakingSolvedSentenceEnabled = isEnabled
+        defaults.set(isEnabled, forKey: AppStorageKey.autoSpeakSolvedSentence)
     }
 
     private func persistLearningReminderSettings() {

@@ -444,7 +444,7 @@ struct ProfileView: View {
                     )
                 )
 
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
+            VStack(alignment: .leading, spacing: AppSpacing.medium) {
                 HStack(alignment: .center, spacing: AppSpacing.medium) {
                     ProfileAvatarView()
 
@@ -485,11 +485,6 @@ struct ProfileView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                    Text(L10n.string("profile.hero.subtitle", "在这里管理你的可用次数、调整生成偏好，也可以继续购买新的生成次数。"))
-                        .font(.system(size: 14))
-                        .foregroundStyle(AppTextColor.secondary)
-                        .lineSpacing(3)
             }
             .padding(AppSpacing.xLarge)
         }
@@ -505,12 +500,6 @@ struct ProfileView: View {
                     Text(L10n.string("profile.guest.title", "未登录"))
                         .font(.system(size: AppFontSize.stat, weight: .bold))
                         .foregroundStyle(AppTextColor.primary)
-
-                    Text(L10n.string("profile.guest.subtitle", "登录后可以跨设备同步回忆和收藏"))
-                        .font(.system(size: AppFontSize.metadata))
-                        .foregroundStyle(AppTextColor.tertiary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 8)

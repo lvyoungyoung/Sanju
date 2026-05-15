@@ -102,7 +102,7 @@ struct NewLearningView: View {
                                 NewLearningSentenceList(memory: displayedMemory)
 
                                 VStack(spacing: AppSpacing.large) {
-                                    Text(L10n.string("new.result.saved_hint", "内容已保存到「回忆」中，你可以选择其他图片继续使用"))
+                                    Text(L10n.string("new.result.saved_hint", "内容已生成，建议收藏 1 到 2 句反复学习。"))
                                         .font(.system(size: AppFontSize.sectionLabel))
                                         .foregroundStyle(AppTextColor.secondary)
                                         .multilineTextAlignment(.center)

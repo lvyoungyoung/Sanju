@@ -106,7 +106,7 @@
 "supabase_error.too_many_requests" = "Too many people are using the service right now. Please try again later.";
 "supabase_error.user_already_registered" = "This email is already registered. Please sign in instead.";
 "about.icp.title" = "ICP Record";
-"about.icp.value" = "Not yet provided";
+"about.icp.value" = "苏ICP备2026022269号-2A";
 "about.operator.title" = "Operator";
 "about.operator.value" = "Sanyan Intelligent Information";
 "about.privacy" = "Privacy Policy";
@@ -179,7 +179,7 @@
 "new.recovery.retry_hint" = "This will not generate again. It only tries to fetch the result from your last request.";
 "new.recovery.waiting_network_hint" = "We will automatically try to fetch the result once the network comes back.";
 "new.result.choose_another" = "Choose Another Photo";
-"new.result.saved_hint" = "The result is saved in Memories. You can choose another photo to continue.";
+"new.result.saved_hint" = "Content generated. Save 1 or 2 sentences to practice again and again.";
 "new.upload.action" = "Tap to upload a photo";
 "new.upload.safety_hint" = "Your photo will be sent to AI services for analysis. Please avoid uploading sensitive information.";
 "profile.about.entry" = "About";
@@ -248,6 +248,8 @@
 "study.solved.retry_sync" = "Retry Sync";
 "study.solved.speak" = "Speak Sentence";
 "study.solved.title" = "Completed";
+"study.settings.auto_speak_completed_sentence" = "Read the sentence aloud after completing the blank";
+"study.settings.title" = "Study Settings";
 "sync.delete_memory.failed" = "Deleting this memory failed and will be retried during the next sync.";
 "sync.favorite.failed" = "Favorite status failed to sync and will be retried during the next sync.";
 "sync.local_memories.failed" = "Failed to sync local memories: %@";

@@ -234,6 +234,7 @@ enum AppStorageKey {
     static let learningReminderEnabled = "sanju.learningReminderEnabled"
     static let learningReminderHour = "sanju.learningReminderHour"
     static let learningReminderMinute = "sanju.learningReminderMinute"
+    static let autoSpeakSolvedSentence = "sanju.autoSpeakSolvedSentence"
     static let localSentenceStudyProgress = "sanju.localSentenceStudyProgress"
     static let supabaseSession = "sanju.supabaseSession"
     static let processedPurchaseTransactions = "sanju.processedPurchaseTransactions"
@@ -277,6 +278,7 @@ final class AppModel: ObservableObject {
     @Published var isLearningReminderEnabled = false
     @Published var learningReminderHour = 20
     @Published var learningReminderMinute = 30
+    @Published var isAutoSpeakingSolvedSentenceEnabled = true
     @Published var authErrorMessage: String?
     @Published var authFlowMessage: String?
     @Published var credentialWarningMessage: String?

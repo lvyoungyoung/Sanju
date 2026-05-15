@@ -9,6 +9,7 @@ struct SentenceStudySessionView: View {
     @State private var isReviewingToday: Bool
     @State private var isPreparingReviewQueue = false
     @State private var reviewQueueErrorMessage: String?
+    @State private var isShowingStudySettings = false
 
     init(queue: [SentenceStudyQueueItem], startsInReviewMode: Bool = false) {
         _activeQueue = State(initialValue: queue)
@@ -47,6 +48,7 @@ struct SentenceStudySessionView: View {
                         total: activeQueue.count,
                         recordsProgress: !isReviewingToday
                     ) {
+                        isShowingStudySettings = false
                         if currentIndex < activeQueue.count - 1 {
                             currentIndex += 1
                         } else {
@@ -56,6 +58,9 @@ struct SentenceStudySessionView: View {
                         }
                     }
                     .id(currentItem.id)
+                    .safeAreaInset(edge: .bottom) {
+                        studySettingsButton
+                    }
                 } else {
                     EmptyStateView(
                         title: L10n.string("study.empty.title", "今天没有待学习句子"),
@@ -108,7 +113,44 @@ struct SentenceStudySessionView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
             }
+            .sheet(isPresented: $isShowingStudySettings) {
+                StudySettingsSheet(
+                    isAutoSpeakingEnabled: appModel.isAutoSpeakingSolvedSentenceEnabled,
+                    onToggleAutoSpeaking: { isEnabled in
+                        appModel.setAutoSpeakingSolvedSentenceEnabled(isEnabled)
+                    }
+                )
+                .presentationDetents([.height(230)])
+                .presentationBackground(Color(.systemGroupedBackground))
+                .presentationDragIndicator(.visible)
+            }
         }
+    }
+
+    private var studySettingsButton: some View {
+        HStack {
+            Spacer()
+
+            Button {
+                isShowingStudySettings.toggle()
+            } label: {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: AppIconSize.regular, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                    .frame(width: 46, height: 46)
+                    .background(.white.opacity(0.96), in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(AppStroke.highlight, lineWidth: 1)
+                    }
+                    .appSurfaceShadow()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("study.settings.title", "学习设置"))
+
+            Spacer()
+        }
+        .padding(.bottom, AppSpacing.medium)
     }
 
     private func restartTodayReview() {
@@ -139,12 +181,44 @@ struct SentenceStudySessionView: View {
 
     private func restartReview(with queue: [SentenceStudyQueueItem]) {
         guard !queue.isEmpty else { return }
+        isShowingStudySettings = false
         activeQueue = queue
         currentIndex = 0
         isReviewingToday = true
         withAnimation(.spring(response: 0.45, dampingFraction: 0.88)) {
             isShowingCompletion = false
         }
+    }
+}
+
+private struct StudySettingsSheet: View {
+    let isAutoSpeakingEnabled: Bool
+    let onToggleAutoSpeaking: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.large) {
+            Text(L10n.string("study.settings.title", "学习设置"))
+                .font(.system(size: AppFontSize.field, weight: .bold))
+                .foregroundStyle(AppTextColor.title)
+
+            Toggle(
+                L10n.string("study.settings.auto_speak_completed_sentence", "填空完成后自动朗读句子"),
+                isOn: Binding(
+                    get: { isAutoSpeakingEnabled },
+                    set: onToggleAutoSpeaking
+                )
+            )
+            .font(.system(size: AppFontSize.body, weight: .medium))
+            .foregroundStyle(AppTextColor.primary)
+            .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
+            .padding(AppSpacing.large)
+            .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+            .appSurfaceShadow()
+        }
+        .padding(.horizontal, AppSpacing.xLarge)
+        .padding(.top, AppSpacing.xLarge)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 }
 
@@ -162,6 +236,7 @@ private struct SentenceStudyQuestionView: View {
     @State private var wrongBlankID: UUID?
     @State private var isSavingProgress = false
     @State private var didPersistProgress = false
+    @State private var didAutoSpeak = false
     @State private var saveErrorMessage: String?
 
     init(
@@ -283,6 +358,7 @@ private struct SentenceStudyQuestionView: View {
         }
         .onChange(of: filledBlankWordIDs.count) { _, newValue in
             guard newValue == question.blankIDs.count else { return }
+            speakSolvedSentenceIfNeeded()
             submitSolvedSentenceIfNeeded(forceRetry: false)
         }
     }
@@ -314,6 +390,13 @@ private struct SentenceStudyQuestionView: View {
     private func fillActiveBlank(with wordID: UUID) {
         guard let activeBlankID else { return }
         _ = placeWord(wordID, into: activeBlankID)
+    }
+
+    private func speakSolvedSentenceIfNeeded() {
+        guard !didAutoSpeak,
+              appModel.isAutoSpeakingSolvedSentenceEnabled else { return }
+        didAutoSpeak = true
+        appModel.speech.speak(item.english)
     }
 
     private func nextUnfilledBlank(after blankID: UUID) -> UUID? {

@@ -22,6 +22,6 @@
     <key>SupabasePublishableKey</key>
     <string>eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1icDEzNjRrNDA3cDM3cW43IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3Nzc3ODM4NjMsImV4cCI6MjA5MzM1OTg2M30.8v5eVFbxodBp-NBDgzYCBP7Q3uhdkujkjxeRijLery0</string>
     <key>SupabaseURL</key>
-    <string>https://spb-bp1364k407p37qn7.supabase.opentrust.net</string>
+    <string>https://api-staging.sanju.cc</string>
 </dict>
 </plist>

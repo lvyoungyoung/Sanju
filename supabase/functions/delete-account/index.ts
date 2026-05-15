@@ -107,6 +107,21 @@ Deno.serve(async (req) => {
     try {
       const warnings: string[] = []
 
+      const { data: profile, error: profileError } = await adminClient
+        .from("profiles")
+        .select("avatar_storage_path")
+        .eq("id", userID)
+        .maybeSingle()
+
+      if (profileError) {
+        throw new Error(`Failed to load user profile: ${profileError.message}`)
+      }
+
+      const avatarPath =
+        typeof profile?.avatar_storage_path === "string" && profile.avatar_storage_path.length > 0
+          ? profile.avatar_storage_path
+          : null
+
       const { data: memories, error: memoriesError } = await adminClient
         .from("memories")
         .select("id, image_url")
@@ -204,6 +219,16 @@ Deno.serve(async (req) => {
 
         if (removeImagesError) {
           warnings.push("Some storage objects could not be removed.")
+        }
+      }
+
+      if (avatarPath) {
+        const { error: removeAvatarError } = await adminClient.storage
+          .from("avatars")
+          .remove([avatarPath])
+
+        if (removeAvatarError) {
+          warnings.push("Avatar storage object could not be removed.")
         }
       }
 

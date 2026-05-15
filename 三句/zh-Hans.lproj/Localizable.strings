@@ -106,7 +106,7 @@
 "supabase_error.too_many_requests" = "当前使用人数过多，请稍后重试。";
 "supabase_error.user_already_registered" = "该邮箱已注册，请直接登录。";
 "about.icp.title" = "备案号";
-"about.icp.value" = "暂未填写";
+"about.icp.value" = "苏ICP备2026022269号-2A";
 "about.operator.title" = "运营主体";
 "about.operator.value" = "三言信息智能";
 "about.privacy" = "隐私协议";
@@ -179,7 +179,7 @@
 "new.recovery.retry_hint" = "不会重新生成，只会尝试获取刚才那次生成的结果。";
 "new.recovery.waiting_network_hint" = "网络恢复后会自动尝试获取结果。";
 "new.result.choose_another" = "再来一张";
-"new.result.saved_hint" = "内容已保存到「回忆」中，你可以选择其他图片继续使用";
+"new.result.saved_hint" = "内容已生成，建议收藏 1 到 2 句反复学习。";
 "new.upload.action" = "点击上传照片";
 "new.upload.safety_hint" = "图片会被发送给AI分析，请谨慎上传包含敏感信息的图片";
 "profile.about.entry" = "关于我们";
@@ -248,6 +248,8 @@
 "study.solved.retry_sync" = "重试同步";
 "study.solved.speak" = "朗读句子";
 "study.solved.title" = "填空完成";
+"study.settings.auto_speak_completed_sentence" = "填空完成后自动朗读句子";
+"study.settings.title" = "学习设置";
 "sync.delete_memory.failed" = "删除回忆失败，会在下次同步时重试。";
 "sync.favorite.failed" = "收藏状态同步失败，会在下次同步时重试。";
 "sync.local_memories.failed" = "本地回忆同步失败：%@";

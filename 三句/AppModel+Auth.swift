@@ -951,6 +951,7 @@ extension AppModel {
             AppStorageKey.learningReminderEnabled,
             AppStorageKey.learningReminderHour,
             AppStorageKey.learningReminderMinute,
+            AppStorageKey.autoSpeakSolvedSentence,
             AppStorageKey.localSentenceStudyProgress,
             AppStorageKey.processedPurchaseTransactions
         ].forEach(defaults.removeObject)

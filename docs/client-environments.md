@@ -9,11 +9,16 @@
 
 ## 当前地址
 
-- staging: `https://spb-bp1364k407p37qn7.supabase.opentrust.net`
+- staging: `https://api-staging.sanju.cc`
 - production: `https://api.sanju.cc`
 
 注意：客户端只允许放 `anon`/publishable key，不能放 `service_role` key。
 
-## 后续可选优化
+## Staging 反向代理
 
-如果要让 staging 更贴近 production 的网络链路，可以在 ECS 上增加 `api-staging.sanju.cc` 反向代理，然后只需要把 `Config.staging.plist` 里的 `SupabaseURL` 改成 `https://api-staging.sanju.cc`。
+staging 客户端入口现在也走 ECS/Nginx 转发，链路和 production 保持一致：
+
+- client: `https://api-staging.sanju.cc`
+- upstream: `spb-bp1364k407p37qn7.supabase.opentrust.net`
+
+ECS 上需要有对应的 DNS、TLS 证书和 Nginx server block。反向代理结构可参考 `deploy/nginx/sanju-api-proxy.conf.example`，但要把 `server_name`、证书路径、`proxy_set_header Host`、`proxy_ssl_name` 和 upstream 都换成 staging 项目。

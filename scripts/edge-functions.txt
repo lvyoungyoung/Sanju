@@ -5,3 +5,4 @@ generate-memory-v2
 migrate-guest-credits
 moderate-image-v1
 recover-guest-generation
+update-profile-avatar
