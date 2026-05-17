@@ -72,7 +72,7 @@ struct FavoritesView: View {
             guard appModel.isSignedIn else { return }
             await appModel.refreshRemoteContent()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(AppSurfaceColor.page)
         .toolbar(.hidden, for: .navigationBar)
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: sentenceStudyErrorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -139,7 +139,7 @@ struct FavoritesView: View {
 
                     Text(L10n.string("favorites.hero.title", "把你想反复练习的句子留在一个地方"))
                         .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppTextColor.title)
+                        .foregroundStyle(AppHeroTextColor.title)
                         .lineSpacing(4)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -151,17 +151,17 @@ struct FavoritesView: View {
 
             ZStack {
                 Circle()
-                    .fill(Color.white.opacity(0.9))
+                    .fill(Color.white.opacity(0.74))
                     .frame(width: 94, height: 94)
 
                 VStack(spacing: AppSpacing.xSmall) {
                     Text("\(appModel.favoriteSentencesCount)")
                         .font(.system(size: AppFontSize.heroStat, weight: .bold))
-                        .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
+                        .foregroundStyle(AppHeroTextColor.title)
 
                     Text(L10n.string("favorites.hero.count_label", "已收藏"))
                         .font(.system(size: AppFontSize.badge, weight: .medium))
-                        .foregroundStyle(AppTextColor.tertiary)
+                        .foregroundStyle(AppHeroTextColor.tertiary)
                 }
             }
             .padding(.top, AppSpacing.xLarge)
@@ -179,7 +179,7 @@ struct FavoritesView: View {
                 )
 
                 Rectangle()
-                    .fill(Color.black.opacity(0.08))
+                    .fill(AppStroke.subtle)
                     .frame(width: 1, height: 34)
 
                 StudyMetricView(
@@ -236,8 +236,8 @@ struct FavoritesView: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.94),
-                            Color(red: 1.00, green: 0.96, blue: 0.91).opacity(0.92)
+                            AppSurfaceColor.card,
+                            AppSurfaceColor.elevated
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -273,12 +273,12 @@ private struct StudyMetricView: View {
         VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
             Text(value)
                 .font(.system(size: AppFontSize.stat, weight: .bold))
-                .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
+                .foregroundStyle(AppTextColor.title)
                 .monospacedDigit()
 
             Text(label)
                 .font(.system(size: AppFontSize.caption, weight: .medium))
-                .foregroundStyle(Color.black.opacity(0.42))
+                .foregroundStyle(AppTextColor.tertiary)
         }
         .frame(minWidth: 54, alignment: .leading)
     }
@@ -310,7 +310,7 @@ private struct FavoriteSentenceCard: View {
                         .font(.system(size: AppIconSize.regular, weight: .semibold))
                         .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
                         .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
-                        .background(Color(red: 0.99, green: 0.95, blue: 0.90), in: Circle())
+                        .background(AppSurfaceColor.elevated, in: Circle())
                 }
                 .buttonStyle(.plain)
             }
@@ -329,7 +329,7 @@ private struct FavoriteSentenceCard: View {
             }
         }
         .padding(AppSpacing.xLarge)
-        .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .appCardShadow()
     }
 

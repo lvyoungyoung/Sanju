@@ -83,7 +83,7 @@ struct MemoryDetailView: View {
                         } label: {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 18, weight: .medium))
-                                .foregroundStyle(Color(red: 0.22, green: 0.22, blue: 0.22))
+                                .foregroundStyle(AppTextColor.primary)
                         }
                     }
                 }

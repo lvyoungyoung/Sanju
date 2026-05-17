@@ -47,6 +47,60 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
     }
 }
 
+extension MemoryEntry {
+    static func preferredDuplicate(_ current: MemoryEntry, _ candidate: MemoryEntry) -> MemoryEntry {
+        if current.imageData.isEmpty != candidate.imageData.isEmpty {
+            return current.imageData.isEmpty ? candidate : current
+        }
+
+        if current.sentences.count != candidate.sentences.count {
+            return current.sentences.count > candidate.sentences.count ? current : candidate
+        }
+
+        if current.syncedToAccount != candidate.syncedToAccount {
+            return current.syncedToAccount ? current : candidate
+        }
+
+        return current.createdAt >= candidate.createdAt ? current : candidate
+    }
+}
+
+extension Array where Element == MemoryEntry {
+    func deduplicatedByMemoryID() -> [MemoryEntry] {
+        var indexByID: [UUID: Int] = [:]
+        var result: [MemoryEntry] = []
+
+        for memory in self {
+            if let existingIndex = indexByID[memory.id] {
+                result[existingIndex] = MemoryEntry.preferredDuplicate(result[existingIndex], memory)
+            } else {
+                indexByID[memory.id] = result.count
+                result.append(memory)
+            }
+        }
+
+        return result
+    }
+
+    func memoryDictionaryByID() -> [UUID: MemoryEntry] {
+        reduce(into: [UUID: MemoryEntry]()) { partialResult, memory in
+            if let existing = partialResult[memory.id] {
+                partialResult[memory.id] = MemoryEntry.preferredDuplicate(existing, memory)
+            } else {
+                partialResult[memory.id] = memory
+            }
+        }
+    }
+}
+
+extension Array where Element == SentenceRecord {
+    func sentenceDictionaryByID() -> [UUID: SentenceRecord] {
+        reduce(into: [UUID: SentenceRecord]()) { partialResult, sentence in
+            partialResult[sentence.id] = partialResult[sentence.id] ?? sentence
+        }
+    }
+}
+
 struct UserProfile: Codable, Hashable {
     var appleUserID: String
     var nickname: String

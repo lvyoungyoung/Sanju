@@ -3,10 +3,10 @@ import UIKit
 import Combine
 
 private let signInThemeAccent = Color(red: 0.98, green: 0.65, blue: 0.00)
-private let signInThemeAccentSoft = Color(red: 1.00, green: 0.96, blue: 0.89)
-private let signInThemeAccentText = Color(red: 0.45, green: 0.31, blue: 0.10)
-private let signInThemeMutedText = Color(red: 0.56, green: 0.47, blue: 0.34)
-private let signInThemeBorder = Color(red: 0.87, green: 0.80, blue: 0.69)
+private let signInThemeAccentSoft = Color(.secondarySystemGroupedBackground)
+private let signInThemeAccentText = Color(.label)
+private let signInThemeMutedText = Color(.secondaryLabel)
+private let signInThemeBorder = Color(.separator)
 
 private struct SignInSheetContentHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -96,7 +96,7 @@ struct SignInView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.98, green: 0.95, blue: 0.91)
+            AppSurfaceColor.page
                 .ignoresSafeArea()
 
             ScrollView(showsIndicators: false) {
@@ -317,19 +317,19 @@ struct SignInView: View {
                 Button(action: requestPasswordReset) {
                     Text(verificationCodeButtonTitle)
                         .font(.system(size: AppFontSize.body, weight: .medium))
-                        .foregroundStyle(isVerificationCodeRequestDisabled ? Color.black.opacity(0.38) : signInThemeAccentText)
+                        .foregroundStyle(isVerificationCodeRequestDisabled ? AppTextColor.tertiary : signInThemeAccentText)
                         .frame(maxWidth: .infinity)
                         .frame(height: AppControlHeight.compact)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                 .fill(
                                     isVerificationCodeRequestDisabled
-                                    ? AnyShapeStyle(Color.white.opacity(0.92))
+                                    ? AnyShapeStyle(AppSurfaceColor.card)
                                     : AnyShapeStyle(
                                         LinearGradient(
                                             colors: [
                                                 signInThemeAccentSoft,
-                                                Color.white.opacity(0.98)
+                                                AppSurfaceColor.input
                                             ],
                                             startPoint: .topLeading,
                                             endPoint: .bottomTrailing
@@ -606,7 +606,7 @@ private struct LabeledTextField: View {
                 .frame(height: AppControlHeight.prominent)
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .fill(isFocused ? Color.white.opacity(0.98) : Color.white)
+                        .fill(isFocused ? AppSurfaceColor.input : AppSurfaceColor.card)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                 .stroke(
@@ -696,7 +696,7 @@ private struct LabeledSecureField: View {
                 .frame(height: AppControlHeight.prominent)
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .fill(isFocused ? Color.white.opacity(0.98) : Color.white)
+                        .fill(isFocused ? AppSurfaceColor.input : AppSurfaceColor.card)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                 .stroke(

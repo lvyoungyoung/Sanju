@@ -17,7 +17,7 @@ struct SaveResultHUD: View {
 
             Text(message)
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Color(red: 0.24, green: 0.24, blue: 0.24))
+                .foregroundStyle(AppTextColor.primary)
                 .multilineTextAlignment(.center)
         }
         .padding(.horizontal, 20)
@@ -40,13 +40,13 @@ struct MemoryDetailImageSkeleton: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-            .fill(Color.gray.opacity(0.14))
+            .fill(AppSurfaceColor.secondaryFill)
             .overlay {
                 GeometryReader { proxy in
                     LinearGradient(
                         colors: [
                             Color.clear,
-                            Color.white.opacity(0.28),
+                            Color(.systemBackground).opacity(0.28),
                             Color.clear
                         ],
                         startPoint: .top,
@@ -74,7 +74,7 @@ struct MemoryDetailSentencePanel: View {
             ForEach(memory.sentences) { sentence in
                 MemoryDetailSentenceRow(sentence: sentence)
                     .padding(16)
-                    .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
         }
     }
@@ -89,18 +89,18 @@ struct MemoryDetailSentenceRow: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text(sentence.english)
                     .font(.system(size: 17))
-                    .foregroundStyle(Color(red: 0.35, green: 0.35, blue: 0.35))
+                    .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(sentence.chinese)
                     .font(.system(size: 13))
-                    .foregroundStyle(Color(red: 0.72, green: 0.72, blue: 0.72))
+                    .foregroundStyle(AppTextColor.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             VStack(spacing: 12) {
                 MemoryDetailActionCircle(
-                    background: Color(red: 0.98, green: 0.95, blue: 0.91),
+                    background: AppSurfaceColor.elevated,
                     icon: "play.fill",
                     iconColor: Color(red: 0.98, green: 0.65, blue: 0.00)
                 ) {
@@ -108,7 +108,7 @@ struct MemoryDetailSentenceRow: View {
                 }
 
                 MemoryDetailActionCircle(
-                    background: Color(red: 0.97, green: 0.97, blue: 0.97),
+                    background: AppSurfaceColor.elevated,
                     icon: sentence.isFavorite ? "star.fill" : "star",
                     iconColor: sentence.isFavorite ? Color(red: 0.98, green: 0.75, blue: 0.15) : Color(red: 0.78, green: 0.78, blue: 0.78)
                 ) {
@@ -190,7 +190,7 @@ private struct MemoryDetailPagerButton: View {
     private var label: some View {
         Text(title)
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(Color(red: 0.22, green: 0.22, blue: 0.22))
+            .foregroundStyle(AppTextColor.primary)
             .padding(.horizontal, 20)
             .padding(.vertical, 10)
             .opacity(isEnabled ? 1 : 0.45)

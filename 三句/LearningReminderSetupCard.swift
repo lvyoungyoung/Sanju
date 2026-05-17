@@ -61,7 +61,7 @@ struct LearningReminderSetupCard: View {
             if let statusMessage {
                 Text(statusMessage)
                     .font(.system(size: AppFontSize.caption))
-                    .foregroundStyle(statusIsError ? Color.red.opacity(0.75) : Color(red: 0.35, green: 0.48, blue: 0.28))
+                    .foregroundStyle(statusIsError ? Color.red.opacity(0.75) : AppTextColor.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

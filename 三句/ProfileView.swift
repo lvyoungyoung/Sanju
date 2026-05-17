@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.colorScheme) private var colorScheme
     @State private var isShowingPurchaseSheet = false
     @State private var isShowingWidgetSetupSheet = false
     @State private var isShowingSignOutAlert = false
@@ -260,14 +261,14 @@ struct ProfileView: View {
             if shouldShowAuthenticatedRestoreSkeleton {
                 Text(L10n.string("profile.section.account", "账户"))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.5))
+                    .foregroundStyle(AppTextColor.secondary)
 
                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(Color.black.opacity(0.06))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(height: AppControlHeight.prominent)
 
                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(Color.black.opacity(0.06))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(height: AppControlHeight.prominent)
 
                 Divider()
@@ -275,7 +276,7 @@ struct ProfileView: View {
             } else if authenticatedProfile != nil {
                 Text(L10n.string("profile.section.account", "账户"))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.5))
+                    .foregroundStyle(AppTextColor.secondary)
 
                 Button(role: .destructive) {
                     guard !interceptIfGenerationInProgress() else { return }
@@ -357,7 +358,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.string("profile.section.about", "关于"))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
 
             NavigationLink {
                 AboutUsView()
@@ -387,7 +388,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.string("profile.section.widget", "桌面小组件"))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
 
             WidgetSetupLinkCard {
                 isShowingWidgetSetupSheet = true
@@ -399,7 +400,7 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(L10n.string("profile.section.learning_reminder", "学习提醒"))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
 
             LearningReminderSetupCard(
                 reminderTime: $learningReminderTime,
@@ -452,7 +453,7 @@ struct ProfileView: View {
                         HStack(alignment: .center, spacing: AppSpacing.xLarge) {
                             Text(profile.nickname)
                                 .font(.system(size: AppFontSize.heroStat + 1, weight: .bold))
-                                .foregroundStyle(AppTextColor.title)
+                                .foregroundStyle(AppHeroTextColor.title)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .layoutPriority(1)
@@ -479,7 +480,7 @@ struct ProfileView: View {
                         if let email = profile.email, !email.isEmpty {
                             Text(email)
                                 .font(.system(size: AppFontSize.metadata))
-                                .foregroundStyle(AppTextColor.tertiary)
+                                .foregroundStyle(AppHeroTextColor.tertiary)
                                 .lineLimit(1)
                         }
                     }
@@ -510,10 +511,10 @@ struct ProfileView: View {
                 } label: {
                     Text(L10n.string("auth.mode.sign_in.action", "登录"))
                         .font(.system(size: AppFontSize.body, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
                         .padding(.horizontal, AppSpacing.xLarge)
                         .padding(.vertical, AppSpacing.small + 2)
-                        .background(Color.black, in: Capsule())
+                        .background(colorScheme == .dark ? Color.white : Color.black, in: Capsule())
                 }
                 .buttonStyle(.plain)
             }
@@ -529,7 +530,7 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(Color.white)
+                .fill(AppSurfaceColor.card)
         )
         .appHeroShadow()
     }
@@ -538,26 +539,26 @@ struct ProfileView: View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             HStack(spacing: AppSpacing.medium) {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .fill(Color.black.opacity(0.08))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(width: 92, height: 92)
                     .overlay {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 34, weight: .medium))
-                            .foregroundStyle(Color.black.opacity(0.14))
+                            .foregroundStyle(AppTextColor.subtle)
                     }
 
                 VStack(alignment: .leading, spacing: AppSpacing.medium) {
                     RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                        .fill(Color.black.opacity(0.08))
+                        .fill(AppSurfaceColor.secondaryFill)
                         .frame(width: 128, height: 20)
 
                     RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                        .fill(Color.black.opacity(0.06))
+                        .fill(AppSurfaceColor.secondaryFill)
                         .frame(maxWidth: .infinity)
                         .frame(height: 13)
 
                     RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                        .fill(Color.black.opacity(0.06))
+                        .fill(AppSurfaceColor.secondaryFill)
                         .frame(width: 168, height: 13)
                 }
 
@@ -565,18 +566,18 @@ struct ProfileView: View {
 
                 ProgressView()
                     .controlSize(.regular)
-                    .tint(.black.opacity(0.65))
+                    .tint(AppTextColor.secondary)
             }
 
             HStack(spacing: AppSpacing.small) {
                 Text(L10n.string("profile.restoring.title", "正在恢复账号信息"))
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.48))
+                    .foregroundStyle(AppTextColor.secondary)
 
                 Spacer(minLength: 0)
 
                 RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                    .fill(Color.black.opacity(0.06))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(width: 84, height: 10)
             }
         }
@@ -584,7 +585,7 @@ struct ProfileView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(Color.white)
+                .fill(AppSurfaceColor.card)
         )
         .appHeroShadow()
     }
@@ -681,12 +682,12 @@ private struct NicknameEditorSheet: View {
             VStack(alignment: .leading, spacing: AppSpacing.xLarge) {
                 Text(L10n.string("profile.nickname.sheet_title", "修改昵称"))
                     .font(.system(size: AppFontSize.panelTitle, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.30, green: 0.30, blue: 0.28))
+                    .foregroundStyle(AppTextColor.title)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.string("auth.field.nickname", "昵称"))
                         .font(.system(size: AppFontSize.body, weight: .medium))
-                        .foregroundStyle(isNicknameFocused ? Color(red: 0.45, green: 0.31, blue: 0.10) : Color.black.opacity(0.55))
+                        .foregroundStyle(isNicknameFocused ? Color(red: 0.45, green: 0.31, blue: 0.10) : AppTextColor.secondary)
 
                     TextField(L10n.string("auth.placeholder.nickname", "请输入昵称，最多 20 个字符"), text: $nickname)
                         .textInputAutocapitalization(.never)
@@ -697,11 +698,11 @@ private struct NicknameEditorSheet: View {
                         .frame(height: AppControlHeight.prominent)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(Color.white)
+                                .fill(AppSurfaceColor.input)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                         .stroke(
-                                            isNicknameFocused ? Color(red: 0.98, green: 0.65, blue: 0.00).opacity(0.78) : Color.black.opacity(0.10),
+                                            isNicknameFocused ? Color(red: 0.98, green: 0.65, blue: 0.00).opacity(0.78) : AppStroke.soft,
                                             lineWidth: isNicknameFocused ? 1.5 : 1
                                         )
                                 )
@@ -725,7 +726,7 @@ private struct NicknameEditorSheet: View {
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity)
                     .frame(height: AppControlHeight.regular)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
 
                     Button(action: onSave) {
                         Text(isSaving ? L10n.string("common.saving", "保存中...") : L10n.string("common.save", "保存"))
@@ -810,7 +811,7 @@ private struct LightweightTopHint: View {
         switch style {
         case .normal:
             return LinearGradient(
-                colors: [Color.white.opacity(0.96), Color.white.opacity(0.96)],
+                colors: [AppSurfaceColor.elevated, AppSurfaceColor.elevated],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -838,7 +839,7 @@ private struct LightweightTopHint: View {
     private var shadowColor: Color {
         switch style {
         case .normal:
-            return Color.black.opacity(0.10)
+            return Color.black.opacity(0.05)
         case .warning:
             return Color(red: 0.90, green: 0.40, blue: 0.10).opacity(0.24)
         }
@@ -926,7 +927,7 @@ private struct WidgetSetupSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L10n.string("profile.widget.preview", "效果预览"))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
 
             previewCard
         }
@@ -943,7 +944,7 @@ private struct WidgetSetupSheet: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(preview.english)
                     .font(.callout)
-                    .foregroundStyle(Color(red: 0.24, green: 0.22, blue: 0.18))
+                    .foregroundStyle(AppTextColor.primary)
                     .lineLimit(5)
                     .multilineTextAlignment(.leading)
 
@@ -963,8 +964,8 @@ private struct WidgetSetupSheet: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color(red: 0.98, green: 0.97, blue: 0.93),
-                            Color(red: 0.95, green: 0.94, blue: 0.90)
+                            AppSurfaceColor.card,
+                            AppSurfaceColor.elevated
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -977,7 +978,7 @@ private struct WidgetSetupSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(L10n.string("profile.widget.steps", "添加步骤"))
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
 
             WidgetSetupMethodCard(
                 title: nil,
@@ -1044,7 +1045,7 @@ private struct WidgetSetupMethodCard: View {
             if let title {
                 Text(title)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.21, green: 0.21, blue: 0.20))
+                    .foregroundStyle(AppTextColor.primary)
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -1054,11 +1055,11 @@ private struct WidgetSetupMethodCard: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 24, height: 24)
-                            .background(Color.black, in: Circle())
+                            .background(Color(red: 0.98, green: 0.65, blue: 0.00), in: Circle())
 
                         Text(step)
                             .font(.system(size: 13))
-                            .foregroundStyle(Color.black.opacity(0.48))
+                            .foregroundStyle(AppTextColor.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -1110,7 +1111,7 @@ private struct LearningReminderTimePickerSheet: View {
             VStack(spacing: 0) {
                 Text(L10n.string("profile.learning_reminder.time_picker_title", "选择提醒时间"))
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.84))
+                    .foregroundStyle(AppTextColor.title)
                     .padding(.top, 32)
 
                 DatePicker(
@@ -1168,11 +1169,11 @@ private struct ProfileCreditCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(L10n.string("profile.credits.title", "可用次数"))
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.48))
+                    .foregroundStyle(AppTextColor.secondary)
 
                 Text("\(credits)")
                     .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(Color(red: 0.25, green: 0.25, blue: 0.26))
+                    .foregroundStyle(AppTextColor.title)
             }
 
             Spacer()
@@ -1193,7 +1194,7 @@ private struct ProfileCreditCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .appCardShadow()
     }
 }
@@ -1203,23 +1204,23 @@ private struct ProfileCreditCardSkeleton: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 8) {
                 RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                    .fill(Color.black.opacity(0.06))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(width: 58, height: 14)
 
                 RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                    .fill(Color.black.opacity(0.08))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(width: 72, height: 34)
             }
 
             Spacer()
 
             RoundedRectangle(cornerRadius: AppCornerRadius.pill, style: .continuous)
-                .fill(Color.black.opacity(0.06))
+                .fill(AppSurfaceColor.secondaryFill)
                 .frame(width: 96, height: 38)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .appCardShadow()
     }
 }
@@ -1296,15 +1297,15 @@ struct PurchaseSheet: View {
                             }
 
                             if let purchaseErrorMessage = appModel.purchaseErrorMessage {
-                                Text(purchaseErrorMessage)
-                                    .font(.footnote)
-                                    .foregroundStyle(.red)
+                            Text(purchaseErrorMessage)
+                                .font(.footnote)
+                                .foregroundStyle(.red)
                                     .padding(.horizontal, 4)
                             }
 
                             Text(L10n.string("purchase.footer", "购买后次数会同步到你的账号，可在多设备继续使用。"))
                                 .font(.system(size: 12))
-                                .foregroundStyle(Color.black.opacity(0.42))
+                                .foregroundStyle(AppTextColor.secondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 4)
                         }
@@ -1384,8 +1385,8 @@ struct PurchaseSheet: View {
     private var purchaseSheetBackground: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.98, green: 0.96, blue: 0.92),
-                Color(red: 0.95, green: 0.95, blue: 0.97)
+                AppSurfaceColor.page,
+                AppSurfaceColor.page
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -1424,7 +1425,7 @@ private struct AboutUsView: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                            .fill(Color.white)
+                            .fill(AppSurfaceColor.card)
                 )
                 .appCardShadow()
 
@@ -1498,7 +1499,7 @@ private struct AboutLinkRow: View {
             .padding(18)
             .background(
                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(Color.white)
+                    .fill(AppSurfaceColor.card)
             )
             .appCardShadow()
         }
@@ -1521,7 +1522,7 @@ private struct PurchaseOfferCard: View {
                     HStack(spacing: 8) {
                         Text(offer.product.displayName)
                             .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(Color(red: 0.23, green: 0.23, blue: 0.23))
+                            .foregroundStyle(AppTextColor.primary)
 
                         if isRecommended {
                             Text(L10n.string("purchase.recommended", "推荐"))
@@ -1535,7 +1536,7 @@ private struct PurchaseOfferCard: View {
 
                     Text(L10n.string("purchase.offer.credits", "增加 %d 次生成机会", offer.credits))
                         .font(.system(size: 14))
-                        .foregroundStyle(Color.black.opacity(0.5))
+                        .foregroundStyle(AppTextColor.secondary)
                 }
 
                 Spacer()
@@ -1558,7 +1559,7 @@ private struct PurchaseOfferCard: View {
                 .foregroundStyle(isRecommended ? .white : Color(red: 0.98, green: 0.65, blue: 0.00))
                 .background(
                     RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .fill(isRecommended ? Color(red: 0.98, green: 0.65, blue: 0.00) : Color.white)
+                        .fill(isRecommended ? Color(red: 0.98, green: 0.65, blue: 0.00) : AppSurfaceColor.card)
                 )
                 .overlay {
                     if !isRecommended {
@@ -1573,7 +1574,7 @@ private struct PurchaseOfferCard: View {
         .padding(18)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(isRecommended ? Color.white : Color.white.opacity(0.9))
+                .fill(isRecommended ? AppSurfaceColor.card : AppSurfaceColor.elevated)
         )
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
@@ -1618,11 +1619,11 @@ private struct PurchaseEmptyState: View {
 
             Text(message)
                 .font(.system(size: 14))
-                .foregroundStyle(Color.black.opacity(0.5))
+                .foregroundStyle(AppTextColor.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 36)
-        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
     }
 }

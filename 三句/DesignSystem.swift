@@ -9,9 +9,9 @@ enum AppCornerRadius {
 }
 
 enum AppStroke {
-    static let subtle = Color.black.opacity(0.06)
-    static let soft = Color.black.opacity(0.10)
-    static let highlight = Color.white.opacity(0.75)
+    static let subtle = Color(.separator).opacity(0.32)
+    static let soft = Color(.separator).opacity(0.48)
+    static let highlight = Color(.separator).opacity(0.22)
 }
 
 enum AppSpacing {
@@ -61,12 +61,27 @@ enum AppFontSize {
 }
 
 enum AppTextColor {
-    static let title = Color(red: 0.30, green: 0.28, blue: 0.30)
-    static let primary = Color(red: 0.27, green: 0.27, blue: 0.28)
-    static let secondary = Color.black.opacity(0.52)
-    static let tertiary = Color.black.opacity(0.42)
-    static let subtle = Color.black.opacity(0.30)
-    static let inverse = Color.white
+    static let title = Color(.label)
+    static let primary = Color(.label)
+    static let secondary = Color(.secondaryLabel)
+    static let tertiary = Color(.tertiaryLabel)
+    static let subtle = Color(.quaternaryLabel)
+    static let inverse = Color(.systemBackground)
+}
+
+enum AppHeroTextColor {
+    static let title = Color(red: 0.24, green: 0.24, blue: 0.23)
+    static let secondary = Color(red: 0.44, green: 0.40, blue: 0.34)
+    static let tertiary = Color(red: 0.58, green: 0.53, blue: 0.46)
+}
+
+enum AppSurfaceColor {
+    static let page = Color(.systemGroupedBackground)
+    static let card = Color(.secondarySystemGroupedBackground)
+    static let elevated = Color(.tertiarySystemGroupedBackground)
+    static let input = Color(.systemBackground)
+    static let subtleFill = Color(.systemFill)
+    static let secondaryFill = Color(.secondarySystemFill)
 }
 
 enum AppImageAspectRatio {

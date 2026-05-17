@@ -88,7 +88,7 @@ struct NewLearningView: View {
                                             .padding(.vertical, AppSpacing.medium)
                                             .background(
                                                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                                    .fill(Color(red: 0.99, green: 0.95, blue: 0.90))
+                                                    .fill(AppSurfaceColor.elevated)
                                             )
                                     }
                                     .buttonStyle(.plain)
@@ -117,7 +117,7 @@ struct NewLearningView: View {
                                             .padding(.vertical, AppSpacing.medium)
                                             .background(
                                                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                                    .fill(appModel.isNetworkAvailable ? Color(red: 1.0, green: 0.98, blue: 0.95) : Color(.secondarySystemGroupedBackground))
+                                                    .fill(appModel.isNetworkAvailable ? AppSurfaceColor.elevated : AppSurfaceColor.card)
                                             )
                                     }
                                     .buttonStyle(.plain)
@@ -178,7 +178,7 @@ struct NewLearningView: View {
                         .padding(AppSpacing.xLarge)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                                .fill(Color.white)
+                                .fill(AppSurfaceColor.card)
                         )
                         .appCardShadow()
                     }
@@ -199,7 +199,7 @@ struct NewLearningView: View {
             matching: .images,
             photoLibrary: .shared()
         )
-        .background(Color(.systemGroupedBackground))
+        .background(AppSurfaceColor.page)
         .toolbar(.hidden, for: .navigationBar)
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active else { return }
@@ -249,7 +249,7 @@ struct NewLearningView: View {
 
                     Text(L10n.string("new.hero.title", "用今天拍到的画面来学习你喜欢的语言"))
                         .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppTextColor.primary)
+                        .foregroundStyle(AppHeroTextColor.title)
                         .lineSpacing(4)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -274,7 +274,7 @@ struct NewLearningView: View {
             if let selectedImageData,
                let image = UIImage(data: selectedImageData) {
                 ZStack {
-                    Color(red: 0.95, green: 0.94, blue: 0.91)
+                    AppSurfaceColor.card
 
                     Image(uiImage: image)
                         .resizable()
@@ -296,7 +296,7 @@ struct NewLearningView: View {
                         .font(.system(size: 20, weight: .medium))
                         .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
                         .frame(width: 44, height: 44)
-                        .background(Color(red: 0.98, green: 0.95, blue: 0.91), in: Circle())
+                        .background(AppSurfaceColor.elevated, in: Circle())
                         .appCardShadow()
                 }
                 .padding(.top, AppSpacing.medium)
@@ -338,7 +338,7 @@ struct NewLearningView: View {
                     .overlay {
                         VStack(spacing: AppSpacing.xLarge) {
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(isNetworkAvailable ? Color(red: 0.98, green: 0.95, blue: 0.91) : Color(.systemGray5))
+                                .fill(isNetworkAvailable ? AppSurfaceColor.elevated : AppSurfaceColor.secondaryFill)
                                 .frame(width: 108, height: 104)
                                 .overlay {
                                     Image(systemName: "square.and.arrow.up")
@@ -414,7 +414,7 @@ struct NewLearningView: View {
         .padding(AppSpacing.xLarge)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(Color.white)
+                .fill(AppSurfaceColor.card)
         )
         .appCardShadow()
     }
@@ -810,7 +810,7 @@ private struct NewLearningSentenceList: View {
             ForEach(memory.sentences) { sentence in
                 MemoryDetailSentenceRow(sentence: sentence)
                     .padding(16)
-                    .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
         }
     }

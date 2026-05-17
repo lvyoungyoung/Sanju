@@ -85,10 +85,10 @@ struct CloudSyncManager {
         queuedLocalStudyProgress: [LocalSentenceStudyProgress]
     ) -> CloudSyncPlan {
         let queuedFavoriteSentenceIDs = Set(queuedFavoriteChanges.map(\.sentenceID))
-        let remoteMemoryByID = Dictionary(uniqueKeysWithValues: remoteMemories.map { ($0.id, $0) })
+        let remoteMemoryByID = remoteMemories.memoryDictionaryByID()
         let favoriteDifferenceCount = localMemories.reduce(into: 0) { partialResult, localMemory in
             guard localMemory.syncedToAccount, let remoteMemory = remoteMemoryByID[localMemory.id] else { return }
-            let remoteSentenceByID = Dictionary(uniqueKeysWithValues: remoteMemory.sentences.map { ($0.id, $0) })
+            let remoteSentenceByID = remoteMemory.sentences.sentenceDictionaryByID()
             partialResult += localMemory.sentences.filter { localSentence in
                 !queuedFavoriteSentenceIDs.contains(localSentence.id)
                     && remoteSentenceByID[localSentence.id]?.isFavorite != localSentence.isFavorite
@@ -109,8 +109,9 @@ struct CloudSyncManager {
         remoteMemories: [MemoryEntry],
         sessionUserID: String
     ) -> CloudSyncReconciliationResult {
-        var reconciledMemories = localMemories
-        var didChange = false
+        var reconciledMemories = localMemories.deduplicatedByMemoryID()
+        let remoteMemories = remoteMemories.deduplicatedByMemoryID()
+        var didChange = reconciledMemories.count != localMemories.count
 
         for index in reconciledMemories.indices {
             guard isMemoryContentComplete(reconciledMemories[index]),

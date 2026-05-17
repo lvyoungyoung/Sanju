@@ -24,7 +24,7 @@ struct SentenceStudySessionView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground)
+                AppSurfaceColor.page
                     .ignoresSafeArea()
 
                 if isShowingCompletion {
@@ -78,9 +78,9 @@ struct SentenceStudySessionView: View {
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: AppIconSize.regular, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
+                            .foregroundStyle(AppTextColor.primary)
                             .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
-                            .background(Color.white, in: Circle())
+                            .background(AppSurfaceColor.elevated, in: Circle())
                     }
                     .buttonStyle(.plain)
 
@@ -103,10 +103,10 @@ struct SentenceStudySessionView: View {
                             )
                         )
                             .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                            .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
+                            .foregroundStyle(AppTextColor.primary)
                             .padding(.horizontal, AppControlPadding.regular)
                             .padding(.vertical, 9)
-                            .background(Color.white.opacity(0.94), in: Capsule())
+                            .background(AppSurfaceColor.elevated, in: Capsule())
                             .id(currentItem.id)
                     }
                 }
@@ -138,7 +138,7 @@ struct SentenceStudySessionView: View {
                     .font(.system(size: AppIconSize.regular, weight: .semibold))
                     .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
                     .frame(width: 46, height: 46)
-                    .background(.white.opacity(0.96), in: Circle())
+                    .background(AppSurfaceColor.elevated, in: Circle())
                     .overlay {
                         Circle()
                             .stroke(AppStroke.highlight, lineWidth: 1)
@@ -212,7 +212,7 @@ private struct StudySettingsSheet: View {
             .foregroundStyle(AppTextColor.primary)
             .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
             .padding(AppSpacing.large)
-            .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .appSurfaceShadow()
         }
         .padding(.horizontal, AppSpacing.xLarge)
@@ -312,7 +312,7 @@ private struct SentenceStudyQuestionView: View {
                     }
 
                     Divider()
-                        .overlay(Color.black.opacity(0.05))
+                        .overlay(AppStroke.subtle)
 
                     if !remainingWords.isEmpty {
                         StudyFlowLayout(horizontalSpacing: 10, verticalSpacing: 12) {
@@ -326,7 +326,7 @@ private struct SentenceStudyQuestionView: View {
                     }
                 }
                 .padding(AppSpacing.xLarge)
-                .background(.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
                 .appCardShadow()
 
                 if allBlanksFilled {
@@ -344,7 +344,7 @@ private struct SentenceStudyQuestionView: View {
                 } else {
                     Text(L10n.string("study.question.hint", "点击对应的单词，填写到高亮的空格中。"))
                         .font(.system(size: 14))
-                        .foregroundStyle(Color.black.opacity(0.46))
+                        .foregroundStyle(AppTextColor.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 6)
                 }
@@ -458,7 +458,7 @@ private struct SentenceStudyPromptCard: View {
                         .overlay {
                             Image(systemName: "photo")
                                 .font(.system(size: AppFontSize.panelTitle, weight: .medium))
-                                .foregroundStyle(Color.black.opacity(0.18))
+                                .foregroundStyle(AppTextColor.subtle)
                         }
                 }
             }
@@ -468,7 +468,7 @@ private struct SentenceStudyPromptCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(chinese)
                     .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
+                    .foregroundStyle(AppHeroTextColor.secondary)
                     .lineSpacing(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -589,7 +589,7 @@ private struct SentenceStudySolvedState: View {
         .padding(AppSpacing.xLarge)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(Color.white)
+                .fill(AppSurfaceColor.card)
         )
         .appCardShadow()
     }

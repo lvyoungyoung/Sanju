@@ -276,7 +276,9 @@ extension AppModel {
         remainingCredits updatedRemainingCredits: Int,
         session: SupabaseSession
     ) async {
+        memories.removeAll { $0.id == memory.id }
         memories.insert(memory, at: 0)
+        memories = memories.deduplicatedByMemoryID()
         recordedMemoriesCount = memories.count
         draftLearningImageData = originalImageData
         draftGeneratedMemory = memory
@@ -526,7 +528,10 @@ extension AppModel {
         guard let session = try? await ensureValidSession() else { return }
 
         if session.isAnonymous {
-            let localMemories = memories.filter(isMemoryContentComplete).sorted { $0.createdAt > $1.createdAt }
+            let localMemories = memories
+                .filter(isMemoryContentComplete)
+                .deduplicatedByMemoryID()
+                .sorted { $0.createdAt > $1.createdAt }
             memories = localMemories
             if refreshCounts {
                 recordedMemoriesCount = localMemories.count
@@ -545,7 +550,7 @@ extension AppModel {
         do {
             let remoteRecords = try await supabaseService.fetchMemories(session: session)
             guard isSessionStillCurrent(session) else { return }
-            let existingMemories = Dictionary(uniqueKeysWithValues: memories.map { ($0.id, $0) })
+            let existingMemories = memories.memoryDictionaryByID()
             let remoteMemories = try remoteRecords.map { record -> MemoryEntry in
                 let sentences = record.sentences
                     .sorted { $0.sortOrder < $1.sortOrder }
@@ -611,7 +616,9 @@ extension AppModel {
                 }
             }
 
-            loadedMemories.sort { $0.createdAt > $1.createdAt }
+            loadedMemories = loadedMemories
+                .deduplicatedByMemoryID()
+                .sorted { $0.createdAt > $1.createdAt }
             await reconcilePendingGeneratedMemoryImage(with: &loadedMemories, session: session)
             guard isSessionStillCurrent(session) else { return }
             memories = loadedMemories
@@ -1315,7 +1322,9 @@ extension AppModel {
 
         pendingGuestMemoryMigrationQueue.removeAll { $0.id == memory.id }
         pendingGuestMemoryMigrationQueue.append(memory)
-        pendingGuestMemoryMigrationQueue.sort { $0.createdAt > $1.createdAt }
+        pendingGuestMemoryMigrationQueue = pendingGuestMemoryMigrationQueue
+            .deduplicatedByMemoryID()
+            .sorted { $0.createdAt > $1.createdAt }
         persistPendingGuestMemoryMigrationQueue()
     }
 

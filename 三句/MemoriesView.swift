@@ -167,7 +167,7 @@ struct MemoriesView: View {
 
                     Text(L10n.string("memories.hero.title", "把你记录过的画面留成一页一页可回看的学习素材"))
                         .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppTextColor.primary)
+                        .foregroundStyle(AppHeroTextColor.title)
                         .lineSpacing(4)
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -180,14 +180,14 @@ struct MemoriesView: View {
             VStack(spacing: 6) {
                 Text("\(appModel.recordedMemoriesCount)")
                     .font(.system(size: AppFontSize.heroStat, weight: .bold))
-                    .foregroundStyle(Color(red: 0.34, green: 0.27, blue: 0.23))
+                    .foregroundStyle(AppHeroTextColor.title)
 
                 Text(L10n.string("memories.hero.count_label", "已记录"))
                     .font(.system(size: AppFontSize.badge, weight: .medium))
-                    .foregroundStyle(AppTextColor.tertiary)
+                    .foregroundStyle(AppHeroTextColor.tertiary)
             }
             .frame(width: 92, height: 92)
-            .background(Color.white.opacity(0.88), in: Circle())
+            .background(Color.white.opacity(0.74), in: Circle())
             .padding(.top, AppSpacing.xLarge)
             .padding(.trailing, AppSpacing.xLarge)
         }
@@ -365,7 +365,7 @@ private struct PendingCloudSyncProgressCard: View {
 
                 Text("\(completedCount)/\(totalCount)")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.black.opacity(0.45))
+                    .foregroundStyle(AppTextColor.tertiary)
             }
 
             ProgressView(value: progress)
@@ -373,7 +373,7 @@ private struct PendingCloudSyncProgressCard: View {
         }
         .padding(.horizontal, AppSpacing.large)
         .padding(.vertical, AppSpacing.medium)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
         .appSurfaceShadow()
     }
 }

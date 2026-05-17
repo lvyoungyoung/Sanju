@@ -455,7 +455,12 @@ extension AppModel {
         }
 
         localSentenceStudyProgress = Dictionary(
-            uniqueKeysWithValues: progressRecords.map { ($0.sentenceID, $0) }
+            progressRecords.map { ($0.sentenceID, $0) },
+            uniquingKeysWith: { current, candidate in
+                let currentDate = current.lastStudiedAt ?? .distantPast
+                let candidateDate = candidate.lastStudiedAt ?? .distantPast
+                return currentDate >= candidateDate ? current : candidate
+            }
         )
     }
 
@@ -586,7 +591,7 @@ extension AppModel {
             return
         }
 
-        memories = cachedMemories.memories
+        memories = cachedMemories.memories.deduplicatedByMemoryID()
 
         recordedMemoriesCount = memories.count
         favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
@@ -602,6 +607,7 @@ extension AppModel {
     func mergePendingGuestMemoriesIntoCurrentMemoriesIfNeeded(persistUserID: String? = nil) {
         var queuedMemories = pendingGuestMemoryMigrationQueue
             .filter(isMemoryContentComplete)
+            .deduplicatedByMemoryID()
             .sorted { $0.createdAt > $1.createdAt }
 
         if let persistUserID,
@@ -622,7 +628,7 @@ extension AppModel {
 
         guard !queuedMemories.isEmpty else { return }
 
-        var mergedMemories = memories
+        var mergedMemories = memories.deduplicatedByMemoryID()
         var didChange = false
 
         for queuedMemory in queuedMemories {
@@ -655,7 +661,9 @@ extension AppModel {
 
         guard didChange else { return }
 
-        mergedMemories.sort { $0.createdAt > $1.createdAt }
+        mergedMemories = mergedMemories
+            .deduplicatedByMemoryID()
+            .sorted { $0.createdAt > $1.createdAt }
         memories = mergedMemories
         recordedMemoriesCount = mergedMemories.count
         favoriteSentencesCount = mergedMemories.reduce(into: 0) { partialResult, memory in

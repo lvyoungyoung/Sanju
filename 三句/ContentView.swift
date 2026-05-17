@@ -35,7 +35,7 @@ struct ContentView: View {
                 )
                     .environmentObject(appModel)
                     .presentationDetents([.height(signInSheetHeight)])
-                    .presentationBackground(Color(red: 0.98, green: 0.95, blue: 0.91))
+                    .presentationBackground(AppSurfaceColor.page)
                     .presentationDragIndicator(.visible)
             }
             .onOpenURL { url in
@@ -107,7 +107,7 @@ struct SyncLoadingState: View {
         VStack(spacing: AppSpacing.large) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .fill(Color.white.opacity(0.88))
+                    .fill(AppSurfaceColor.card)
                     .frame(width: 86, height: 86)
                     .appHeroShadow()
 
@@ -138,7 +138,7 @@ struct GlobalBlockingLoadingOverlay: View {
             VStack(spacing: AppSpacing.large) {
                 ZStack {
                     RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                        .fill(Color.white.opacity(0.94))
+                        .fill(AppSurfaceColor.card)
                         .frame(width: 86, height: 86)
                         .appHeroShadow()
 
@@ -154,7 +154,7 @@ struct GlobalBlockingLoadingOverlay: View {
             .padding(.vertical, AppSpacing.section)
             .background(
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .fill(Color.white.opacity(0.96))
+                    .fill(AppSurfaceColor.elevated)
             )
             .appCardShadow()
             .padding(.horizontal, AppSpacing.xxxLarge)
@@ -193,14 +193,14 @@ struct SentenceSkeletonSection: View {
         VStack(spacing: AppSpacing.medium) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(Color.gray.opacity(0.14))
+                    .fill(AppSurfaceColor.secondaryFill)
                     .frame(height: 66)
                     .overlay {
                         GeometryReader { proxy in
                             LinearGradient(
                                 colors: [
                                     Color.clear,
-                                    Color.white.opacity(0.28),
+                                    Color(.systemBackground).opacity(0.28),
                                     Color.clear
                                 ],
                                 startPoint: .leading,
@@ -239,7 +239,7 @@ struct GenerationProgressCard: View {
         .frame(maxWidth: .infinity, alignment: .center)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                .fill(colorScheme == .dark ? Color(red: 0.18, green: 0.18, blue: 0.20) : .white)
+                .fill(AppSurfaceColor.card)
         )
     }
 }

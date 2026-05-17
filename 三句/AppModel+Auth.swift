@@ -1388,12 +1388,12 @@ extension AppModel {
         guard let session = supabaseSession, !session.isAnonymous else { return }
 
         let queuedSentenceIDs = Set(pendingFavoriteChanges.map(\.sentenceID))
-        let remoteMemoryByID = Dictionary(uniqueKeysWithValues: remoteMemories.map { ($0.id, $0) })
+        let remoteMemoryByID = remoteMemories.memoryDictionaryByID()
 
         for localMemory in memories where localMemory.syncedToAccount {
             guard let remoteMemory = remoteMemoryByID[localMemory.id] else { continue }
 
-            let remoteSentenceByID = Dictionary(uniqueKeysWithValues: remoteMemory.sentences.map { ($0.id, $0) })
+            let remoteSentenceByID = remoteMemory.sentences.sentenceDictionaryByID()
             for localSentence in localMemory.sentences {
                 guard !queuedSentenceIDs.contains(localSentence.id),
                       let remoteSentence = remoteSentenceByID[localSentence.id],
@@ -1600,9 +1600,11 @@ extension AppModel {
         )
         guard result.didChange else { return }
 
-        memories = result.memories
-        recordedMemoriesCount = result.recordedMemoriesCount
-        favoriteSentencesCount = result.favoriteSentencesCount
+        memories = result.memories.deduplicatedByMemoryID()
+        recordedMemoriesCount = memories.count
+        favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
+            partialResult += memory.sentences.filter(\.isFavorite).count
+        }
         persistMemories()
     }
 

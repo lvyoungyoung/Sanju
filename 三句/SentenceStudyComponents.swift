@@ -13,13 +13,13 @@ struct SentenceStudyBlankTokenView: View {
             if !token.prefix.isEmpty {
                 Text(token.prefix)
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.28, green: 0.27, blue: 0.29))
+                    .foregroundStyle(AppTextColor.title)
             }
 
             Button(action: onTap) {
                 Text(filledWord?.text ?? " ")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(filledWord == nil ? Color.clear : Color(red: 0.23, green: 0.45, blue: 0.29))
+                    .foregroundStyle(filledWord == nil ? Color.clear : Color(red: 0.23, green: 0.62, blue: 0.36))
                     .frame(width: width, height: 32)
                     .background(blankBackground)
                     .overlay(blankOverlay)
@@ -30,7 +30,7 @@ struct SentenceStudyBlankTokenView: View {
             if !token.suffix.isEmpty {
                 Text(token.suffix)
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.28, green: 0.27, blue: 0.29))
+                    .foregroundStyle(AppTextColor.title)
             }
         }
     }
@@ -77,12 +77,12 @@ struct SentenceStudyWordTagView: View {
     var body: some View {
         Text(word)
             .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(Color(red: 0.35, green: 0.28, blue: 0.24))
+            .foregroundStyle(AppTextColor.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 11)
             .background(
                 Capsule()
-                    .fill(Color.white)
+                    .fill(AppSurfaceColor.card)
             )
             .overlay(
                 Capsule()
