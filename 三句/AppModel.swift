@@ -225,6 +225,10 @@ enum AppTab: Hashable {
     case profile
 }
 
+enum ProfileNavigationRoute: Hashable {
+    case aboutUs
+}
+
 enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
     case simple = "简单"
     case intermediate = "中等"
@@ -369,6 +373,7 @@ final class AppModel: ObservableObject {
     @Published var draftGeneratedMemoryID: UUID?
     @Published var selectedTab: AppTab = .newLearning
     @Published var memoriesNavigationPath: [UUID] = []
+    @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
     let speech = SpeechService()
     let purchaseManager = PurchaseManager()
@@ -541,11 +546,13 @@ final class AppModel: ObservableObject {
     func openNewLearningFromExternalLink() {
         selectedTab = .newLearning
         memoriesNavigationPath = []
+        profileNavigationPath = []
     }
 
     func openMemoryFromExternalLink(_ memoryID: UUID) {
         selectedTab = .memories
         memoriesNavigationPath = []
+        profileNavigationPath = []
 
         Task { @MainActor [weak self] in
             guard let self else { return }

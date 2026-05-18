@@ -360,9 +360,7 @@ struct ProfileView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(AppTextColor.secondary)
 
-            NavigationLink {
-                AboutUsView()
-            } label: {
+            NavigationLink(value: ProfileNavigationRoute.aboutUs) {
                 HStack {
                     Image(systemName: "info.circle")
                         .font(.system(size: 16, weight: .semibold))
@@ -1408,7 +1406,7 @@ private struct PurchaseMiniPill: View {
     }
 }
 
-private struct AboutUsView: View {
+struct AboutUsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {

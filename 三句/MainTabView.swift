@@ -33,8 +33,14 @@ struct MainTabView: View {
             }
             .badge(favoritesTabBadgeValue)
 
-            NavigationStack {
+            NavigationStack(path: $appModel.profileNavigationPath) {
                 ProfileView()
+                    .navigationDestination(for: ProfileNavigationRoute.self) { route in
+                        switch route {
+                        case .aboutUs:
+                            AboutUsView()
+                        }
+                    }
             }
             .tag(AppTab.profile)
             .tabItem {
@@ -42,6 +48,10 @@ struct MainTabView: View {
             }
         }
         .tint(.orange)
+        .onChange(of: appModel.selectedTab) { _, selectedTab in
+            guard selectedTab != .profile else { return }
+            appModel.profileNavigationPath = []
+        }
     }
 
     private var favoritesTabBadgeValue: String? {
