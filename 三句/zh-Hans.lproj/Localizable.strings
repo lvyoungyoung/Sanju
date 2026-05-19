@@ -137,6 +137,7 @@
 "favorites.hero.count_label" = "已收藏";
 "favorites.hero.eyebrow" = "收藏";
 "favorites.hero.title" = "把你想反复练习的句子留在一个地方";
+"favorites.study_count" = "已学 %d 次";
 "favorites.syncing.subtitle" = "马上就好，正在更新你的收藏内容";
 "favorites.syncing.title" = "正在同步收藏...";
 "memories.empty.subtitle" = "在“新的”里上传第一张照片，生成你的第一组三句话。";
@@ -188,7 +189,7 @@
 "profile.credits.title" = "可用次数";
 "profile.debug.badge" = "测试";
 "profile.debug.reset.action" = "清理并恢复首次安装状态";
-"profile.debug.reset.alert_message" = "这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 5 次生成机会。仅用于测试。";
+"profile.debug.reset.alert_message" = "这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 10 次生成机会。仅用于测试。";
 "profile.debug.reset.alert_title" = "清理本机测试数据？";
 "profile.debug.reset.entry" = "清理本机测试数据";
 "profile.debug.reset.success" = "已清理本机测试数据，现在是首次安装状态。";

@@ -7,7 +7,7 @@ extension AppModel {
     ]
     private static let interruptedSignInRecoveryMessage = L10n.string("auth.interrupted_sign_in", "上次登录未完成，请重新登录。")
 
-    private var initialInstallCredits: Int { 5 }
+    private var initialInstallCredits: Int { Self.initialInstallCredits }
 
     private var shouldPreserveRestoredGuestCreditsAgainstAnonymousProfile: Bool {
         defaults.bool(forKey: AppStorageKey.preserveLocalGuestCreditsAgainstAnonymousProfile)
@@ -452,6 +452,7 @@ extension AppModel {
         pendingCloudSyncTotalCount = 0
         recordedMemoriesCount = 0
         favoriteSentencesCount = 0
+        favoriteSentenceStudyCounts = [:]
         sentenceStudyDueCount = 0
         sentenceStudyTodayCount = 0
         sentenceStudyReviewableTodayCount = 0
@@ -474,7 +475,7 @@ extension AppModel {
         passwordResetErrorMessage = nil
         supabaseSession = nil
         if resetCredits {
-            remainingCredits = 5
+            remainingCredits = initialInstallCredits
             persistCredits()
             defaults.removeObject(forKey: AppStorageKey.preserveLocalGuestCreditsAgainstAnonymousProfile)
             defaults.removeObject(forKey: AppStorageKey.memories)
@@ -970,7 +971,7 @@ extension AppModel {
         isLearningReminderEnabled = false
         learningReminderHour = 20
         learningReminderMinute = 30
-        remainingCredits = 5
+        remainingCredits = initialInstallCredits
 
         handleFreshInstallIfNeeded()
     }

@@ -144,7 +144,7 @@ async function testProfileUpsert() {
         email: null,
         english_level: "简单",
         language_style: "平铺直叙",
-        available_generations: 5,
+        available_generations: 10,
       },
     ],
   })
@@ -155,7 +155,7 @@ async function testProfileUpsert() {
   assertProfileShape(profile)
   assert(profile.id === state.userID, "profile.id does not match session user id")
   assert(profile.nickname === nickname, "profile.nickname was not returned")
-  assert(profile.available_generations >= 0 && profile.available_generations <= 5, "anonymous profile balance should be capped to starter credits")
+  assert(profile.available_generations >= 0 && profile.available_generations <= 10, "anonymous profile balance should be capped to starter credits")
 
   state.profile = profile
 }

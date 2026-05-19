@@ -205,7 +205,7 @@ struct ProfileView: View {
         } message: {
             Text(L10n.string(
                 "profile.debug.reset.alert_message",
-                "这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 5 次生成机会。仅用于测试。"
+                "这会清空本机登录态、Keychain、回忆缓存、学习记录、购买记录缓存和可用次数，然后重新发放首次安装的 10 次生成机会。仅用于测试。"
             ))
         }
 #endif

@@ -58,13 +58,21 @@ struct FavoritesView: View {
         }
         .task {
             rebuildFavoriteItems(using: appModel.memories)
+            await appModel.refreshFavoriteSentenceStudyCounts()
             await appModel.refreshSentenceStudyDueCount()
         }
         .onChange(of: appModel.memories) { _, newMemories in
             rebuildFavoriteItems(using: newMemories)
+            Task {
+                await appModel.refreshFavoriteSentenceStudyCounts()
+            }
+        }
+        .onChange(of: appModel.favoriteSentenceStudyCounts) { _, _ in
+            rebuildFavoriteItems(using: appModel.memories)
         }
         .onChange(of: appModel.favoriteSentencesCount) { _, _ in
             Task {
+                await appModel.refreshFavoriteSentenceStudyCounts()
                 await appModel.refreshSentenceStudyDueCount()
             }
         }
@@ -111,7 +119,8 @@ struct FavoritesView: View {
                     .map { sentence in
                         FavoriteSentenceListItem(
                             favorite: FavoriteSentence(memoryID: memory.id, sentence: sentence),
-                            createdDateText: createdDateText
+                            createdDateText: createdDateText,
+                            studyCount: appModel.favoriteSentenceStudyCounts[sentence.id] ?? 0
                         )
                     }
             }
@@ -287,6 +296,7 @@ private struct StudyMetricView: View {
 private struct FavoriteSentenceListItem: Identifiable, Hashable {
     let favorite: FavoriteSentence
     let createdDateText: String?
+    let studyCount: Int
 
     var id: UUID { favorite.id }
 }
@@ -326,6 +336,15 @@ private struct FavoriteSentenceCard: View {
                         .font(.system(size: AppFontSize.caption, weight: .medium))
                         .foregroundStyle(AppTextColor.tertiary)
                 }
+
+                Spacer(minLength: AppSpacing.medium)
+
+                Label(
+                    L10n.string("favorites.study_count", "已学 %d 次", item.studyCount),
+                    systemImage: "checkmark.circle"
+                )
+                .font(.system(size: AppFontSize.caption, weight: .medium))
+                .foregroundStyle(AppTextColor.tertiary)
             }
         }
         .padding(AppSpacing.xLarge)

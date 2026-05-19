@@ -466,6 +466,7 @@ extension AppModel {
 
     func clearLocalSentenceStudyProgress() {
         localSentenceStudyProgress = [:]
+        favoriteSentenceStudyCounts = [:]
         defaults.removeObject(forKey: AppStorageKey.localSentenceStudyProgress)
     }
 

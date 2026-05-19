@@ -84,6 +84,10 @@ protocol SupabaseServicing {
         session: SupabaseSession,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
+    func fetchSentenceStudyCounts(
+        session: SupabaseSession,
+        sentenceIDs: [UUID]
+    ) async throws -> [UUID: Int]
     func recordSentenceStudyResult(
         session: SupabaseSession,
         sentenceID: UUID,
@@ -786,6 +790,42 @@ struct SupabaseService: SupabaseServicing {
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchSentenceStudyCounts(
+        session: SupabaseSession,
+        sentenceIDs: [UUID]
+    ) async throws -> [UUID: Int] {
+        let uniqueSentenceIDs = Array(Set(sentenceIDs))
+        guard !uniqueSentenceIDs.isEmpty else { return [:] }
+
+        let select = "sentence_id,correct_count"
+        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
+        let chunkSize = 100
+        var counts: [UUID: Int] = [:]
+
+        for startIndex in stride(from: 0, to: uniqueSentenceIDs.count, by: chunkSize) {
+            let endIndex = min(startIndex + chunkSize, uniqueSentenceIDs.count)
+            let sentenceIDChunk = uniqueSentenceIDs[startIndex..<endIndex]
+            let idList = sentenceIDChunk
+                .map { $0.uuidString.lowercased() }
+                .joined(separator: ",")
+            let path = "/rest/v1/sentence_study_progress?select=\(encodedSelect)&sentence_id=in.(\(idList))"
+            let request = try makeRequest(
+                path: path,
+                method: "GET",
+                bearerToken: session.accessToken
+            )
+            let records: [SupabaseSentenceStudyCountRecord] = try await perform(request)
+            for record in records {
+                guard let sentenceID = UUID(uuidString: record.sentenceID) else {
+                    continue
+                }
+                counts[sentenceID] = record.correctCount
+            }
+        }
+
+        return counts
     }
 
     func recordSentenceStudyResult(

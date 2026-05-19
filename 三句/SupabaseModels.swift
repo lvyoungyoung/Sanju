@@ -154,6 +154,16 @@ struct SupabaseSentenceStudyProgressRecord: Decodable {
     }
 }
 
+struct SupabaseSentenceStudyCountRecord: Decodable {
+    let sentenceID: String
+    let correctCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case sentenceID = "sentence_id"
+        case correctCount = "correct_count"
+    }
+}
+
 struct SupabaseMergedSentenceStudyProgressRecord: Decodable {
     let sentenceID: String
 

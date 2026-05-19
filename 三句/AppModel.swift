@@ -328,9 +328,11 @@ enum PasswordResetOutcome {
 
 @MainActor
 final class AppModel: ObservableObject {
+    static let initialInstallCredits = 10
+
     @Published var profile: UserProfile?
     @Published var memories: [MemoryEntry] = []
-    @Published var remainingCredits: Int = 5
+    @Published var remainingCredits: Int = AppModel.initialInstallCredits
     @Published var englishLevel: EnglishLevel = .simple
     @Published var languageStyle: LanguageStyle = .plain
     @Published var isLearningReminderEnabled = false
@@ -359,6 +361,7 @@ final class AppModel: ObservableObject {
     @Published var pendingCloudSyncTotalCount = 0
     @Published var recordedMemoriesCount = 0
     @Published var favoriteSentencesCount = 0
+    @Published var favoriteSentenceStudyCounts: [UUID: Int] = [:]
     @Published var sentenceStudyDueCount = 0
     @Published var sentenceStudyTodayCount = 0
     @Published var sentenceStudyReviewableTodayCount = 0

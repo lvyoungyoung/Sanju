@@ -137,6 +137,7 @@
 "favorites.hero.count_label" = "Saved";
 "favorites.hero.eyebrow" = "Favorites";
 "favorites.hero.title" = "Keep the sentences you want to practice again and again in one place";
+"favorites.study_count" = "Studied %d times";
 "favorites.syncing.subtitle" = "Almost there, updating your favorites";
 "favorites.syncing.title" = "Syncing favorites...";
 "memories.empty.subtitle" = "Upload your first photo in New and generate your first set of three sentences.";
@@ -188,7 +189,7 @@
 "profile.credits.title" = "Available Credits";
 "profile.debug.badge" = "Test";
 "profile.debug.reset.action" = "Reset to First Install State";
-"profile.debug.reset.alert_message" = "This will clear local sign-in state, Keychain data, memory cache, study progress, purchase cache, and available credits, then restore the initial 5 free generations. For testing only.";
+"profile.debug.reset.alert_message" = "This will clear local sign-in state, Keychain data, memory cache, study progress, purchase cache, and available credits, then restore the initial 10 free generations. For testing only.";
 "profile.debug.reset.alert_title" = "Clear Local Test Data?";
 "profile.debug.reset.entry" = "Clear Local Test Data";
 "profile.debug.reset.success" = "Local test data cleared. The app is now back to first-install state.";

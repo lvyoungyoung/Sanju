@@ -540,6 +540,7 @@ extension AppModel {
                 }
             }
             replacePendingGuestMemoryMigrationQueue(with: localMemories)
+            refreshLocalFavoriteSentenceStudyCounts()
             persistMemories()
             return
         }
@@ -645,6 +646,7 @@ extension AppModel {
                         partialResult += memory.sentences.filter(\.isFavorite).count
                     }
                 }
+                await refreshFavoriteSentenceStudyCounts()
                 persistMemories()
                 await MemoryWidgetSnapshotStore.refreshImmediately(with: loadedMemories)
                 return
@@ -669,6 +671,7 @@ extension AppModel {
                     partialResult += memory.sentences.filter(\.isFavorite).count
                 }
             }
+            await refreshFavoriteSentenceStudyCounts()
             persistMemories()
             await MemoryWidgetSnapshotStore.refreshImmediately(with: loadedMemories)
         } catch {
@@ -1378,6 +1381,7 @@ extension AppModel {
     func refreshSentenceStudyDueCount() async {
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
+            refreshLocalFavoriteSentenceStudyCounts()
             isRepeatingSentenceStudyQueue = false
             return
         }
@@ -1399,6 +1403,40 @@ extension AppModel {
             sentenceStudyTodayCount = 0
             sentenceStudyReviewableTodayCount = 0
             isRepeatingSentenceStudyQueue = false
+        }
+    }
+
+    func refreshFavoriteSentenceStudyCounts() async {
+        let favoriteSentenceIDs = currentFavoriteSentenceIDs()
+        guard !favoriteSentenceIDs.isEmpty else {
+            favoriteSentenceStudyCounts = [:]
+            return
+        }
+
+        guard isSignedIn else {
+            refreshLocalFavoriteSentenceStudyCounts(sentenceIDs: favoriteSentenceIDs)
+            return
+        }
+
+        do {
+            let session = try await ensureValidSession()
+            guard !session.isAnonymous else {
+                refreshLocalFavoriteSentenceStudyCounts(sentenceIDs: favoriteSentenceIDs)
+                return
+            }
+
+            let remoteCounts = try await supabaseService.fetchSentenceStudyCounts(
+                session: session,
+                sentenceIDs: Array(favoriteSentenceIDs)
+            )
+            guard isSessionStillCurrent(session) else { return }
+            favoriteSentenceStudyCounts = favoriteSentenceIDs.reduce(into: [:]) { partialResult, sentenceID in
+                partialResult[sentenceID] = remoteCounts[sentenceID] ?? 0
+            }
+        } catch {
+            favoriteSentenceStudyCounts = favoriteSentenceStudyCounts.filter { sentenceID, _ in
+                favoriteSentenceIDs.contains(sentenceID)
+            }
         }
     }
 
@@ -1499,6 +1537,7 @@ extension AppModel {
             sentenceID: sentenceID,
             wasCorrect: true
         )
+        favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
         sentenceStudyDueCount = max(0, sentenceStudyDueCount - 1)
         sentenceStudyTodayCount += 1
         sentenceStudyReviewableTodayCount += 1
@@ -1615,6 +1654,7 @@ extension AppModel {
         }
 
         localSentenceStudyProgress[sentenceID] = progress
+        favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
         persistLocalSentenceStudyProgress()
         refreshLocalSentenceStudyCounts()
         return makeSentenceStudyProgress(from: progress)
@@ -1739,6 +1779,23 @@ extension AppModel {
             lastStudiedAt: progress.lastStudiedAt,
             nextReviewAt: progress.nextReviewDay
         )
+    }
+
+    private func currentFavoriteSentenceIDs() -> Set<UUID> {
+        Set(
+            memories.flatMap { memory in
+                memory.sentences
+                    .filter(\.isFavorite)
+                    .map(\.id)
+            }
+        )
+    }
+
+    private func refreshLocalFavoriteSentenceStudyCounts(sentenceIDs: Set<UUID>? = nil) {
+        let favoriteSentenceIDs = sentenceIDs ?? currentFavoriteSentenceIDs()
+        favoriteSentenceStudyCounts = favoriteSentenceIDs.reduce(into: [:]) { partialResult, sentenceID in
+            partialResult[sentenceID] = localSentenceStudyProgress[sentenceID]?.correctCount ?? 0
+        }
     }
 
     private func localStudiedTodayCount(today: Date) -> Int {
