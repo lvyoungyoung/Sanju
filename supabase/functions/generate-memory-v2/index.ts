@@ -982,7 +982,7 @@ async function requestWithFallback(args: {
     }
 > {
   const mimoRequestBody = {
-    model: "mimo-v2-omni",
+    model: "mimo-v2.5",
     messages: [
       {
         role: "system",
@@ -1188,10 +1188,14 @@ async function requestMimoOnce(
     return {
       ok: false,
       provider: "mimo",
-      fallbackable: false,
+      fallbackable: true,
       rateLimited: false,
       statusCode: response.status,
-      internalError: "MiMo request failed",
+      internalError: appendDiagnosticSnippet(
+        `MiMo request failed: HTTP ${response.status} ${response.statusText}`,
+        "response_snippet",
+        rawText
+      ),
       publicError: {
         error: "生成失败，请稍后再试",
       },
