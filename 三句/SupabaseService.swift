@@ -899,6 +899,16 @@ struct SupabaseService: SupabaseServicing {
         memoryID: UUID,
         imagePath: String?
     ) async throws {
+        // Remove the database record first. If storage cleanup later fails, the
+        // retry queue can safely remove an orphaned file without showing a
+        // broken memory on another device.
+        let dbRequest = try makeRequest(
+            path: "/rest/v1/memories?id=eq.\(memoryID.uuidString.lowercased())",
+            method: "DELETE",
+            bearerToken: session.accessToken
+        )
+        _ = try await performWithoutBody(dbRequest)
+
         if let imagePath {
             let storageRequest = try makeRequest(
                 path: "/storage/v1/object/\(memoryBucket)",
@@ -908,13 +918,6 @@ struct SupabaseService: SupabaseServicing {
             )
             _ = try await performWithoutBody(storageRequest)
         }
-
-        let dbRequest = try makeRequest(
-            path: "/rest/v1/memories?id=eq.\(memoryID.uuidString.lowercased())",
-            method: "DELETE",
-            bearerToken: session.accessToken
-        )
-        _ = try await performWithoutBody(dbRequest)
     }
 
     private func makeRequest<T: Encodable>(

@@ -157,6 +157,9 @@
 "new.agreement.markdown" = "使用本应用即表示你同意《[用户服务协议](%@)》和《[隐私政策](%@)》";
 "new.agreement.plain" = "使用本应用即表示你同意《用户服务协议》和《隐私政策》";
 "new.credits.remaining" = "剩余可用次数：%d";
+"new.empty.safety_hint" = "图片会被发送给 AI 分析，请勿上传包含敏感信息的图片";
+"new.empty.select_photo" = "点击选择图片";
+"new.empty.title" = "用相册里的精彩时刻来学习语言";
 "new.generate.action" = "用三句描述一下";
 "new.generate.auto_save_hint" = "生成后自动保存到回忆";
 "new.generation.initial_status" = "正在识别图片内容...";

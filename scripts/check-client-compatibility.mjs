@@ -32,7 +32,10 @@ if (targetEnvironment === "production" && !allowProduction) {
   failFast("Refusing to run against production. Set SANJU_COMPAT_ALLOW_PRODUCTION=1 only if you intentionally want production smoke tests.")
 }
 
-if (!baseURL.includes("spb-") && !allowProduction) {
+const isDirectSupabaseEndpoint = baseURL.includes("spb-")
+const isStagingProxyEndpoint = baseURL === "https://api-staging.sanju.cc"
+
+if (!isDirectSupabaseEndpoint && !isStagingProxyEndpoint && !allowProduction) {
   failFast(`Unexpected Supabase URL: ${baseURL}`)
 }
 

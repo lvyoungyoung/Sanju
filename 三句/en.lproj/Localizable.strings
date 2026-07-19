@@ -157,6 +157,9 @@
 "new.agreement.markdown" = "By using this app, you agree to the [Terms of Service](%@) and [Privacy Policy](%@).";
 "new.agreement.plain" = "By using this app, you agree to the Terms of Service and Privacy Policy.";
 "new.credits.remaining" = "Credits left: %d";
+"new.empty.safety_hint" = "Your photo will be sent to AI for analysis. Please do not upload sensitive content.";
+"new.empty.select_photo" = "Choose a Photo";
+"new.empty.title" = "Learn a language through the moments in your album";
 "new.generate.action" = "Describe with Three Sentences";
 "new.generate.auto_save_hint" = "Results are saved to Memories automatically";
 "new.generation.initial_status" = "Analyzing image content...";

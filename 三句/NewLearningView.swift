@@ -11,7 +11,6 @@ struct NewLearningView: View {
     private let photoLoadTimeout: Duration = .seconds(20)
 
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedItem: PhotosPickerItem?
     @State private var isShowingPhotoPicker = false
@@ -31,32 +30,11 @@ struct NewLearningView: View {
     @State private var activePendingRecoveryTask: Task<Void, Never>?
     @State private var photoLoadRequestID = UUID()
 
-    private var heroTitleFontSize: CGFloat {
-        horizontalSizeClass == .compact ? 24 : 28
-    }
-
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: AppSpacing.large) {
                 if selectedImageData == nil && !isLoadingSelectedPhoto {
-                    newLearningHero
-                }
-
-                if selectedImageData == nil && !isLoadingSelectedPhoto {
-                    Button {
-                        beginPhotoSelection()
-                    } label: {
-                        uploadCard
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isPhotoSelectionDisabled)
-
-                    Text(L10n.string("new.upload.safety_hint", "图片会被发送给AI分析，请谨慎上传包含敏感信息的图片"))
-                        .font(.system(size: AppFontSize.metadata))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
-                    agreementHint
+                    newLearningEmptyState
                 } else {
                     uploadCard
                 }
@@ -227,46 +205,52 @@ struct NewLearningView: View {
         }
     }
 
-    private var newLearningHero: some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1.00, green: 0.96, blue: 0.89),
-                            Color(red: 0.95, green: 0.98, blue: 0.92)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    Text(L10n.string("new.hero.eyebrow", "新的"))
-                        .font(.system(size: AppFontSize.sectionLabel, weight: .bold))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
-
-                    Text(L10n.string("new.hero.title", "用今天拍到的画面来学习你喜欢的语言"))
-                        .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppHeroTextColor.title)
-                        .lineSpacing(4)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 128)
-            }
-            .padding(AppSpacing.xLarge)
-
-            Image("NewLearningHero")
+    private var newLearningEmptyState: some View {
+        VStack(spacing: 0) {
+            Image("NewLearningEmptyCollage")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 132, height: 118)
-                .padding(.top, AppSpacing.xLarge)
-                .padding(.trailing, AppSpacing.xLarge)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, -10)
+                .accessibilityHidden(true)
+
+            Text(L10n.string("new.empty.title", "用相册里的精彩时刻来学习语言"))
+                .font(.system(size: AppFontSize.panelTitle, weight: .semibold))
+                .foregroundStyle(Color(red: 0.40, green: 0.40, blue: 0.40))
+                .multilineTextAlignment(.center)
+                .padding(.top, AppSpacing.xxxLarge - 20)
+
+            Button {
+                beginPhotoSelection()
+            } label: {
+                Text(appModel.isNetworkAvailable
+                     ? L10n.string("new.empty.select_photo", "点击选择图片")
+                     : photoSelectionNetworkRequiredMessage)
+                    .font(.system(size: AppFontSize.field))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
+                            .fill(Color(red: 0.98, green: 0.65, blue: 0.00))
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(isPhotoSelectionDisabled)
+            .opacity(appModel.isNetworkAvailable ? 1 : 0.52)
+            .padding(.top, AppSpacing.xxxLarge)
+
+            VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                Text(L10n.string("new.empty.safety_hint", "图片会被发送给 AI 分析，请勿上传包含敏感信息的图片"))
+                    .font(.system(size: AppFontSize.metadata))
+                    .foregroundStyle(AppTextColor.secondary)
+
+                agreementHint(alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, AppSpacing.xxxLarge - 5)
         }
-        .appHeroShadow()
     }
 
     private var uploadCard: some View {
@@ -360,20 +344,20 @@ struct NewLearningView: View {
     }
 
     @ViewBuilder
-    private var agreementHint: some View {
+    private func agreementHint(alignment: TextAlignment = .center) -> some View {
         if let termsOfServiceURL = AppLinks.termsOfService,
            let privacyPolicyURL = AppLinks.privacyPolicy {
             Text(.init(L10n.string("new.agreement.markdown", "使用本应用即表示你同意《[用户服务协议](%@)》和《[隐私政策](%@)》", termsOfServiceURL.absoluteString, privacyPolicyURL.absoluteString)))
                 .font(.system(size: AppFontSize.metadata))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .multilineTextAlignment(alignment)
+                .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
         } else {
             Text(L10n.string("new.agreement.plain", "使用本应用即表示你同意《用户服务协议》和《隐私政策》"))
                 .font(.system(size: AppFontSize.metadata))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
+                .multilineTextAlignment(alignment)
+                .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
         }
     }
 

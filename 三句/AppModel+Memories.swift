@@ -39,6 +39,19 @@ extension AppModel {
         24 * 60 * 60
     }
 
+    private func waitForRecoveryDelay(_ delay: Duration) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        guard delay != .zero else { return true }
+
+        do {
+            try await Task.sleep(for: delay)
+        } catch {
+            return false
+        }
+
+        return !Task.isCancelled
+    }
+
     func generateMemory(from imageData: Data) async throws -> MemoryEntry {
         guard remainingCredits > 0 else {
             throw KimiServiceError.noCredits
@@ -868,10 +881,11 @@ extension AppModel {
         ]
 
         for delay in retryDelays {
-            try? await Task.sleep(for: delay)
+            guard await waitForRecoveryDelay(delay) else { return nil }
             let didRefresh = await runRecoveryAttemptWithTimeout {
                 await self.syncMemoriesFromRemote(refreshCounts: true)
             }
+            guard !Task.isCancelled else { return nil }
             guard didRefresh else { continue }
 
             if let remoteProfile = await fetchProfileForRecovery(session: session) {
@@ -893,6 +907,7 @@ extension AppModel {
     }
 
     func resumePendingGeneratedMemoryRecoveryIfNeeded() async -> MemoryEntry? {
+        guard !Task.isCancelled else { return nil }
         guard let pendingRecovery = pendingGeneratedMemoryImage else { return nil }
         guard !isPendingGeneratedRecoveryExpired(pendingRecovery) else {
             clearPendingGeneratedMemoryImage()
@@ -906,6 +921,7 @@ extension AppModel {
                 previousMemoryIDs: previousMemoryIDs,
                 session: session
             )
+            guard !Task.isCancelled else { return nil }
             return finalizeExplicitPendingRecoveryResult(recoveredMemory)
         }
 
@@ -921,6 +937,7 @@ extension AppModel {
                     .seconds(20)
                 ]
             )
+            guard !Task.isCancelled else { return nil }
             return finalizeExplicitPendingRecoveryResult(recoveredMemory)
         }
 
@@ -932,13 +949,12 @@ extension AppModel {
         ]
 
         for delay in retryDelays {
-            if delay != .zero {
-                try? await Task.sleep(for: delay)
-            }
+            guard await waitForRecoveryDelay(delay) else { return nil }
 
             let didRefresh = await runRecoveryAttemptWithTimeout {
                 await self.syncMemoriesFromRemote(refreshCounts: true, downloadsImages: false)
             }
+            guard !Task.isCancelled else { return nil }
             guard didRefresh else { continue }
 
             if let recoveredMemory = firstRecoveredMemory(after: previousMemoryIDs) {
@@ -967,9 +983,7 @@ extension AppModel {
         guard !clientRequestID.isEmpty else { return nil }
 
         for delay in retryDelays {
-            if delay != .zero {
-                try? await Task.sleep(for: delay)
-            }
+            guard await waitForRecoveryDelay(delay) else { return nil }
 
             guard let job = await fetchGenerationJobForRecovery(
                 session: session,
@@ -977,6 +991,7 @@ extension AppModel {
             ) else {
                 continue
             }
+            guard !Task.isCancelled else { return nil }
 
             switch job.status {
             case "completed":
@@ -1042,6 +1057,7 @@ extension AppModel {
         previousMemoryIDs: Set<UUID>,
         session: SupabaseSession
     ) async -> MemoryEntry? {
+        guard !Task.isCancelled else { return nil }
         guard let pendingRecovery = pendingGeneratedMemoryImage else { return nil }
         guard !isPendingGeneratedRecoveryExpired(pendingRecovery) else {
             clearPendingGeneratedMemoryImage()
@@ -1057,9 +1073,7 @@ extension AppModel {
         ]
 
         for delay in retryDelays {
-            if delay != .zero {
-                try? await Task.sleep(for: delay)
-            }
+            guard await waitForRecoveryDelay(delay) else { return nil }
 
             guard let recovered = await recoverGuestGenerationForRecovery(
                 session: session,
@@ -1068,6 +1082,7 @@ extension AppModel {
             ) else {
                 continue
             }
+            guard !Task.isCancelled else { return nil }
 
             if let existingIndex = memories.firstIndex(where: {
                 !previousMemoryIDs.contains($0.id) && matchesMemoryIdentity($0, recovered.memory)
@@ -1117,7 +1132,8 @@ extension AppModel {
     private func runRecoveryAttemptWithTimeout(
         operation: @escaping @Sendable () async -> Void
     ) async -> Bool {
-        await withTaskGroup(of: Bool.self) { group in
+        guard !Task.isCancelled else { return false }
+        return await withTaskGroup(of: Bool.self) { group in
             group.addTask {
                 await operation()
                 return true
@@ -1130,7 +1146,7 @@ extension AppModel {
 
             let result = await group.next() ?? false
             group.cancelAll()
-            return result
+            return !Task.isCancelled && result
         }
     }
 
