@@ -13,12 +13,37 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
     let english: String
     let chinese: String
     var isFavorite: Bool
+    var studyTopic: SentenceStudyTopic?
 
-    init(id: UUID = UUID(), english: String, chinese: String, isFavorite: Bool = false) {
+    init(
+        id: UUID = UUID(),
+        english: String,
+        chinese: String,
+        isFavorite: Bool = false,
+        studyTopic: SentenceStudyTopic? = nil
+    ) {
         self.id = id
         self.english = english
         self.chinese = chinese
         self.isFavorite = isFavorite
+        self.studyTopic = studyTopic
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case english
+        case chinese
+        case isFavorite
+        case studyTopic
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        english = try container.decode(String.self, forKey: .english)
+        chinese = try container.decode(String.self, forKey: .chinese)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        studyTopic = try container.decodeIfPresent(SentenceStudyTopic.self, forKey: .studyTopic)
     }
 }
 
@@ -245,6 +270,7 @@ struct PendingGuestCreditMigration: Codable, Hashable {
 enum AppTab: Hashable {
     case newLearning
     case memories
+    case study
     case favorites
     case profile
 }
@@ -389,6 +415,7 @@ final class AppModel: ObservableObject {
     @Published var sentenceStudyDueCount = 0
     @Published var sentenceStudyTodayCount = 0
     @Published var sentenceStudyReviewableTodayCount = 0
+    @Published var sentenceStudyTopicSummaries: [SentenceStudyTopic: SentenceStudyTopicSummary] = [:]
     @Published var sentenceStudyQueue: [SentenceStudyQueueItem] = []
     @Published var isLoadingSentenceStudyQueue = false
     @Published var isShowingSentenceStudySession = false

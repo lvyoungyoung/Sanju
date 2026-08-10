@@ -456,6 +456,7 @@ extension AppModel {
         sentenceStudyDueCount = 0
         sentenceStudyTodayCount = 0
         sentenceStudyReviewableTodayCount = 0
+        sentenceStudyTopicSummaries = [:]
         sentenceStudyQueue = []
         isLoadingSentenceStudyQueue = false
         isShowingSentenceStudySession = false

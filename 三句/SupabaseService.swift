@@ -84,6 +84,19 @@ protocol SupabaseServicing {
         session: SupabaseSession,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
+    func fetchSentenceStudyTopicSummaries(
+        session: SupabaseSession
+    ) async throws -> [SentenceStudyTopic: SentenceStudyTopicSummary]
+    func fetchSentenceStudyTopicQueue(
+        session: SupabaseSession,
+        topic: SentenceStudyTopic,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
+    func fetchSentenceStudyTopicTodayReviewQueue(
+        session: SupabaseSession,
+        topic: SentenceStudyTopic,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
     func fetchSentenceStudyCounts(
         session: SupabaseSession,
         sentenceIDs: [UUID]
@@ -456,7 +469,8 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
-                isFavorite: sentence.isFavorite ?? false
+                isFavorite: sentence.isFavorite ?? false,
+                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
             )
         }
 
@@ -527,7 +541,8 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
-                isFavorite: sentence.isFavorite ?? false
+                isFavorite: sentence.isFavorite ?? false,
+                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
             )
         }
 
@@ -619,7 +634,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite,study_topic)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -686,7 +701,8 @@ struct SupabaseService: SupabaseServicing {
                 sortOrder: index + 1,
                 english: sentence.english,
                 chinese: sentence.chinese,
-                isFavorite: sentence.isFavorite
+                isFavorite: sentence.isFavorite,
+                studyTopic: sentence.studyTopic?.rawValue
             )
         }
 
@@ -707,7 +723,8 @@ struct SupabaseService: SupabaseServicing {
                 id: UUID(uuidString: sentencePayloads[index].id) ?? sentence.id,
                 english: sentence.english,
                 chinese: sentence.chinese,
-                isFavorite: sentence.isFavorite
+                isFavorite: sentence.isFavorite,
+                studyTopic: sentence.studyTopic
             )
         }
 
@@ -791,6 +808,56 @@ struct SupabaseService: SupabaseServicing {
             method: "POST",
             bearerToken: session.accessToken,
             body: SupabaseSentenceStudyQueueRequest(limit: limit)
+        )
+        let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchSentenceStudyTopicSummaries(
+        session: SupabaseSession
+    ) async throws -> [SentenceStudyTopic: SentenceStudyTopicSummary] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_sentence_study_topic_summaries",
+            method: "POST",
+            bearerToken: session.accessToken
+        )
+        let records: [SupabaseSentenceStudyTopicSummaryRecord] = try await perform(request)
+        return records.reduce(into: [:]) { partialResult, record in
+            guard let topic = SentenceStudyTopic(rawValue: record.topic) else { return }
+            partialResult[topic] = SentenceStudyTopicSummary(
+                totalCount: record.totalCount,
+                dueCount: record.dueCount,
+                studiedCount: record.studiedCount,
+                reviewableTodayCount: record.reviewableTodayCount
+            )
+        }
+    }
+
+    func fetchSentenceStudyTopicQueue(
+        session: SupabaseSession,
+        topic: SentenceStudyTopic,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_sentence_study_topic_queue",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseSentenceStudyTopicQueueRequest(topic: topic.rawValue, limit: limit)
+        )
+        let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchSentenceStudyTopicTodayReviewQueue(
+        session: SupabaseSession,
+        topic: SentenceStudyTopic,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_sentence_studied_today_topic_queue",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseSentenceStudyTopicQueueRequest(topic: topic.rawValue, limit: limit)
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))

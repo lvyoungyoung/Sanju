@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 interface Sentence {
   english: string
   chinese: string
+  study_topic: string | null
 }
 
 interface GeneratedContent {
@@ -24,6 +25,16 @@ const MEMORY_TAGS = [
   "活动",
   "物品",
   "截图/信息",
+] as const
+
+const STUDY_TOPICS = [
+  "weather",
+  "kitchen",
+  "outdoor_scenery",
+  "city_streets",
+  "people_daily_life",
+  "travel",
+  "food_drink",
 ] as const
 
 function buildPromptText(
@@ -57,18 +68,19 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
-9. english 和 chinese 都必须是字符串
+8. 每一项必须且只能包含 english、chinese 和 study_topic 三个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+9. english 和 chinese 都必须是字符串；study_topic 必须是字符串或 null
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
-12. 不要输出任何多余字段
-13. 不要转义整个 JSON 对象
-14. 不要在 JSON 前后添加任何字符
-15. 每句中文控制在 8 到 30 个汉字之间
-16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+12. study_topic 只能从以下值选择：weather、kitchen、outdoor_scenery、city_streets、people_daily_life、travel、food_drink。如果一句话确实不适合任何主题，返回 null
+13. 不要输出任何多余字段
+14. 不要转义整个 JSON 对象
+15. 不要在 JSON 前后添加任何字符
+16. 每句中文控制在 8 到 30 个汉字之间
+17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["人物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","study_topic":"outdoor_scenery"},{"english":"...","chinese":"...","study_topic":"people_daily_life"},{"english":"...","chinese":"...","study_topic":null}],"tags":["人物","生活场景"]}
 `.trim()
 }
 
@@ -278,8 +290,14 @@ function normalizeSentenceArray(value: any): Sentence[] {
     .map((item: any) => ({
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
+      study_topic: normalizeStudyTopic(item?.study_topic),
     }))
     .filter((item: Sentence) => item.english && item.chinese)
+}
+
+function normalizeStudyTopic(value: unknown): string | null {
+  const topic = typeof value === "string" ? value.trim() : ""
+  return (STUDY_TOPICS as readonly string[]).includes(topic) ? topic : null
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
@@ -294,7 +312,7 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
     const chinese = decodeJSONStringFragment(match[2]).trim()
 
     if (english && chinese) {
-      matches.push({ english, chinese })
+      matches.push({ english, chinese, study_topic: null })
     }
   }
 
@@ -314,7 +332,7 @@ function extractLooseSentencePairs(content: string): Sentence[] | null {
     const chinese = extractLooseChineseValue(tail)
 
     if (english && chinese) {
-      matches.push({ english, chinese })
+      matches.push({ english, chinese, study_topic: null })
     }
   }
 
@@ -825,6 +843,7 @@ Deno.serve(async (req) => {
       english: sentence.english,
       chinese: sentence.chinese,
       is_favorite: false,
+      study_topic: sentence.study_topic,
     }))
 
     if (isAnonymous) {
@@ -1609,6 +1628,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         english,
         chinese,
         is_favorite,
+        study_topic,
         sort_order
       )
     `
@@ -1643,6 +1663,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         english: String(sentence.english ?? "").trim(),
         chinese: String(sentence.chinese ?? "").trim(),
         is_favorite: sentence.is_favorite === true,
+        study_topic: normalizeStudyTopic(sentence.study_topic),
       })),
     },
     remainingCredits: job.remaining_credits ?? args.fallbackRemainingCredits,
@@ -1693,6 +1714,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
         english: String(sentence?.english ?? "").trim(),
         chinese: String(sentence?.chinese ?? "").trim(),
         is_favorite: false,
+        study_topic: normalizeStudyTopic(sentence?.study_topic),
       })),
     },
     remainingCredits: completedJob?.remaining_credits ?? args.fallbackRemainingCredits,

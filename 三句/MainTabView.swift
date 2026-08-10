@@ -25,6 +25,14 @@ struct MainTabView: View {
             }
 
             NavigationStack {
+                StudyView()
+            }
+            .tag(AppTab.study)
+            .tabItem {
+                Label(L10n.string("tab.study", "学习"), systemImage: "book.closed")
+            }
+
+            NavigationStack {
                 FavoritesView()
             }
             .tag(AppTab.favorites)

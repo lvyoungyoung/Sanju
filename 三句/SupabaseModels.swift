@@ -62,6 +62,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let english: String
     let chinese: String
     let isFavorite: Bool
+    let studyTopic: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -69,6 +70,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case english
         case chinese
         case isFavorite = "is_favorite"
+        case studyTopic = "study_topic"
     }
 }
 
@@ -132,6 +134,22 @@ struct SupabaseSentenceStudyQueueRecord: Decodable {
     }
 }
 
+struct SupabaseSentenceStudyTopicSummaryRecord: Decodable {
+    let topic: String
+    let totalCount: Int
+    let dueCount: Int
+    let studiedCount: Int
+    let reviewableTodayCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case topic
+        case totalCount = "total_count"
+        case dueCount = "due_count"
+        case studiedCount = "studied_count"
+        case reviewableTodayCount = "reviewable_today_count"
+    }
+}
+
 struct SupabaseSentenceStudyProgressRecord: Decodable {
     let id: String
     let sentenceID: String
@@ -183,12 +201,14 @@ struct SupabaseGeneratedSentence: Decodable {
     let english: String
     let chinese: String
     let isFavorite: Bool?
+    let studyTopic: String?
 
     enum CodingKeys: String, CodingKey {
         case id
         case english
         case chinese
         case isFavorite = "is_favorite"
+        case studyTopic = "study_topic"
     }
 }
 

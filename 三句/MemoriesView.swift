@@ -275,10 +275,10 @@ struct MemoriesView: View {
             selectedMemoryTag = tag
         } label: {
             Text(title)
-                .font(.system(size: AppFontSize.badge, weight: .semibold))
+                .font(.system(size: AppFontSize.metadata, weight: .semibold))
                 .foregroundStyle(isSelected ? Color.white : AppTextColor.secondary)
-                .padding(.horizontal, AppSpacing.medium)
-                .frame(minHeight: AppControlHeight.compact)
+                .padding(.horizontal, AppSpacing.small)
+                .frame(minHeight: 36)
                 .background(
                     isSelected
                         ? Color(red: 0.95, green: 0.53, blue: 0.12)

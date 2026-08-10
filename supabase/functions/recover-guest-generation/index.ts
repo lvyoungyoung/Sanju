@@ -109,6 +109,7 @@ Deno.serve(async (req) => {
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
           is_favorite: false,
+          study_topic: typeof sentence?.study_topic === "string" ? sentence.study_topic : null,
         })),
       },
       remainingCredits: job.remaining_credits,
