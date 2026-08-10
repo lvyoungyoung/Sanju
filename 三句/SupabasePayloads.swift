@@ -306,12 +306,14 @@ struct SupabaseMemoryInsertPayload: Encodable {
     let userID: String
     let imagePath: String
     let createdAt: Date
+    let tags: [String]
 
     enum CodingKeys: String, CodingKey {
         case id
         case userID = "user_id"
         case imagePath = "image_url"
         case createdAt = "created_at"
+        case tags
     }
 }
 

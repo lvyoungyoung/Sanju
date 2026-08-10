@@ -471,6 +471,7 @@ struct SupabaseService: SupabaseServicing {
                 imageData: imageData,
                 remoteImagePath: response.memory.imagePath,
                 syncedToAccount: !session.isAnonymous,
+                tags: response.memory.tags ?? [],
                 sentences: sentences
             ),
             remainingCredits: response.remainingCredits,
@@ -542,6 +543,7 @@ struct SupabaseService: SupabaseServicing {
                 imageData: imageData,
                 remoteImagePath: nil,
                 syncedToAccount: false,
+                tags: memory.tags ?? [],
                 sentences: sentences
             ),
             remainingCredits: remainingCredits
@@ -617,7 +619,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,memory_sentences(id,sort_order,english,chinese,is_favorite)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -666,7 +668,8 @@ struct SupabaseService: SupabaseServicing {
                     id: memoryID.uuidString.lowercased(),
                     userID: session.userID,
                     imagePath: imagePath,
-                    createdAt: memory.createdAt
+                    createdAt: memory.createdAt,
+                    tags: memory.tags
                 )
             ]
         )
@@ -714,6 +717,7 @@ struct SupabaseService: SupabaseServicing {
             imageData: memory.imageData,
             remoteImagePath: imagePath,
             syncedToAccount: true,
+            tags: memory.tags,
             sentences: migratedSentences
         )
     }

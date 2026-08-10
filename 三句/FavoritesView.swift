@@ -3,10 +3,12 @@ import SwiftUI
 struct FavoritesView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .title2) private var compactHeroTitleFontSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .title2) private var regularHeroTitleFontSize: CGFloat = 27
     @State private var favoriteItems: [FavoriteSentenceListItem] = []
 
     private var heroTitleFontSize: CGFloat {
-        horizontalSizeClass == .compact ? 24 : 27
+        horizontalSizeClass == .compact ? compactHeroTitleFontSize : regularHeroTitleFontSize
     }
 
     var body: some View {
@@ -150,7 +152,6 @@ struct FavoritesView: View {
                         .font(.system(size: heroTitleFontSize, weight: .bold))
                         .foregroundStyle(AppHeroTextColor.title)
                         .lineSpacing(4)
-                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

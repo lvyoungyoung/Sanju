@@ -567,6 +567,7 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 这些不是必须立刻做，但长期有价值：
 
+- 发布前：执行 `Backend Database` workflow，先对 `staging` 再对 `production` 应用 `20260728000000_allow_direct_sentence_study.sql`。该 migration 允许“去学习”保存未收藏句子的学习记录，同时不改变收藏学习队列只读取收藏内容的规则。
 - 继续把用户可见中文文案迁移到 `L10n`。
 - 给生成恢复、扣次数、匿名登录迁移增加更多自动化兼容测试。
 - 继续拆分 `AppModel`，但要小步做，避免影响业务链路。

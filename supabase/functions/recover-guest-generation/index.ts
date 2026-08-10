@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
 
     const { data: job, error: jobError } = await adminClient
       .from("guest_generation_jobs")
-      .select("id, status, image_path, created_at, remaining_credits, sentences")
+      .select("id, status, image_path, created_at, remaining_credits, sentences, tags")
       .eq("id", guestJobID)
       .eq("user_id", user.id)
       .maybeSingle()
@@ -103,6 +103,7 @@ Deno.serve(async (req) => {
         id: crypto.randomUUID(),
         imagePath: "",
         createdAt: job.created_at,
+        tags: Array.isArray(job.tags) ? job.tags : [],
         sentences: sentences.map((sentence: any) => ({
           id: crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),

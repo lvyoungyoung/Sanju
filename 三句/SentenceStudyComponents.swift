@@ -73,22 +73,28 @@ struct SentenceStudyBlankTokenView: View {
 
 struct SentenceStudyWordTagView: View {
     let word: String
+    let action: () -> Void
 
     var body: some View {
-        Text(word)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(AppTextColor.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(
-                Capsule()
-                    .fill(AppSurfaceColor.card)
-            )
-            .overlay(
-                Capsule()
-                    .stroke(AppStroke.soft, lineWidth: 1.2)
-            )
-            .appSurfaceShadow()
+        Button(action: action) {
+            Text(word)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+                .frame(minHeight: 44)
+                .background(
+                    Capsule()
+                        .fill(AppSurfaceColor.card)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(AppStroke.soft, lineWidth: 1.2)
+                )
+                .appSurfaceShadow()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(word)
     }
 }
 

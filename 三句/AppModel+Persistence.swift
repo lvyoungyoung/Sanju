@@ -108,6 +108,7 @@ extension AppModel {
         let createdAt: Date
         let remoteImagePath: String?
         let syncedToAccount: Bool?
+        let tags: [String]?
         let sentences: [SentenceRecord]
     }
 
@@ -123,6 +124,7 @@ extension AppModel {
         let createdAt: Date
         let remoteImagePath: String?
         let syncedToAccount: Bool?
+        let tags: [String]?
         let sentences: [SentenceRecord]
     }
 
@@ -198,6 +200,7 @@ extension AppModel {
                 createdAt: $0.createdAt,
                 remoteImagePath: $0.remoteImagePath,
                 syncedToAccount: $0.syncedToAccount,
+                tags: $0.tags,
                 sentences: $0.sentences
             )
         }
@@ -535,6 +538,7 @@ extension AppModel {
                 createdAt: $0.createdAt,
                 remoteImagePath: $0.remoteImagePath,
                 syncedToAccount: $0.syncedToAccount,
+                tags: $0.tags,
                 sentences: $0.sentences
             )
         }
@@ -571,6 +575,7 @@ extension AppModel {
                 imageData: loadPendingGuestMemoryImageData(for: memory.id),
                 remoteImagePath: memory.remoteImagePath,
                 syncedToAccount: memory.syncedToAccount ?? false,
+                tags: memory.tags ?? [],
                 sentences: memory.sentences
             )
         }
@@ -649,6 +654,7 @@ extension AppModel {
                         imageData: queuedMemory.imageData,
                         remoteImagePath: mergedMemories[matchingIndex].remoteImagePath,
                         syncedToAccount: mergedMemories[matchingIndex].syncedToAccount,
+                        tags: mergedMemories[matchingIndex].tags,
                         sentences: mergedMemories[matchingIndex].sentences
                     )
                     didChange = true
@@ -710,6 +716,7 @@ extension AppModel {
                     imageData: shouldDeferImage ? Data() : loadMemoryImageData(for: memory.id),
                     remoteImagePath: memory.remoteImagePath,
                     syncedToAccount: syncedToAccount,
+                    tags: memory.tags ?? [],
                     sentences: memory.sentences
                 )
             }
@@ -784,6 +791,7 @@ extension AppModel {
                     imageData: imageData,
                     remoteImagePath: memory.remoteImagePath,
                     syncedToAccount: memory.syncedToAccount,
+                    tags: memory.tags,
                     sentences: memory.sentences
                 )
             }

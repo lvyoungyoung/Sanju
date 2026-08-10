@@ -5,7 +5,26 @@ interface Sentence {
   chinese: string
 }
 
+interface GeneratedContent {
+  sentences: Sentence[]
+  tags: string[]
+}
+
 type ProviderName = "mimo" | "kimi"
+
+const MEMORY_TAGS = [
+  "人物",
+  "风景",
+  "旅行",
+  "美食",
+  "生活场景",
+  "动物",
+  "植物",
+  "建筑",
+  "活动",
+  "物品",
+  "截图/信息",
+] as const
 
 function buildPromptText(
   englishLevel: "简单" | "中等" | "高级",
@@ -36,18 +55,20 @@ ${languageStylePrompt}
 3. 不要返回 markdown
 4. 不要使用 \`\`\` 或 \`\`\`json 代码块
 5. 不要写任何解释、前言、结尾、备注
-6. 顶层字段必须且只能是 sentences
+6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
 8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english 和 chinese 都必须是字符串
-10. 不要输出任何多余字段
-11. 不要转义整个 JSON 对象
-12. 不要在 JSON 前后添加任何字符
-13. 每句中文控制在 8 到 30 个汉字之间
-14. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
+11. tags 中不要重复分类，不要自创分类
+12. 不要输出任何多余字段
+13. 不要转义整个 JSON 对象
+14. 不要在 JSON 前后添加任何字符
+15. 每句中文控制在 8 到 30 个汉字之间
+16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}]}
+{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["人物","生活场景"]}
 `.trim()
 }
 
@@ -145,6 +166,43 @@ function parseSentences(content: string): Sentence[] | null {
   }
 
   return extractSentencesByPattern(content) ?? extractLooseSentencePairs(content)
+}
+
+function parseGeneratedContent(content: string): GeneratedContent | null {
+  const sentences = parseSentences(content)
+  if (!sentences) {
+    return null
+  }
+
+  return {
+    sentences,
+    tags: parseMemoryTags(content),
+  }
+}
+
+function parseMemoryTags(content: string): string[] {
+  const normalized = normalizeJSONPayload(content)
+  let parsed = tryParseJSON(normalized) ?? tryParseJSON(extractJSONObject(normalized) ?? "")
+
+  for (let attempt = 0; attempt < 2 && typeof parsed === "string"; attempt += 1) {
+    parsed = tryParseJSON(parsed)
+  }
+
+  const rawTags = Array.isArray(parsed?.tags) ? parsed.tags : []
+  const validTags = new Set<string>(MEMORY_TAGS)
+  const tags: string[] = []
+
+  for (const rawTag of rawTags) {
+    const tag = String(rawTag ?? "").trim()
+    if (validTags.has(tag) && !tags.includes(tag)) {
+      tags.push(tag)
+    }
+    if (tags.length == 3) {
+      break
+    }
+  }
+
+  return tags
 }
 
 function extractSentencePayload(content: string): any | null {
@@ -761,7 +819,7 @@ Deno.serve(async (req) => {
       return jsonResponse(completionResult.publicError, completionResult.statusCode)
     }
 
-    const { sentences, provider, mimoFailureReason } = completionResult
+    const { sentences, tags, provider, mimoFailureReason } = completionResult
     const finalizedSentences = sentences.map((sentence) => ({
       id: crypto.randomUUID(),
       english: sentence.english,
@@ -776,6 +834,7 @@ Deno.serve(async (req) => {
         createdAt,
         provider,
         sentences: finalizedSentences,
+        tags,
       })
 
       if (!finalizeResult.ok) {
@@ -815,6 +874,7 @@ Deno.serve(async (req) => {
           imagePath: "",
           createdAt,
           provider,
+          tags,
           sentences: finalizedSentences,
         },
         remainingCredits: finalizeResult.remainingCredits,
@@ -858,6 +918,7 @@ Deno.serve(async (req) => {
       createdAt,
       provider,
       sentences: finalizedSentences,
+      tags,
     })
 
     if (!finalizeResult.ok) {
@@ -907,6 +968,7 @@ Deno.serve(async (req) => {
         imagePath,
         createdAt,
         provider,
+        tags,
         sentences: finalizedSentences,
       },
       remainingCredits: finalizeResult.remainingCredits,
@@ -968,6 +1030,7 @@ async function requestWithFallback(args: {
   | {
       ok: true
       sentences: Sentence[]
+      tags: string[]
       provider: ProviderName
       mimoFailureReason: string | null
     }
@@ -1114,7 +1177,7 @@ async function requestMimoOnce(
   mimoApiKey: string,
   requestBody: unknown
 ): Promise<
-  | { ok: true; sentences: Sentence[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -1220,8 +1283,8 @@ async function requestMimoOnce(
     }
   }
 
-  const sentences = parseSentences(content)
-  if (!sentences || sentences.length !== 3) {
+  const generatedContent = parseGeneratedContent(content)
+  if (!generatedContent) {
     return {
       ok: false,
       provider: "mimo",
@@ -1239,7 +1302,8 @@ async function requestMimoOnce(
 
   return {
     ok: true,
-    sentences,
+    sentences: generatedContent.sentences,
+    tags: generatedContent.tags,
     provider: "mimo",
   }
 }
@@ -1249,7 +1313,7 @@ async function requestKimiOnce(
   kimiApiKey: string,
   requestBody: unknown
 ): Promise<
-  | { ok: true; sentences: Sentence[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -1342,8 +1406,8 @@ async function requestKimiOnce(
     }
   }
 
-  const sentences = parseSentences(content)
-  if (!sentences || sentences.length !== 3) {
+  const generatedContent = parseGeneratedContent(content)
+  if (!generatedContent) {
     return {
       ok: false,
       provider: "kimi",
@@ -1356,7 +1420,8 @@ async function requestKimiOnce(
 
   return {
     ok: true,
-    sentences,
+    sentences: generatedContent.sentences,
+    tags: generatedContent.tags,
     provider: "kimi",
   }
 }
@@ -1371,6 +1436,7 @@ async function finalizeAuthenticatedGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
+    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -1390,6 +1456,7 @@ async function finalizeAuthenticatedGeneration(
     p_created_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
+    p_tags: args.tags,
   })
 
   if (error) {
@@ -1410,6 +1477,7 @@ async function finalizeGuestGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
+    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -1427,6 +1495,7 @@ async function finalizeGuestGeneration(
     p_completed_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
+    p_tags: args.tags,
   })
 
   if (error) {
@@ -1534,6 +1603,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
       image_url,
       created_at,
       provider,
+      tags,
       memory_sentences (
         id,
         english,
@@ -1567,6 +1637,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
       imagePath: memory.image_url ?? "",
       createdAt: memory.created_at,
       provider: memory.provider ?? null,
+      tags: Array.isArray(memory.tags) ? memory.tags : [],
       sentences: sentences.map((sentence: any) => ({
         id: sentence.id,
         english: String(sentence.english ?? "").trim(),
@@ -1590,7 +1661,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
 ): Promise<Response | null> {
   const { data: completedJob, error: completedJobError } = await adminClient
     .from("guest_generation_jobs")
-    .select("id, created_at, remaining_credits, sentences, provider")
+    .select("id, created_at, remaining_credits, sentences, provider, tags")
     .eq("id", args.guestJobID)
     .eq("user_id", args.userID)
     .maybeSingle()
@@ -1616,6 +1687,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
       imagePath: "",
       createdAt: completedJob?.created_at ?? args.fallbackCreatedAt,
       provider: completedJob?.provider ?? null,
+      tags: Array.isArray(completedJob?.tags) ? completedJob.tags : [],
       sentences: sentences.map((sentence: any) => ({
         id: crypto.randomUUID(),
         english: String(sentence?.english ?? "").trim(),

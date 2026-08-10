@@ -221,6 +221,7 @@ extension AppModel {
             imageData: memoryImageData,
             remoteImagePath: recoveredMemory.remoteImagePath,
             syncedToAccount: !session.isAnonymous,
+            tags: recoveredMemory.tags,
             sentences: recoveredMemory.sentences
         )
 
@@ -269,6 +270,7 @@ extension AppModel {
                 imageData: memoryImageData,
                 remoteImagePath: nil,
                 syncedToAccount: false,
+                tags: generationResult.memory.tags,
                 sentences: localSentences
             )
         }
@@ -279,6 +281,7 @@ extension AppModel {
             imageData: memoryImageData,
             remoteImagePath: generationResult.memory.remoteImagePath,
             syncedToAccount: true,
+            tags: generationResult.memory.tags,
             sentences: generationResult.memory.sentences
         )
     }
@@ -361,6 +364,7 @@ extension AppModel {
                 imageData: downloadedImageData,
                 remoteImagePath: remoteImagePath,
                 syncedToAccount: memories[refreshedIndex].syncedToAccount,
+                tags: memories[refreshedIndex].tags,
                 sentences: memories[refreshedIndex].sentences
             )
             persistMemories()
@@ -596,6 +600,7 @@ extension AppModel {
                     imageData: cachedImageData ?? Data(),
                     remoteImagePath: record.imagePath,
                     syncedToAccount: !session.isAnonymous,
+                    tags: record.tags ?? [],
                     sentences: sentences
                 )
             }
@@ -760,6 +765,7 @@ extension AppModel {
                     imageData: downloadedImageData,
                     remoteImagePath: remoteImagePath,
                     syncedToAccount: hydratedMemories[index].syncedToAccount,
+                    tags: hydratedMemories[index].tags,
                     sentences: hydratedMemories[index].sentences
                 )
 
@@ -811,6 +817,7 @@ extension AppModel {
                 imageData: hydratedImage.imageData,
                 remoteImagePath: currentMemory.remoteImagePath,
                 syncedToAccount: currentMemory.syncedToAccount,
+                tags: currentMemory.tags,
                 sentences: currentMemory.sentences
             )
             didUpdate = true
@@ -1324,6 +1331,7 @@ extension AppModel {
             imageData: pendingGeneratedMemoryImage.imageData,
             remoteImagePath: remoteImagePath,
             syncedToAccount: targetMemory.syncedToAccount,
+            tags: targetMemory.tags,
             sentences: targetMemory.sentences
         )
         clearPendingGeneratedMemoryImage()
@@ -1542,6 +1550,34 @@ extension AppModel {
         }
     }
 
+    func prepareSentenceForDirectStudy(sentenceID: UUID) async -> SentenceStudyQueueItem? {
+        guard let location = locateSentence(sentenceID) else { return nil }
+
+        if isSignedIn && !isNetworkAvailable {
+            sentenceStudyErrorMessage = L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
+            return nil
+        }
+
+        let memory = memories[location.memoryIndex]
+        let sentence = memory.sentences[location.sentenceIndex]
+        let progress = isSignedIn ? nil : localSentenceStudyProgress[sentenceID]
+
+        return SentenceStudyQueueItem(
+            sentenceID: sentence.id,
+            memoryID: memory.id,
+            english: sentence.english,
+            chinese: sentence.chinese,
+            imagePath: memory.remoteImagePath ?? "",
+            createdAt: memory.createdAt,
+            learningStep: progress?.learningStep ?? 0,
+            masteredReviewCount: progress?.masteredReviewCount ?? 0,
+            correctCount: progress?.correctCount ?? favoriteSentenceStudyCounts[sentenceID] ?? 0,
+            wrongCount: progress?.wrongCount ?? 0,
+            lastResult: progress?.lastResult,
+            nextReviewAt: progress?.nextReviewDay
+        )
+    }
+
     func recordSentenceStudyCompletion(sentenceID: UUID) async throws -> SentenceStudyProgress {
         guard isSignedIn else {
             return recordLocalSentenceStudyCompletion(sentenceID: sentenceID)
@@ -1553,10 +1589,19 @@ extension AppModel {
             sentenceID: sentenceID,
             wasCorrect: true
         )
-        favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
-        sentenceStudyDueCount = max(0, sentenceStudyDueCount - 1)
+        let isFavorite: Bool
+        if let location = locateSentence(sentenceID) {
+            isFavorite = memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite
+        } else {
+            isFavorite = false
+        }
+
+        if isFavorite {
+            favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
+            sentenceStudyDueCount = max(0, sentenceStudyDueCount - 1)
+            sentenceStudyReviewableTodayCount += 1
+        }
         sentenceStudyTodayCount += 1
-        sentenceStudyReviewableTodayCount += 1
         return progress
     }
 

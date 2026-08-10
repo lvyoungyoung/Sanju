@@ -5,12 +5,15 @@ import UIKit
 struct MemoriesView: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .title2) private var compactHeroTitleFontSize: CGFloat = 23
+    @ScaledMetric(relativeTo: .title2) private var regularHeroTitleFontSize: CGFloat = 26
     @State private var memoryPendingDeletion: MemoryEntry?
     @State private var isPerformingInitialLoad = false
     @State private var hasCompletedInitialLoad = false
     @State private var visibleMemoryCount = 20
     @State private var isLoadingMoreMemories = false
     @State private var memorySections: [MemorySection] = []
+    @State private var selectedMemoryTag: String?
 
     private let columns = [
         GridItem(.flexible(), spacing: AppSpacing.xLarge),
@@ -18,9 +21,52 @@ struct MemoriesView: View {
     ]
     private let memoryPageSize = 20
     private let loadMoreFooterThreshold: CGFloat = 120
+    private let supportedMemoryTags = [
+        "人物", "风景", "旅行", "美食", "生活场景", "动物",
+        "植物", "建筑", "活动", "物品", "截图/信息"
+    ]
 
     private var heroTitleFontSize: CGFloat {
-        horizontalSizeClass == .compact ? 23 : 26
+        horizontalSizeClass == .compact ? compactHeroTitleFontSize : regularHeroTitleFontSize
+    }
+
+    private var availableMemoryTags: [String] {
+        let existingTags = Set(appModel.memories.flatMap(\.tags))
+        return supportedMemoryTags.filter(existingTags.contains)
+    }
+
+    private func displayTitle(for memoryTag: String) -> String {
+        switch memoryTag {
+        case "人物":
+            return L10n.string("memories.tags.people", "人物")
+        case "风景":
+            return L10n.string("memories.tags.landscape", "风景")
+        case "旅行":
+            return L10n.string("memories.tags.travel", "旅行")
+        case "美食":
+            return L10n.string("memories.tags.food", "美食")
+        case "生活场景":
+            return L10n.string("memories.tags.daily_life", "生活场景")
+        case "动物":
+            return L10n.string("memories.tags.animals", "动物")
+        case "植物":
+            return L10n.string("memories.tags.plants", "植物")
+        case "建筑":
+            return L10n.string("memories.tags.architecture", "建筑")
+        case "活动":
+            return L10n.string("memories.tags.activities", "活动")
+        case "物品":
+            return L10n.string("memories.tags.objects", "物品")
+        case "截图/信息":
+            return L10n.string("memories.tags.screens_and_info", "截图/信息")
+        default:
+            return memoryTag
+        }
+    }
+
+    private var filteredMemories: [MemoryEntry] {
+        guard let selectedMemoryTag else { return appModel.memories }
+        return appModel.memories.filter { $0.tags.contains(selectedMemoryTag) }
     }
 
     var body: some View {
@@ -28,6 +74,10 @@ struct MemoriesView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: AppSpacing.large) {
                     memoriesHero
+
+                    if !availableMemoryTags.isEmpty {
+                        memoryTagFilterBar
+                    }
 
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
                         PendingCloudSyncProgressCard(
@@ -100,12 +150,20 @@ struct MemoriesView: View {
             .background(Color(.systemGroupedBackground))
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
+                rebuildMemorySections(using: currentVisibleMemories(from: filteredMemories))
                 await performInitialLoadIfNeeded()
             }
             .onChange(of: appModel.memories) { _, newMemories in
+                if let selectedMemoryTag,
+                   !newMemories.contains(where: { $0.tags.contains(selectedMemoryTag) }) {
+                    self.selectedMemoryTag = nil
+                }
                 updateVisibleMemoryCount(using: newMemories)
-                rebuildMemorySections(using: currentVisibleMemories(from: newMemories))
+                rebuildMemorySections(using: currentVisibleMemories(from: filteredMemories))
+            }
+            .onChange(of: selectedMemoryTag) { _, _ in
+                visibleMemoryCount = memoryPageSize
+                rebuildMemorySections(using: currentVisibleMemories(from: filteredMemories))
             }
             .onPreferenceChange(MemoryFooterMinYPreferenceKey.self) { footerMinY in
                 guard hasMoreMemoriesToDisplay else { return }
@@ -169,7 +227,6 @@ struct MemoriesView: View {
                         .font(.system(size: heroTitleFontSize, weight: .bold))
                         .foregroundStyle(AppHeroTextColor.title)
                         .lineSpacing(4)
-                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -192,6 +249,49 @@ struct MemoriesView: View {
             .padding(.trailing, AppSpacing.xLarge)
         }
         .appHeroShadow()
+    }
+
+    private var memoryTagFilterBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AppSpacing.small) {
+                memoryTagButton(
+                    title: L10n.string("memories.tags.all", "全部"),
+                    tag: nil
+                )
+
+                ForEach(availableMemoryTags, id: \.self) { tag in
+                    memoryTagButton(title: displayTitle(for: tag), tag: tag)
+                }
+            }
+            .padding(.horizontal, 1)
+        }
+        .accessibilityLabel(L10n.string("memories.tags.accessibility_label", "回忆分类筛选"))
+    }
+
+    private func memoryTagButton(title: String, tag: String?) -> some View {
+        let isSelected = selectedMemoryTag == tag
+
+        return Button {
+            selectedMemoryTag = tag
+        } label: {
+            Text(title)
+                .font(.system(size: AppFontSize.badge, weight: .semibold))
+                .foregroundStyle(isSelected ? Color.white : AppTextColor.secondary)
+                .padding(.horizontal, AppSpacing.medium)
+                .frame(minHeight: AppControlHeight.compact)
+                .background(
+                    isSelected
+                        ? Color(red: 0.95, green: 0.53, blue: 0.12)
+                        : AppSurfaceColor.elevated,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? Color.clear : AppStroke.soft, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func makeSections(from memories: [MemoryEntry]) -> [MemorySection] {
@@ -286,7 +386,7 @@ struct MemoriesView: View {
     }
 
     private var hasMoreMemoriesToDisplay: Bool {
-        visibleMemoryCount < appModel.memories.count
+        visibleMemoryCount < filteredMemories.count
     }
 
     @MainActor
@@ -312,7 +412,7 @@ struct MemoriesView: View {
     @MainActor
     private func loadMoreMemoriesIfNeeded(currentMemoryID: UUID) async {
         guard !isLoadingMoreMemories else { return }
-        guard currentMemoryID == currentVisibleMemories(from: appModel.memories).last?.id else { return }
+        guard currentMemoryID == currentVisibleMemories(from: filteredMemories).last?.id else { return }
         await loadMoreMemoriesIfNeeded()
     }
 
@@ -322,10 +422,15 @@ struct MemoriesView: View {
         guard hasMoreMemoriesToDisplay else { return }
 
         isLoadingMoreMemories = true
-        let nextVisibleCount = min(visibleMemoryCount + memoryPageSize, appModel.memories.count)
+        let nextVisibleCount = min(visibleMemoryCount + memoryPageSize, filteredMemories.count)
         visibleMemoryCount = nextVisibleCount
-        rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
-        await appModel.loadMoreRemoteMemoriesIfNeeded(through: nextVisibleCount)
+        let newlyVisibleMemories = currentVisibleMemories(from: filteredMemories)
+        rebuildMemorySections(using: newlyVisibleMemories)
+
+        let remoteLoadTarget = newlyVisibleMemories.compactMap { memory in
+            appModel.memories.firstIndex(where: { $0.id == memory.id }).map { $0 + 1 }
+        }.max() ?? nextVisibleCount
+        await appModel.loadMoreRemoteMemoriesIfNeeded(through: remoteLoadTarget)
         isLoadingMoreMemories = false
     }
 }

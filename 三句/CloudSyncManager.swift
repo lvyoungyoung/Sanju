@@ -71,6 +71,7 @@ struct CloudSyncManager {
                 imageData: Data(),
                 remoteImagePath: record.imagePath,
                 syncedToAccount: true,
+                tags: record.tags ?? [],
                 sentences: sentences
             )
         }

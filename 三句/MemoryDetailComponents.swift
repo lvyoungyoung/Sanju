@@ -68,11 +68,17 @@ struct MemoryDetailImageSkeleton: View {
 
 struct MemoryDetailSentencePanel: View {
     let memory: MemoryEntry
+    let preparingSentenceID: UUID?
+    let onStartStudy: (SentenceRecord) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             ForEach(memory.sentences) { sentence in
-                MemoryDetailSentenceRow(sentence: sentence)
+                MemoryDetailSentenceRow(
+                    sentence: sentence,
+                    isPreparingStudy: preparingSentenceID == sentence.id,
+                    onStartStudy: { onStartStudy(sentence) }
+                )
                     .padding(16)
                     .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
@@ -83,10 +89,12 @@ struct MemoryDetailSentencePanel: View {
 struct MemoryDetailSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
     let sentence: SentenceRecord
+    let isPreparingStudy: Bool
+    let onStartStudy: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 15) {
-            VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: AppSpacing.large) {
+            VStack(alignment: .leading, spacing: 10) {
                 Text(sentence.english)
                     .font(.system(size: 17))
                     .foregroundStyle(AppTextColor.primary)
@@ -98,42 +106,68 @@ struct MemoryDetailSentenceRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            VStack(spacing: 12) {
-                MemoryDetailActionCircle(
-                    background: AppSurfaceColor.elevated,
-                    icon: "play.fill",
-                    iconColor: Color(red: 0.98, green: 0.65, blue: 0.00)
+            HStack(spacing: 10) {
+                sentenceActionButton(
+                    title: L10n.string("new.result.play", "播放"),
+                    icon: "play.fill"
                 ) {
                     appModel.speech.speak(sentence.english)
                 }
 
-                MemoryDetailActionCircle(
-                    background: AppSurfaceColor.elevated,
+                sentenceActionButton(
+                    title: L10n.string("new.result.favorite", "收藏"),
                     icon: sentence.isFavorite ? "star.fill" : "star",
-                    iconColor: sentence.isFavorite ? Color(red: 0.98, green: 0.75, blue: 0.15) : Color(red: 0.78, green: 0.78, blue: 0.78)
+                    iconColor: sentence.isFavorite
+                        ? Color(red: 0.98, green: 0.65, blue: 0.00)
+                        : AppTextColor.secondary
                 ) {
                     appModel.toggleFavorite(sentenceID: sentence.id)
                 }
+
+                Spacer(minLength: 0)
+
+                Button(action: onStartStudy) {
+                    HStack(spacing: 6) {
+                        if isPreparingStudy {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: "graduationcap.fill")
+                        }
+                        Text(L10n.string("new.result.start_study", "去学习"))
+                    }
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 36)
+                    .background(Color(red: 0.95, green: 0.53, blue: 0.12), in: Capsule())
+                }
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .disabled(isPreparingStudy)
+                .accessibilityHint(L10n.string("new.result.start_study_hint", "开始这句话的填空练习。"))
             }
         }
         .padding(.vertical, 8)
     }
-}
 
-private struct MemoryDetailActionCircle: View {
-    let background: Color
-    let icon: String
-    let iconColor: Color
-    let action: () -> Void
-
-    var body: some View {
+    private func sentenceActionButton(
+        title: String,
+        icon: String,
+        iconColor: Color = AppTextColor.secondary,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+            Label(title, systemImage: icon)
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(iconColor)
-                .frame(width: 36, height: 36)
-                .background(background, in: Circle())
+                .padding(.horizontal, 11)
+                .frame(height: 36)
+                .background(AppSurfaceColor.elevated, in: Capsule())
         }
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
         .buttonStyle(.plain)
     }
 }

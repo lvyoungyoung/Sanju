@@ -28,6 +28,7 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
     let imageData: Data
     var remoteImagePath: String?
     var syncedToAccount: Bool
+    var tags: [String]
     var sentences: [SentenceRecord]
 
     init(
@@ -36,6 +37,7 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         imageData: Data,
         remoteImagePath: String? = nil,
         syncedToAccount: Bool = false,
+        tags: [String] = [],
         sentences: [SentenceRecord]
     ) {
         self.id = id
@@ -43,7 +45,29 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         self.imageData = imageData
         self.remoteImagePath = remoteImagePath
         self.syncedToAccount = syncedToAccount
+        self.tags = tags
         self.sentences = sentences
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case createdAt
+        case imageData
+        case remoteImagePath
+        case syncedToAccount
+        case tags
+        case sentences
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        imageData = try container.decode(Data.self, forKey: .imageData)
+        remoteImagePath = try container.decodeIfPresent(String.self, forKey: .remoteImagePath)
+        syncedToAccount = try container.decode(Bool.self, forKey: .syncedToAccount)
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        sentences = try container.decode([SentenceRecord].self, forKey: .sentences)
     }
 }
 

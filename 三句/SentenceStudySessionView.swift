@@ -10,10 +10,22 @@ struct SentenceStudySessionView: View {
     @State private var isPreparingReviewQueue = false
     @State private var reviewQueueErrorMessage: String?
     @State private var isShowingStudySettings = false
+    private let onDismiss: @MainActor () -> Void
+    private let repeatsActiveQueueOnCompletion: Bool
+    private let usesSingleSentenceCompletion: Bool
 
-    init(queue: [SentenceStudyQueueItem], startsInReviewMode: Bool = false) {
+    init(
+        queue: [SentenceStudyQueueItem],
+        startsInReviewMode: Bool = false,
+        repeatsActiveQueueOnCompletion: Bool = false,
+        usesSingleSentenceCompletion: Bool = false,
+        onDismiss: @escaping @MainActor () -> Void = {}
+    ) {
         _activeQueue = State(initialValue: queue)
         _isReviewingToday = State(initialValue: startsInReviewMode)
+        self.repeatsActiveQueueOnCompletion = repeatsActiveQueueOnCompletion
+        self.usesSingleSentenceCompletion = usesSingleSentenceCompletion
+        self.onDismiss = onDismiss
     }
 
     private var currentItem: SentenceStudyQueueItem? {
@@ -28,25 +40,35 @@ struct SentenceStudySessionView: View {
                     .ignoresSafeArea()
 
                 if isShowingCompletion {
-                    SentenceStudyCompletionView(
-                        todayCompletedCount: appModel.sentenceStudyTodayCount,
-                        canReviewToday: appModel.hasSentenceStudyReviewContent || !activeQueue.isEmpty,
-                        isPreparingReviewQueue: isPreparingReviewQueue,
-                        reviewQueueErrorMessage: reviewQueueErrorMessage,
-                        onReviewToday: restartTodayReview,
-                        onClose: {
-                            Task {
-                                await appModel.finishSentenceStudySession()
-                            }
+                    Group {
+                        if usesSingleSentenceCompletion, let completedItem = activeQueue.last {
+                            SentenceStudySingleSentenceCompletionView(
+                                sentence: completedItem.english,
+                                onReviewAgain: restartTodayReview,
+                                onClose: closeSession
+                            )
+                        } else {
+                            SentenceStudyCompletionView(
+                                todayCompletedCount: appModel.sentenceStudyTodayCount,
+                                canReviewToday: repeatsActiveQueueOnCompletion || appModel.hasSentenceStudyReviewContent || !activeQueue.isEmpty,
+                                isPreparingReviewQueue: isPreparingReviewQueue,
+                                reviewQueueErrorMessage: reviewQueueErrorMessage,
+                                onReviewToday: restartTodayReview,
+                                onClose: {
+                                    closeSession()
+                                }
+                            )
                         }
-                    )
+                    }
                     .padding(.horizontal, AppSpacing.section)
                 } else if let currentItem {
                     SentenceStudyQuestionView(
                         item: currentItem,
                         index: currentIndex + 1,
                         total: activeQueue.count,
-                        recordsProgress: !isReviewingToday
+                        recordsProgress: !isReviewingToday,
+                        automaticallyAdvanceOnCompletion: usesSingleSentenceCompletion,
+                        automaticallySpeakOnCompletion: !usesSingleSentenceCompletion
                     ) {
                         isShowingStudySettings = false
                         if currentIndex < activeQueue.count - 1 {
@@ -72,12 +94,10 @@ struct SentenceStudySessionView: View {
             .safeAreaInset(edge: .top) {
                 HStack {
                     Button {
-                        Task {
-                            await appModel.finishSentenceStudySession()
-                        }
+                        closeSession()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: AppIconSize.regular, weight: .semibold))
+                            .font(.system(size: AppIconSize.regular * 1.3, weight: .semibold))
                             .foregroundStyle(AppTextColor.primary)
                             .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
                             .background(AppSurfaceColor.elevated, in: Circle())
@@ -153,11 +173,18 @@ struct SentenceStudySessionView: View {
         .padding(.bottom, AppSpacing.medium)
     }
 
+    private func closeSession() {
+        Task { @MainActor in
+            await appModel.finishSentenceStudySession()
+            onDismiss()
+        }
+    }
+
     private func restartTodayReview() {
         guard !isPreparingReviewQueue else { return }
         reviewQueueErrorMessage = nil
 
-        if isReviewingToday {
+        if isReviewingToday || repeatsActiveQueueOnCompletion {
             restartReview(with: activeQueue)
             return
         }
@@ -228,6 +255,8 @@ private struct SentenceStudyQuestionView: View {
     let index: Int
     let total: Int
     let recordsProgress: Bool
+    let automaticallyAdvanceOnCompletion: Bool
+    let automaticallySpeakOnCompletion: Bool
     let onAdvance: () -> Void
 
     @State private var question: SentenceStudyQuestion
@@ -236,6 +265,7 @@ private struct SentenceStudyQuestionView: View {
     @State private var wrongBlankID: UUID?
     @State private var isSavingProgress = false
     @State private var didPersistProgress = false
+    @State private var didAutomaticallyAdvance = false
     @State private var didAutoSpeak = false
     @State private var saveErrorMessage: String?
 
@@ -244,12 +274,16 @@ private struct SentenceStudyQuestionView: View {
         index: Int,
         total: Int,
         recordsProgress: Bool = true,
+        automaticallyAdvanceOnCompletion: Bool = false,
+        automaticallySpeakOnCompletion: Bool = true,
         onAdvance: @escaping () -> Void
     ) {
         self.item = item
         self.index = index
         self.total = total
         self.recordsProgress = recordsProgress
+        self.automaticallyAdvanceOnCompletion = automaticallyAdvanceOnCompletion
+        self.automaticallySpeakOnCompletion = automaticallySpeakOnCompletion
         self.onAdvance = onAdvance
         let question = SentenceStudyQuestion(item: item)
         _question = State(initialValue: question)
@@ -317,10 +351,9 @@ private struct SentenceStudyQuestionView: View {
                     if !remainingWords.isEmpty {
                         StudyFlowLayout(horizontalSpacing: 10, verticalSpacing: 12) {
                             ForEach(remainingWords) { word in
-                                SentenceStudyWordTagView(word: word.text)
-                                    .onTapGesture {
-                                        fillActiveBlank(with: word.id)
-                                    }
+                                SentenceStudyWordTagView(word: word.text) {
+                                    fillActiveBlank(with: word.id)
+                                }
                             }
                         }
                     }
@@ -358,7 +391,13 @@ private struct SentenceStudyQuestionView: View {
         }
         .onChange(of: filledBlankWordIDs.count) { _, newValue in
             guard newValue == question.blankIDs.count else { return }
-            speakSolvedSentenceIfNeeded()
+            if automaticallySpeakOnCompletion {
+                speakSolvedSentenceIfNeeded()
+            }
+            if automaticallyAdvanceOnCompletion && !recordsProgress {
+                advanceAutomaticallyIfNeeded()
+                return
+            }
             submitSolvedSentenceIfNeeded(forceRetry: false)
         }
     }
@@ -429,6 +468,9 @@ private struct SentenceStudyQuestionView: View {
                 await MainActor.run {
                     didPersistProgress = true
                     isSavingProgress = false
+                    if automaticallyAdvanceOnCompletion {
+                        advanceAutomaticallyIfNeeded()
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -437,6 +479,12 @@ private struct SentenceStudyQuestionView: View {
                 }
             }
         }
+    }
+
+    private func advanceAutomaticallyIfNeeded() {
+        guard !didAutomaticallyAdvance else { return }
+        didAutomaticallyAdvance = true
+        onAdvance()
     }
 }
 
@@ -724,6 +772,86 @@ private struct SentenceStudyCompletionView: View {
         }
 
         return L10n.string("study.reminder.disabled_hint", "你可以在设置中开启定时提醒，每天提醒你学习。")
+    }
+}
+
+private struct SentenceStudySingleSentenceCompletionView: View {
+    let sentence: String
+    let onReviewAgain: () -> Void
+    let onClose: () -> Void
+    @State private var isAnimating = false
+
+    var body: some View {
+        VStack(spacing: AppSpacing.section) {
+            SentenceStudyFireworksView(isAnimating: isAnimating)
+                .padding(.top, 40)
+
+            VStack(spacing: AppSpacing.medium) {
+                Text(L10n.string("study.single_completion.title", "你学会了一句话"))
+                    .font(.system(size: AppFontSize.pageTitle, weight: .bold))
+                    .foregroundStyle(AppTextColor.title)
+
+                Text(sentence)
+                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, AppSpacing.large)
+
+                Text(L10n.string("study.single_completion.subtitle", "试着不看提示，把它说出来吧。"))
+                    .font(.system(size: AppFontSize.body))
+                    .foregroundStyle(AppTextColor.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            VStack(spacing: AppSpacing.medium) {
+                Button(action: onReviewAgain) {
+                    Text(L10n.string("study.completion.review_again", "再学习一遍"))
+                        .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppControlHeight.prominent)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                                .fill(Color(red: 0.99, green: 0.95, blue: 0.90))
+                        )
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onClose) {
+                    Text(L10n.string("common.back", "返回"))
+                        .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppControlHeight.prominent)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color(red: 0.98, green: 0.67, blue: 0.18),
+                                            Color(red: 0.91, green: 0.52, blue: 0.17)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 6)
+            .padding(.horizontal, AppSpacing.section)
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                isAnimating = true
+            }
+        }
     }
 }
 

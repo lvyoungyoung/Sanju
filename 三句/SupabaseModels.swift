@@ -32,12 +32,14 @@ struct SupabaseMemoryRecord: Decodable {
     let id: String
     let imagePath: String
     let createdAt: Date
+    let tags: [String]?
     let sentences: [SupabaseMemorySentenceRecord]
 
     enum CodingKeys: String, CodingKey {
         case id
         case imagePath = "image_url"
         case createdAt = "created_at"
+        case tags
         case sentences = "memory_sentences"
     }
 }
@@ -194,12 +196,14 @@ struct SupabaseGeneratedMemory: Decodable {
     let id: String
     let imagePath: String
     let createdAt: Date
+    let tags: [String]?
     let sentences: [SupabaseGeneratedSentence]
 
     enum CodingKeys: String, CodingKey {
         case id
         case imagePath
         case createdAt
+        case tags
         case sentences
     }
 }
