@@ -104,12 +104,13 @@ protocol SupabaseServicing {
     func recordSentenceStudyResult(
         session: SupabaseSession,
         sentenceID: UUID,
-        wasCorrect: Bool
+        wasCorrect: Bool,
+        studyTopic: SentenceStudyTopic
     ) async throws -> SentenceStudyProgress
     func mergeLocalSentenceStudyProgress(
         session: SupabaseSession,
         progressRecords: [LocalSentenceStudyProgress]
-    ) async throws -> Set<UUID>
+    ) async throws -> Set<SentenceStudyProgressKey>
     func updateSentenceFavorite(
         session: SupabaseSession,
         sentenceID: UUID,
@@ -828,7 +829,8 @@ struct SupabaseService: SupabaseServicing {
                 totalCount: record.totalCount,
                 dueCount: record.dueCount,
                 studiedCount: record.studiedCount,
-                reviewableTodayCount: record.reviewableTodayCount
+                reviewableTodayCount: record.reviewableTodayCount,
+                masteryScore: record.masteryScore
             )
         }
     }
@@ -881,7 +883,7 @@ struct SupabaseService: SupabaseServicing {
             let idList = sentenceIDChunk
                 .map { $0.uuidString.lowercased() }
                 .joined(separator: ",")
-            let path = "/rest/v1/sentence_study_progress?select=\(encodedSelect)&sentence_id=in.(\(idList))"
+            let path = "/rest/v1/sentence_study_progress?select=\(encodedSelect)&sentence_id=in.(\(idList))&study_scope=eq.favorites"
             let request = try makeRequest(
                 path: path,
                 method: "GET",
@@ -902,7 +904,8 @@ struct SupabaseService: SupabaseServicing {
     func recordSentenceStudyResult(
         session: SupabaseSession,
         sentenceID: UUID,
-        wasCorrect: Bool
+        wasCorrect: Bool,
+        studyTopic: SentenceStudyTopic = .favorites
     ) async throws -> SentenceStudyProgress {
         let request = try makeRequest(
             path: "/rest/v1/rpc/record_sentence_study_result",
@@ -910,7 +913,8 @@ struct SupabaseService: SupabaseServicing {
             bearerToken: session.accessToken,
             body: SupabaseSentenceStudyResultRequest(
                 sentenceID: sentenceID.uuidString.lowercased(),
-                wasCorrect: wasCorrect
+                wasCorrect: wasCorrect,
+                studyScope: studyTopic.rawValue
             )
         )
         let record: SupabaseSentenceStudyProgressRecord = try await perform(request)
@@ -923,12 +927,13 @@ struct SupabaseService: SupabaseServicing {
     func mergeLocalSentenceStudyProgress(
         session: SupabaseSession,
         progressRecords: [LocalSentenceStudyProgress]
-    ) async throws -> Set<UUID> {
+    ) async throws -> Set<SentenceStudyProgressKey> {
         guard !progressRecords.isEmpty else { return [] }
 
         let items = progressRecords.map { progress in
             SupabaseLocalSentenceStudyProgressMergeItem(
                 sentenceID: progress.sentenceID.uuidString.lowercased(),
+                studyScope: progress.studyTopic.rawValue,
                 learningStep: progress.learningStep,
                 masteredReviewCount: progress.masteredReviewCount,
                 correctCount: progress.correctCount,
@@ -947,7 +952,13 @@ struct SupabaseService: SupabaseServicing {
             body: SupabaseLocalSentenceStudyProgressMergeRequest(items: items)
         )
         let records: [SupabaseMergedSentenceStudyProgressRecord] = try await perform(request)
-        return Set(records.compactMap { UUID(uuidString: $0.sentenceID) })
+        return Set(records.compactMap { record in
+            guard let sentenceID = UUID(uuidString: record.sentenceID),
+                  let studyTopic = record.studyScope.flatMap(SentenceStudyTopic.init(rawValue:)) else {
+                return nil
+            }
+            return SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: studyTopic)
+        })
     }
 
     func updateSentenceFavorite(

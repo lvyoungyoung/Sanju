@@ -21,7 +21,7 @@ struct StudyView: View {
                     .padding(.top, 72)
                 } else {
                     LazyVStack(spacing: AppSpacing.medium) {
-                        ForEach(SentenceStudyTopic.allCases) { topic in
+                        ForEach(studyTopics) { topic in
                             topicCard(topic)
                         }
                     }
@@ -49,6 +49,7 @@ struct StudyView: View {
         .fullScreenCover(item: $topicSession) { session in
             SentenceStudySessionView(
                 queue: session.queue,
+                studyTopic: session.topic,
                 startsInReviewMode: session.startsInReviewMode,
                 repeatsActiveQueueOnCompletion: true,
                 onDismiss: {
@@ -122,20 +123,33 @@ struct StudyView: View {
                 .frame(width: 44, height: 44)
                 .background(topic.tintColor.opacity(0.13), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
                 Text(topic.title)
                     .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                     .foregroundStyle(AppTextColor.primary)
-                Text(
-                    L10n.string(
-                        "study.topic.card_progress",
-                        "待学习 %d 句 · 已学习 %d 句",
-                        summary.dueCount,
-                        summary.studiedCount
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(
+                        L10n.string(
+                            "study.topic.mastery",
+                            "掌握度 %d%%",
+                            summary.masteryScore
+                        )
                     )
-                )
-                .font(.system(size: AppFontSize.metadata))
-                .foregroundStyle(AppTextColor.secondary)
+                    .font(.system(size: AppFontSize.metadata, weight: .medium))
+                    .foregroundStyle(AppTextColor.secondary)
+
+                    GeometryReader { proxy in
+                        Capsule()
+                            .fill(AppSurfaceColor.secondaryFill)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(topic.tintColor)
+                                    .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
+                            }
+                    }
+                    .frame(height: 5)
+                }
             }
 
             Spacer(minLength: AppSpacing.small)
@@ -172,10 +186,16 @@ struct StudyView: View {
         appModel.sentenceStudyTopicSummaries.values.reduce(0) { $0 + $1.totalCount }
     }
 
+    private var studyTopics: [SentenceStudyTopic] {
+        var topics = appModel.sentenceStudyTopicSummaries.keys
+            .filter { $0 != .favorites }
+            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        topics.insert(.favorites, at: 0)
+        return topics
+    }
+
     private var topicDueCount: Int {
-        let remainingDailySlots = max(SentenceStudyPolicy.dailyLimit - appModel.sentenceStudyTodayCount, 0)
-        let dueCount = appModel.sentenceStudyTopicSummaries.values.reduce(0) { $0 + $1.dueCount }
-        return min(dueCount, remainingDailySlots)
+        appModel.sentenceStudyTopicSummaries.values.reduce(0) { $0 + $1.dueCount }
     }
 
     private var errorAlertBinding: Binding<Bool> {
@@ -188,7 +208,7 @@ struct StudyView: View {
     }
 
     private func action(for summary: SentenceStudyTopicSummary) -> (title: String, isEnabled: Bool) {
-        if summary.dueCount > 0 && !appModel.hasReachedSentenceStudyDailyLimit {
+        if summary.dueCount > 0 {
             return (L10n.string("study.topic.action.start", "去学习"), true)
         }
         if summary.reviewableTodayCount > 0 {

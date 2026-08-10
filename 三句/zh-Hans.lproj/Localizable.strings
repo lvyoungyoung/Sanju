@@ -291,7 +291,9 @@
 "study.topic.empty.subtitle" = "完成一次生成后，AI 会自动把句子归入适合学习的主题。";
 "study.topic.empty.title" = "还没有主题内容";
 "study.topic.food_drink" = "美食与饮品";
+"study.topic.favorites" = "收藏";
 "study.topic.kitchen" = "厨房场景";
+"study.topic.mastery" = "掌握度 %d%%";
 "study.topic.outdoor_scenery" = "户外风景";
 "study.topic.page_subtitle" = "按场景练习，让你更自然地说出眼前的画面。";
 "study.topic.page_title" = "学习";

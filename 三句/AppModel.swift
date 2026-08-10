@@ -168,10 +168,6 @@ enum SentenceStudyResult: String, Codable, Hashable {
     case incorrect
 }
 
-enum SentenceStudyPolicy {
-    static let dailyLimit = 30
-}
-
 struct SentenceStudyProgress: Identifiable, Codable, Hashable {
     let id: UUID
     let sentenceID: UUID
@@ -184,9 +180,15 @@ struct SentenceStudyProgress: Identifiable, Codable, Hashable {
     let nextReviewAt: Date
 }
 
+struct SentenceStudyProgressKey: Hashable {
+    let sentenceID: UUID
+    let studyTopic: SentenceStudyTopic
+}
+
 struct LocalSentenceStudyProgress: Identifiable, Codable, Hashable {
     let id: UUID
     let sentenceID: UUID
+    let studyTopic: SentenceStudyTopic
     var learningStep: Int
     var masteredReviewCount: Int
     var correctCount: Int
@@ -199,6 +201,7 @@ struct LocalSentenceStudyProgress: Identifiable, Codable, Hashable {
     init(
         id: UUID = UUID(),
         sentenceID: UUID,
+        studyTopic: SentenceStudyTopic = .favorites,
         learningStep: Int = 0,
         masteredReviewCount: Int = 0,
         correctCount: Int = 0,
@@ -210,6 +213,7 @@ struct LocalSentenceStudyProgress: Identifiable, Codable, Hashable {
     ) {
         self.id = id
         self.sentenceID = sentenceID
+        self.studyTopic = studyTopic
         self.learningStep = learningStep
         self.masteredReviewCount = masteredReviewCount
         self.correctCount = correctCount
@@ -218,6 +222,35 @@ struct LocalSentenceStudyProgress: Identifiable, Codable, Hashable {
         self.lastStudiedAt = lastStudiedAt
         self.lastStudiedDay = lastStudiedDay
         self.nextReviewDay = nextReviewDay
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case sentenceID
+        case studyTopic
+        case learningStep
+        case masteredReviewCount
+        case correctCount
+        case wrongCount
+        case lastResult
+        case lastStudiedAt
+        case lastStudiedDay
+        case nextReviewDay
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        sentenceID = try container.decode(UUID.self, forKey: .sentenceID)
+        studyTopic = try container.decodeIfPresent(SentenceStudyTopic.self, forKey: .studyTopic) ?? .favorites
+        learningStep = try container.decode(Int.self, forKey: .learningStep)
+        masteredReviewCount = try container.decode(Int.self, forKey: .masteredReviewCount)
+        correctCount = try container.decode(Int.self, forKey: .correctCount)
+        wrongCount = try container.decode(Int.self, forKey: .wrongCount)
+        lastResult = try container.decodeIfPresent(SentenceStudyResult.self, forKey: .lastResult)
+        lastStudiedAt = try container.decodeIfPresent(Date.self, forKey: .lastStudiedAt)
+        lastStudiedDay = try container.decodeIfPresent(Date.self, forKey: .lastStudiedDay)
+        nextReviewDay = try container.decode(Date.self, forKey: .nextReviewDay)
     }
 }
 
@@ -271,7 +304,6 @@ enum AppTab: Hashable {
     case newLearning
     case memories
     case study
-    case favorites
     case profile
 }
 
@@ -444,7 +476,7 @@ final class AppModel: ObservableObject {
     var isRetryingPendingMemoryImageUploads = false
     var pendingGeneratedMemoryImage: PendingGeneratedMemoryImage?
     var pendingGuestMemoryMigrationQueue: [MemoryEntry] = []
-    var localSentenceStudyProgress: [UUID: LocalSentenceStudyProgress] = [:]
+    var localSentenceStudyProgress: [SentenceStudyProgressKey: LocalSentenceStudyProgress] = [:]
     var pendingFavoriteChanges: [PendingFavoriteChange] = []
     var pendingMemoryDeletions: [PendingMemoryDeletion] = []
     var pendingGuestCreditMigration: PendingGuestCreditMigration?
@@ -538,10 +570,6 @@ final class AppModel: ObservableObject {
     var canStartSentenceStudy: Bool {
         (hasNewSentenceStudyContent || hasSentenceStudyReviewContent)
             && !isLoadingSentenceStudyQueue
-    }
-
-    var hasReachedSentenceStudyDailyLimit: Bool {
-        sentenceStudyTodayCount >= SentenceStudyPolicy.dailyLimit
     }
 
     var hasNewSentenceStudyContent: Bool {

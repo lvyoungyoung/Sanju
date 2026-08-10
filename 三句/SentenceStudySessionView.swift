@@ -13,9 +13,11 @@ struct SentenceStudySessionView: View {
     private let onDismiss: @MainActor () -> Void
     private let repeatsActiveQueueOnCompletion: Bool
     private let usesSingleSentenceCompletion: Bool
+    private let studyTopic: SentenceStudyTopic
 
     init(
         queue: [SentenceStudyQueueItem],
+        studyTopic: SentenceStudyTopic = .favorites,
         startsInReviewMode: Bool = false,
         repeatsActiveQueueOnCompletion: Bool = false,
         usesSingleSentenceCompletion: Bool = false,
@@ -23,6 +25,7 @@ struct SentenceStudySessionView: View {
     ) {
         _activeQueue = State(initialValue: queue)
         _isReviewingToday = State(initialValue: startsInReviewMode)
+        self.studyTopic = studyTopic
         self.repeatsActiveQueueOnCompletion = repeatsActiveQueueOnCompletion
         self.usesSingleSentenceCompletion = usesSingleSentenceCompletion
         self.onDismiss = onDismiss
@@ -66,6 +69,7 @@ struct SentenceStudySessionView: View {
                         item: currentItem,
                         index: currentIndex + 1,
                         total: activeQueue.count,
+                        studyTopic: studyTopic,
                         recordsProgress: !isReviewingToday,
                         automaticallyAdvanceOnCompletion: usesSingleSentenceCompletion,
                         automaticallySpeakOnCompletion: !usesSingleSentenceCompletion
@@ -192,7 +196,7 @@ struct SentenceStudySessionView: View {
         isPreparingReviewQueue = true
         Task { @MainActor in
             do {
-                let reviewQueue = try await appModel.loadSentenceStudyTodayReviewQueue()
+                let reviewQueue = try await appModel.loadSentenceStudyTodayReviewQueue(for: studyTopic)
                 guard !reviewQueue.isEmpty else {
                     reviewQueueErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
                     isPreparingReviewQueue = false
@@ -254,6 +258,7 @@ private struct SentenceStudyQuestionView: View {
     let item: SentenceStudyQueueItem
     let index: Int
     let total: Int
+    let studyTopic: SentenceStudyTopic
     let recordsProgress: Bool
     let automaticallyAdvanceOnCompletion: Bool
     let automaticallySpeakOnCompletion: Bool
@@ -273,6 +278,7 @@ private struct SentenceStudyQuestionView: View {
         item: SentenceStudyQueueItem,
         index: Int,
         total: Int,
+        studyTopic: SentenceStudyTopic = .favorites,
         recordsProgress: Bool = true,
         automaticallyAdvanceOnCompletion: Bool = false,
         automaticallySpeakOnCompletion: Bool = true,
@@ -281,6 +287,7 @@ private struct SentenceStudyQuestionView: View {
         self.item = item
         self.index = index
         self.total = total
+        self.studyTopic = studyTopic
         self.recordsProgress = recordsProgress
         self.automaticallyAdvanceOnCompletion = automaticallyAdvanceOnCompletion
         self.automaticallySpeakOnCompletion = automaticallySpeakOnCompletion
@@ -464,7 +471,10 @@ private struct SentenceStudyQuestionView: View {
 
         Task {
             do {
-                _ = try await appModel.recordSentenceStudyCompletion(sentenceID: item.sentenceID)
+                _ = try await appModel.recordSentenceStudyCompletion(
+                    sentenceID: item.sentenceID,
+                    studyTopic: studyTopic
+                )
                 await MainActor.run {
                     didPersistProgress = true
                     isSavingProgress = false
@@ -669,12 +679,6 @@ private struct SentenceStudyCompletionView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
 
-                if todayCompletedCount >= SentenceStudyPolicy.dailyLimit {
-                    Text(L10n.string("study.completion.daily_limit_hint", "今天已经学习了很多，休息一下吧"))
-                        .font(.system(size: AppFontSize.body, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
-                        .multilineTextAlignment(.center)
-                }
             }
 
             VStack(spacing: AppSpacing.medium) {

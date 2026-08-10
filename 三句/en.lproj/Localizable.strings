@@ -291,7 +291,9 @@
 "study.topic.empty.subtitle" = "After you generate a memory, AI will sort its sentences into useful study topics.";
 "study.topic.empty.title" = "No Topic Content Yet";
 "study.topic.food_drink" = "Food & Drinks";
+"study.topic.favorites" = "Favorites";
 "study.topic.kitchen" = "Kitchen Scenes";
+"study.topic.mastery" = "%d%% Mastery";
 "study.topic.outdoor_scenery" = "Outdoor Scenery";
 "study.topic.page_subtitle" = "Practice by scene, so describing what you see feels more natural.";
 "study.topic.page_title" = "Study";

@@ -1494,7 +1494,10 @@ extension AppModel {
     private func localSentenceStudyProgressToMerge() -> [LocalSentenceStudyProgress] {
         localSentenceStudyProgress.values.filter { progress in
             guard let location = locateSentence(progress.sentenceID) else { return false }
-            return memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite
+            let sentence = memories[location.memoryIndex].sentences[location.sentenceIndex]
+            return progress.studyTopic.usesFavoriteQueue
+                ? sentence.isFavorite
+                : sentence.studyTopic == progress.studyTopic
         }
     }
 
@@ -1513,8 +1516,8 @@ extension AppModel {
             for _ in mergedSentenceIDs {
                 advancePendingCloudSyncProgress()
             }
-            localSentenceStudyProgress = localSentenceStudyProgress.filter { sentenceID, _ in
-                !mergedSentenceIDs.contains(sentenceID)
+            localSentenceStudyProgress = localSentenceStudyProgress.filter { key, _ in
+                !mergedSentenceIDs.contains(key)
             }
             persistLocalSentenceStudyProgress()
         } catch {

@@ -60,7 +60,7 @@ struct ContentView: View {
             return
         }
 
-        appModel.selectedTab = .favorites
+        appModel.selectedTab = .study
     }
 
     private var credentialWarningAlertBinding: Binding<Bool> {

@@ -32,15 +32,6 @@ struct MainTabView: View {
                 Label(L10n.string("tab.study", "学习"), systemImage: "book.closed")
             }
 
-            NavigationStack {
-                FavoritesView()
-            }
-            .tag(AppTab.favorites)
-            .tabItem {
-                Label(L10n.string("tab.favorites", "收藏"), systemImage: "heart")
-            }
-            .badge(favoritesTabBadgeValue)
-
             NavigationStack(path: $appModel.profileNavigationPath) {
                 ProfileView()
                     .navigationDestination(for: ProfileNavigationRoute.self) { route in
@@ -62,10 +53,4 @@ struct MainTabView: View {
         }
     }
 
-    private var favoritesTabBadgeValue: String? {
-        guard appModel.sentenceStudyDueCount > 0 else {
-            return nil
-        }
-        return appModel.sentenceStudyDueCount > 99 ? "99+" : "\(appModel.sentenceStudyDueCount)"
-    }
 }

@@ -458,7 +458,9 @@ extension AppModel {
         }
 
         localSentenceStudyProgress = Dictionary(
-            progressRecords.map { ($0.sentenceID, $0) },
+            progressRecords.map {
+                (SentenceStudyProgressKey(sentenceID: $0.sentenceID, studyTopic: $0.studyTopic), $0)
+            },
             uniquingKeysWith: { current, candidate in
                 let currentDate = current.lastStudiedAt ?? .distantPast
                 let candidateDate = candidate.lastStudiedAt ?? .distantPast

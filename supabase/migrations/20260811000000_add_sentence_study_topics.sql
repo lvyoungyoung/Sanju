@@ -13,10 +13,11 @@ begin
       add constraint memory_sentences_study_topic_check
       check (
         study_topic is null
-        or study_topic = any (array[
-          'weather', 'kitchen', 'outdoor_scenery', 'city_streets',
-          'people_daily_life', 'travel', 'food_drink'
-        ])
+        or (
+          char_length(btrim(study_topic)) between 2 and 8
+          and btrim(study_topic) <> '收藏'
+          and btrim(study_topic) <> 'favorites'
+        )
       );
   end if;
 end;
@@ -79,10 +80,10 @@ begin
 
     update public.memory_sentences ms
        set study_topic = case
-            when (payload.value ->> 'study_topic') = any (array[
-                'weather', 'kitchen', 'outdoor_scenery', 'city_streets',
-                'people_daily_life', 'travel', 'food_drink'
-            ]) then payload.value ->> 'study_topic'
+            when char_length(btrim(coalesce(payload.value ->> 'study_topic', ''))) between 2 and 8
+              and btrim(payload.value ->> 'study_topic') <> '收藏'
+              and btrim(payload.value ->> 'study_topic') <> 'favorites'
+              then btrim(payload.value ->> 'study_topic')
             else null
        end
       from jsonb_array_elements(p_sentences) with ordinality as payload(value, sort_order)

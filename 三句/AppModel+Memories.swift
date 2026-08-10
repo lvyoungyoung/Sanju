@@ -1426,7 +1426,10 @@ extension AppModel {
             sentenceStudyDueCount = try await supabaseService.fetchSentenceStudyDueCount(session: session)
             sentenceStudyTodayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? 0
             sentenceStudyReviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? 0
-            sentenceStudyTopicSummaries = (try? await supabaseService.fetchSentenceStudyTopicSummaries(session: session)) ?? sentenceStudyTopicSummaries
+            await refreshFavoriteSentenceStudyCounts()
+            var summaries = (try? await supabaseService.fetchSentenceStudyTopicSummaries(session: session)) ?? sentenceStudyTopicSummaries
+            summaries[.favorites] = makeFavoriteStudyTopicSummary()
+            sentenceStudyTopicSummaries = summaries
         } catch {
             sentenceStudyDueCount = 0
             sentenceStudyTodayCount = 0
@@ -1462,13 +1465,32 @@ extension AppModel {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }
 
+        if topic.usesFavoriteQueue {
+            let queue = try await supabaseService.fetchSentenceStudyQueue(
+                session: session,
+                limit: 1000
+            ).shuffled()
+            if !queue.isEmpty {
+                await refreshSentenceStudyDueCount()
+                return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
+            }
+
+            let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
+                session: session,
+                limit: 1000
+            ).shuffled()
+            await refreshSentenceStudyDueCount()
+            guard !reviewQueue.isEmpty else { return nil }
+            return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
+        }
+
         let queue = try await supabaseService.fetchSentenceStudyTopicQueue(
             session: session,
             topic: topic,
-            limit: SentenceStudyPolicy.dailyLimit
+            limit: 1000
         ).shuffled()
         if !queue.isEmpty {
-            sentenceStudyTopicSummaries = try await supabaseService.fetchSentenceStudyTopicSummaries(session: session)
+            await refreshSentenceStudyDueCount()
             return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
         }
 
@@ -1477,7 +1499,7 @@ extension AppModel {
             topic: topic,
             limit: 200
         ).shuffled()
-        sentenceStudyTopicSummaries = try await supabaseService.fetchSentenceStudyTopicSummaries(session: session)
+        await refreshSentenceStudyDueCount()
         guard !reviewQueue.isEmpty else { return nil }
         return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
     }
@@ -1612,7 +1634,9 @@ extension AppModel {
 
         let memory = memories[location.memoryIndex]
         let sentence = memory.sentences[location.sentenceIndex]
-        let progress = isSignedIn ? nil : localSentenceStudyProgress[sentenceID]
+        let progress = isSignedIn ? nil : localSentenceStudyProgress[
+            SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: .favorites)
+        ]
 
         return SentenceStudyQueueItem(
             sentenceID: sentence.id,
@@ -1630,16 +1654,20 @@ extension AppModel {
         )
     }
 
-    func recordSentenceStudyCompletion(sentenceID: UUID) async throws -> SentenceStudyProgress {
+    func recordSentenceStudyCompletion(
+        sentenceID: UUID,
+        studyTopic: SentenceStudyTopic = .favorites
+    ) async throws -> SentenceStudyProgress {
         guard isSignedIn else {
-            return recordLocalSentenceStudyCompletion(sentenceID: sentenceID)
+            return recordLocalSentenceStudyCompletion(sentenceID: sentenceID, studyTopic: studyTopic)
         }
 
         let session = try await ensureValidSession()
         let progress = try await supabaseService.recordSentenceStudyResult(
             session: session,
             sentenceID: sentenceID,
-            wasCorrect: true
+            wasCorrect: true,
+            studyTopic: studyTopic
         )
         let isFavorite: Bool
         if let location = locateSentence(sentenceID) {
@@ -1648,7 +1676,7 @@ extension AppModel {
             isFavorite = false
         }
 
-        if isFavorite {
+        if studyTopic.usesFavoriteQueue && isFavorite {
             favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
             sentenceStudyDueCount = max(0, sentenceStudyDueCount - 1)
             sentenceStudyReviewableTodayCount += 1
@@ -1658,9 +1686,11 @@ extension AppModel {
         return progress
     }
 
-    func loadSentenceStudyTodayReviewQueue() async throws -> [SentenceStudyQueueItem] {
+    func loadSentenceStudyTodayReviewQueue(
+        for topic: SentenceStudyTopic = .favorites
+    ) async throws -> [SentenceStudyQueueItem] {
         guard isSignedIn else {
-            let reviewQueue = localSentenceStudyTodayReviewQueue(limit: max(sentenceStudyReviewableTodayCount, 1)).shuffled()
+            let reviewQueue = localSentenceStudyTodayReviewQueue(limit: 1000, topic: topic).shuffled()
             sentenceStudyQueue = reviewQueue
             sentenceStudyReviewableTodayCount = reviewQueue.count
             isRepeatingSentenceStudyQueue = !reviewQueue.isEmpty
@@ -1671,13 +1701,21 @@ extension AppModel {
         guard !session.isAnonymous else { return [] }
 
         let todayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? sentenceStudyTodayCount
-        let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? sentenceStudyReviewableTodayCount
         sentenceStudyTodayCount = todayCount
-        sentenceStudyReviewableTodayCount = reviewableTodayCount
-        let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-            session: session,
-            limit: max(reviewableTodayCount, 1)
-        ).shuffled()
+        let reviewQueue: [SentenceStudyQueueItem]
+        if topic.usesFavoriteQueue {
+            let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? sentenceStudyReviewableTodayCount
+            reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
+                session: session,
+                limit: max(reviewableTodayCount, 1)
+            ).shuffled()
+        } else {
+            reviewQueue = try await supabaseService.fetchSentenceStudyTopicTodayReviewQueue(
+                session: session,
+                topic: topic,
+                limit: 1000
+            ).shuffled()
+        }
         sentenceStudyQueue = reviewQueue
         sentenceStudyReviewableTodayCount = reviewQueue.count
         isRepeatingSentenceStudyQueue = !reviewQueue.isEmpty
@@ -1700,17 +1738,22 @@ extension AppModel {
 
     private func refreshLocalSentenceStudyTopicSummaries() {
         let today = localStudyDay()
+        let topics = Set(
+            memories
+                .flatMap(\.sentences)
+                .compactMap(\.studyTopic)
+        ).union([.favorites])
         sentenceStudyTopicSummaries = Dictionary(
-            uniqueKeysWithValues: SentenceStudyTopic.allCases.map { topic in
-                let sentences = memories.flatMap(\.sentences).filter { $0.studyTopic == topic }
+            uniqueKeysWithValues: topics.map { topic in
+                let sentences = studySentences(for: topic)
                 let dueCount = localSentenceStudyCandidates(today: today, topic: topic)
                     .filter { $0.priority < 99 }
                     .count
                 let studiedCount = sentences.filter {
-                    (localSentenceStudyProgress[$0.id]?.correctCount ?? 0) > 0
+                    (localProgress(for: $0.id, topic: topic)?.correctCount ?? 0) > 0
                 }.count
                 let reviewableTodayCount = sentences.filter { sentence in
-                    guard let lastStudiedDay = localSentenceStudyProgress[sentence.id]?.lastStudiedDay else {
+                    guard let lastStudiedDay = localProgress(for: sentence.id, topic: topic)?.lastStudiedDay else {
                         return false
                     }
                     return isSameLocalStudyDay(lastStudiedDay, today)
@@ -1721,10 +1764,35 @@ extension AppModel {
                         totalCount: sentences.count,
                         dueCount: dueCount,
                         studiedCount: studiedCount,
-                        reviewableTodayCount: reviewableTodayCount
+                        reviewableTodayCount: reviewableTodayCount,
+                        masteryScore: sentences.isEmpty
+                            ? 0
+                            : sentences.reduce(0) { partialResult, sentence in
+                                partialResult + SentenceStudyMastery.score(
+                                    forCorrectCount: localProgress(for: sentence.id, topic: topic)?.correctCount ?? 0
+                                )
+                            } / sentences.count
                     )
                 )
             }
+        )
+    }
+
+    private func makeFavoriteStudyTopicSummary() -> SentenceStudyTopicSummary {
+        let sentenceIDs = currentFavoriteSentenceIDs()
+        let correctCounts = sentenceIDs.map { favoriteSentenceStudyCounts[$0] ?? 0 }
+        let masteryScore = correctCounts.isEmpty
+            ? 0
+            : correctCounts.reduce(0) { partialResult, correctCount in
+                partialResult + SentenceStudyMastery.score(forCorrectCount: correctCount)
+            } / correctCounts.count
+
+        return SentenceStudyTopicSummary(
+            totalCount: sentenceIDs.count,
+            dueCount: sentenceStudyDueCount,
+            studiedCount: correctCounts.filter { $0 > 0 }.count,
+            reviewableTodayCount: sentenceStudyReviewableTodayCount,
+            masteryScore: masteryScore
         )
     }
 
@@ -1770,11 +1838,16 @@ extension AppModel {
         isShowingSentenceStudySession = true
     }
 
-    private func recordLocalSentenceStudyCompletion(sentenceID: UUID) -> SentenceStudyProgress {
+    private func recordLocalSentenceStudyCompletion(
+        sentenceID: UUID,
+        studyTopic: SentenceStudyTopic
+    ) -> SentenceStudyProgress {
         let now = Date()
         let today = localStudyDay(for: now)
-        var progress = localSentenceStudyProgress[sentenceID] ?? LocalSentenceStudyProgress(
+        let progressKey = SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: studyTopic)
+        var progress = localSentenceStudyProgress[progressKey] ?? LocalSentenceStudyProgress(
             sentenceID: sentenceID,
+            studyTopic: studyTopic,
             nextReviewDay: today
         )
 
@@ -1797,8 +1870,10 @@ extension AppModel {
             progress.nextReviewDay = localMasteredNextReviewDay(after: today, masteredReviewCount: progress.masteredReviewCount)
         }
 
-        localSentenceStudyProgress[sentenceID] = progress
-        favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
+        localSentenceStudyProgress[progressKey] = progress
+        if studyTopic.usesFavoriteQueue {
+            favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
+        }
         persistLocalSentenceStudyProgress()
         refreshLocalSentenceStudyCounts()
         refreshLocalSentenceStudyTopicSummaries()
@@ -1811,9 +1886,6 @@ extension AppModel {
         topic: SentenceStudyTopic? = nil
     ) -> [SentenceStudyQueueItem] {
         let studyDay = today ?? localStudyDay()
-        let remainingSlots = max(SentenceStudyPolicy.dailyLimit - localStudiedTodayCount(today: studyDay), 0)
-        guard remainingSlots > 0 else { return [] }
-
         return localSentenceStudyCandidates(today: studyDay, topic: topic)
             .filter { $0.priority < 99 }
             .sorted { lhs, rhs in
@@ -1825,7 +1897,7 @@ extension AppModel {
                 }
                 return lhs.createdAt > rhs.createdAt
             }
-            .prefix(min(max(limit, 0), remainingSlots, SentenceStudyPolicy.dailyLimit))
+            .prefix(max(limit, 0))
             .map(\.item)
     }
 
@@ -1840,10 +1912,10 @@ extension AppModel {
             .flatMap { memory in
                 memory.sentences
                     .filter { sentence in
-                        topic.map { sentence.studyTopic == $0 } ?? sentence.isFavorite
+                        matches(sentence: sentence, studyTopic: topic)
                     }
                     .compactMap { sentence -> LocalSentenceStudyCandidate? in
-                        guard let progress = localSentenceStudyProgress[sentence.id],
+                        guard let progress = localProgress(for: sentence.id, topic: topic ?? .favorites),
                               let lastStudiedDay = progress.lastStudiedDay,
                               isSameLocalStudyDay(lastStudiedDay, studyDay) else {
                             return nil
@@ -1879,10 +1951,10 @@ extension AppModel {
             .flatMap { memory in
                 memory.sentences
                     .filter { sentence in
-                        topic.map { sentence.studyTopic == $0 } ?? sentence.isFavorite
+                        matches(sentence: sentence, studyTopic: topic)
                     }
                     .map { sentence -> LocalSentenceStudyCandidate in
-                        let progress = localSentenceStudyProgress[sentence.id]
+                        let progress = localProgress(for: sentence.id, topic: topic ?? .favorites)
                         let priority = localSentenceStudyPriority(progress: progress, today: today)
                         let nextReviewDay = progress?.nextReviewDay ?? today
                         return LocalSentenceStudyCandidate(
@@ -1904,6 +1976,28 @@ extension AppModel {
         }
         guard progress.nextReviewDay <= today else { return 99 }
         return progress.learningStep < 5 ? 1 : 3
+    }
+
+    private func studySentences(for topic: SentenceStudyTopic) -> [SentenceRecord] {
+        memories.flatMap(\.sentences).filter { sentence in
+            matches(sentence: sentence, studyTopic: topic)
+        }
+    }
+
+    private func matches(sentence: SentenceRecord, studyTopic: SentenceStudyTopic?) -> Bool {
+        guard let studyTopic else {
+            return sentence.isFavorite
+        }
+        return studyTopic.usesFavoriteQueue
+            ? sentence.isFavorite
+            : sentence.studyTopic == studyTopic
+    }
+
+    private func localProgress(
+        for sentenceID: UUID,
+        topic: SentenceStudyTopic
+    ) -> LocalSentenceStudyProgress? {
+        localSentenceStudyProgress[SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: topic)]
     }
 
     private func makeLocalSentenceStudyQueueItem(
@@ -1954,7 +2048,7 @@ extension AppModel {
     private func refreshLocalFavoriteSentenceStudyCounts(sentenceIDs: Set<UUID>? = nil) {
         let favoriteSentenceIDs = sentenceIDs ?? currentFavoriteSentenceIDs()
         favoriteSentenceStudyCounts = favoriteSentenceIDs.reduce(into: [:]) { partialResult, sentenceID in
-            partialResult[sentenceID] = localSentenceStudyProgress[sentenceID]?.correctCount ?? 0
+            partialResult[sentenceID] = localProgress(for: sentenceID, topic: .favorites)?.correctCount ?? 0
         }
     }
 

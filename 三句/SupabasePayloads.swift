@@ -268,10 +268,12 @@ struct SupabaseSentenceStudyTopicQueueRequest: Encodable {
 struct SupabaseSentenceStudyResultRequest: Encodable {
     let sentenceID: String
     let wasCorrect: Bool
+    let studyScope: String
 
     enum CodingKeys: String, CodingKey {
         case sentenceID = "p_sentence_id"
         case wasCorrect = "p_was_correct"
+        case studyScope = "p_scope"
     }
 }
 
@@ -285,6 +287,7 @@ struct SupabaseLocalSentenceStudyProgressMergeRequest: Encodable {
 
 struct SupabaseLocalSentenceStudyProgressMergeItem: Encodable {
     let sentenceID: String
+    let studyScope: String
     let learningStep: Int
     let masteredReviewCount: Int
     let correctCount: Int
@@ -296,6 +299,7 @@ struct SupabaseLocalSentenceStudyProgressMergeItem: Encodable {
 
     enum CodingKeys: String, CodingKey {
         case sentenceID = "sentence_id"
+        case studyScope = "study_scope"
         case learningStep = "learning_step"
         case masteredReviewCount = "mastered_review_count"
         case correctCount = "correct_count"

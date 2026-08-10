@@ -140,6 +140,7 @@ struct SupabaseSentenceStudyTopicSummaryRecord: Decodable {
     let dueCount: Int
     let studiedCount: Int
     let reviewableTodayCount: Int
+    let masteryScore: Int
 
     enum CodingKeys: String, CodingKey {
         case topic
@@ -147,6 +148,7 @@ struct SupabaseSentenceStudyTopicSummaryRecord: Decodable {
         case dueCount = "due_count"
         case studiedCount = "studied_count"
         case reviewableTodayCount = "reviewable_today_count"
+        case masteryScore = "mastery_score"
     }
 }
 
@@ -186,9 +188,11 @@ struct SupabaseSentenceStudyCountRecord: Decodable {
 
 struct SupabaseMergedSentenceStudyProgressRecord: Decodable {
     let sentenceID: String
+    let studyScope: String?
 
     enum CodingKeys: String, CodingKey {
         case sentenceID = "sentence_id"
+        case studyScope = "study_scope"
     }
 }
 

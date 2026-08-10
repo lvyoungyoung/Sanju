@@ -27,16 +27,6 @@ const MEMORY_TAGS = [
   "截图/信息",
 ] as const
 
-const STUDY_TOPICS = [
-  "weather",
-  "kitchen",
-  "outdoor_scenery",
-  "city_streets",
-  "people_daily_life",
-  "travel",
-  "food_drink",
-] as const
-
 function buildPromptText(
   englishLevel: "简单" | "中等" | "高级",
   languageStyle: "平铺直叙" | "抒情优美"
@@ -72,7 +62,7 @@ ${languageStylePrompt}
 9. english 和 chinese 都必须是字符串；study_topic 必须是字符串或 null
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
-12. study_topic 只能从以下值选择：weather、kitchen、outdoor_scenery、city_streets、people_daily_life、travel、food_drink。如果一句话确实不适合任何主题，返回 null
+12. study_topic 请为这句话生成一个 2 到 8 个汉字的具体场景名，例如“公园遛狗”“海边散步”“晚间街景”“朋友聚会”。不要使用“风景”“人物”“生活”这类过于宽泛的词；不要写情绪、语法点或物品名称。相近场景请尽量使用同一个常见名称；同一张图片的三句话如描述同一场景，应使用相同的场景名。如果一句话确实不适合按场景学习，返回 null
 13. 不要输出任何多余字段
 14. 不要转义整个 JSON 对象
 15. 不要在 JSON 前后添加任何字符
@@ -80,7 +70,7 @@ ${languageStylePrompt}
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","study_topic":"outdoor_scenery"},{"english":"...","chinese":"...","study_topic":"people_daily_life"},{"english":"...","chinese":"...","study_topic":null}],"tags":["人物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","study_topic":"公园遛狗"},{"english":"...","chinese":"...","study_topic":"公园遛狗"},{"english":"...","chinese":"...","study_topic":null}],"tags":["人物","生活场景"]}
 `.trim()
 }
 
@@ -296,8 +286,11 @@ function normalizeSentenceArray(value: any): Sentence[] {
 }
 
 function normalizeStudyTopic(value: unknown): string | null {
-  const topic = typeof value === "string" ? value.trim() : ""
-  return (STUDY_TOPICS as readonly string[]).includes(topic) ? topic : null
+  const topic = typeof value === "string" ? value.replace(/\s+/g, "").trim() : ""
+  if (topic.length < 2 || topic.length > 8 || topic === "收藏" || topic === "favorites") {
+    return null
+  }
+  return topic
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
