@@ -214,7 +214,10 @@ as $$
   where priority < 99;
 $$;
 
-create or replace function public.get_sentence_studied_today_queue(p_limit integer default 30)
+-- The old function has fewer OUT columns. PostgreSQL requires an explicit
+-- drop before its return shape can be expanded for the scoped progress model.
+drop function if exists public.get_sentence_studied_today_queue(integer);
+create function public.get_sentence_studied_today_queue(p_limit integer default 30)
 returns table (
   sentence_id uuid,
   memory_id uuid,
