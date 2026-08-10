@@ -12,10 +12,6 @@ struct MemoryDetailView: View {
     @State private var saveResultMessage: String?
     @State private var saveResultIsSuccess = false
     @State private var saveResultTask: Task<Void, Never>?
-    @State private var directStudyQueue: [SentenceStudyQueueItem] = []
-    @State private var isShowingDirectSentenceStudy = false
-    @State private var isPreparingDirectSentenceStudy = false
-    @State private var preparingDirectStudySentenceID: UUID?
 
     init(memoryID: UUID) {
         self.memoryID = memoryID
@@ -30,11 +26,7 @@ struct MemoryDetailView: View {
                         VStack(spacing: AppSpacing.large) {
                             MemoryDetailImageView(imageData: memory.imageData)
 
-                            MemoryDetailSentencePanel(
-                                memory: memory,
-                                preparingSentenceID: preparingDirectStudySentenceID,
-                                onStartStudy: startDirectSentenceStudy
-                            )
+                            MemoryDetailSentencePanel(memory: memory)
                                 .padding(.bottom, 88)
                         }
                         .padding(.horizontal, AppSpacing.xLarge)
@@ -104,23 +96,6 @@ struct MemoryDetailView: View {
                 } message: {
                     Text(L10n.string("memory.delete.alert_message", "删除后，这张图片和对应的三句话都会被移除。"))
                 }
-                .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: sentenceStudyErrorAlertBinding) {
-                    Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
-                        appModel.sentenceStudyErrorMessage = nil
-                    }
-                } message: {
-                    Text(appModel.sentenceStudyErrorMessage ?? "")
-                }
-                .fullScreenCover(isPresented: $isShowingDirectSentenceStudy) {
-                    SentenceStudySessionView(
-                        queue: directStudyQueue,
-                        repeatsActiveQueueOnCompletion: true,
-                        usesSingleSentenceCompletion: true
-                    ) {
-                        isShowingDirectSentenceStudy = false
-                    }
-                    .environmentObject(appModel)
-                }
                 .task(id: currentMemoryID) {
                     await appModel.ensureMemoryImageLoaded(memoryID: currentMemoryID)
                 }
@@ -178,37 +153,6 @@ struct MemoryDetailView: View {
                 }
             }
         }
-    }
-
-    private func startDirectSentenceStudy(_ sentence: SentenceRecord) {
-        guard !isPreparingDirectSentenceStudy else { return }
-
-        isPreparingDirectSentenceStudy = true
-        preparingDirectStudySentenceID = sentence.id
-        Task {
-            defer {
-                isPreparingDirectSentenceStudy = false
-                preparingDirectStudySentenceID = nil
-            }
-
-            guard let queueItem = await appModel.prepareSentenceForDirectStudy(sentenceID: sentence.id) else {
-                return
-            }
-
-            directStudyQueue = [queueItem]
-            isShowingDirectSentenceStudy = true
-        }
-    }
-
-    private var sentenceStudyErrorAlertBinding: Binding<Bool> {
-        Binding(
-            get: { appModel.sentenceStudyErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    appModel.sentenceStudyErrorMessage = nil
-                }
-            }
-        )
     }
 
     @MainActor

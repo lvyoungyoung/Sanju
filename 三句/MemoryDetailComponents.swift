@@ -68,17 +68,11 @@ struct MemoryDetailImageSkeleton: View {
 
 struct MemoryDetailSentencePanel: View {
     let memory: MemoryEntry
-    let preparingSentenceID: UUID?
-    let onStartStudy: (SentenceRecord) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             ForEach(memory.sentences) { sentence in
-                MemoryDetailSentenceRow(
-                    sentence: sentence,
-                    isPreparingStudy: preparingSentenceID == sentence.id,
-                    onStartStudy: { onStartStudy(sentence) }
-                )
+                MemoryDetailSentenceRow(sentence: sentence)
                     .padding(16)
                     .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
@@ -89,8 +83,6 @@ struct MemoryDetailSentencePanel: View {
 struct MemoryDetailSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
     let sentence: SentenceRecord
-    let isPreparingStudy: Bool
-    let onStartStudy: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
@@ -124,29 +116,6 @@ struct MemoryDetailSentenceRow: View {
                     appModel.toggleFavorite(sentenceID: sentence.id)
                 }
 
-                Spacer(minLength: 0)
-
-                Button(action: onStartStudy) {
-                    HStack(spacing: 6) {
-                        if isPreparingStudy {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "graduationcap.fill")
-                        }
-                        Text(L10n.string("new.result.start_study", "去学习"))
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(height: 36)
-                    .background(Color(red: 0.95, green: 0.53, blue: 0.12), in: Capsule())
-                }
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-                .buttonStyle(.plain)
-                .disabled(isPreparingStudy)
-                .accessibilityHint(L10n.string("new.result.start_study_hint", "开始这句话的填空练习。"))
             }
         }
         .padding(.vertical, 8)

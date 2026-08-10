@@ -30,10 +30,6 @@ struct NewLearningView: View {
     @State private var recoveryCancelButtonRevealTask: Task<Void, Never>?
     @State private var activePendingRecoveryTask: Task<Void, Never>?
     @State private var photoLoadRequestID = UUID()
-    @State private var directStudyQueue: [SentenceStudyQueueItem] = []
-    @State private var isShowingDirectSentenceStudy = false
-    @State private var isPreparingDirectSentenceStudy = false
-    @State private var preparingDirectStudySentenceID: UUID?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -82,11 +78,7 @@ struct NewLearningView: View {
                     } else if let displayedMemory {
                         NewLearningResultPanel {
                             VStack(spacing: AppSpacing.xLarge) {
-                                NewLearningSentenceList(
-                                    memory: displayedMemory,
-                                    preparingSentenceID: preparingDirectStudySentenceID,
-                                    onStartStudy: startDirectSentenceStudy
-                                )
+                                NewLearningSentenceList(memory: displayedMemory)
 
                                 VStack(spacing: AppSpacing.large) {
                                     Text(L10n.string("new.result.saved_hint", "内容已生成，建议收藏 1 到 2 句反复学习。"))
@@ -211,23 +203,6 @@ struct NewLearningView: View {
             Button(L10n.string("common.purchase", "购买")) {
                 isShowingPurchaseSheet = true
             }
-        }
-        .fullScreenCover(isPresented: $isShowingDirectSentenceStudy) {
-            SentenceStudySessionView(
-                queue: directStudyQueue,
-                repeatsActiveQueueOnCompletion: true,
-                usesSingleSentenceCompletion: true
-            ) {
-                isShowingDirectSentenceStudy = false
-            }
-                .environmentObject(appModel)
-        }
-        .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: sentenceStudyErrorAlertBinding) {
-            Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
-                appModel.sentenceStudyErrorMessage = nil
-            }
-        } message: {
-            Text(appModel.sentenceStudyErrorMessage ?? "")
         }
     }
 
@@ -802,36 +777,6 @@ struct NewLearningView: View {
             normalized.contains("timed out")
     }
 
-    private func startDirectSentenceStudy(_ sentence: SentenceRecord) {
-        guard !isPreparingDirectSentenceStudy else { return }
-
-        isPreparingDirectSentenceStudy = true
-        preparingDirectStudySentenceID = sentence.id
-        Task {
-            defer {
-                isPreparingDirectSentenceStudy = false
-                preparingDirectStudySentenceID = nil
-            }
-
-            guard let queueItem = await appModel.prepareSentenceForDirectStudy(sentenceID: sentence.id) else {
-                return
-            }
-
-            directStudyQueue = [queueItem]
-            isShowingDirectSentenceStudy = true
-        }
-    }
-
-    private var sentenceStudyErrorAlertBinding: Binding<Bool> {
-        Binding(
-            get: { appModel.sentenceStudyErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    appModel.sentenceStudyErrorMessage = nil
-                }
-            }
-        )
-    }
 }
 
 private struct NewLearningResultPanel<Content: View>: View {
@@ -845,17 +790,11 @@ private struct NewLearningResultPanel<Content: View>: View {
 
 private struct NewLearningSentenceList: View {
     let memory: MemoryEntry
-    let preparingSentenceID: UUID?
-    let onStartStudy: (SentenceRecord) -> Void
 
     var body: some View {
         VStack(spacing: 10) {
             ForEach(memory.sentences) { sentence in
-                NewLearningSentenceRow(
-                    sentence: sentence,
-                    isPreparingStudy: preparingSentenceID == sentence.id,
-                    onStartStudy: { onStartStudy(sentence) }
-                )
+                NewLearningSentenceRow(sentence: sentence)
                     .padding(16)
                     .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
@@ -867,8 +806,6 @@ private struct NewLearningSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
 
     let sentence: SentenceRecord
-    let isPreparingStudy: Bool
-    let onStartStudy: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
@@ -902,29 +839,6 @@ private struct NewLearningSentenceRow: View {
                     appModel.toggleFavorite(sentenceID: sentence.id)
                 }
 
-                Spacer(minLength: 0)
-
-                Button(action: onStartStudy) {
-                    HStack(spacing: 6) {
-                        if isPreparingStudy {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Image(systemName: "graduationcap.fill")
-                        }
-                        Text(L10n.string("new.result.start_study", "去学习"))
-                    }
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(height: 36)
-                    .background(Color(red: 0.95, green: 0.53, blue: 0.12), in: Capsule())
-                }
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-                .buttonStyle(.plain)
-                .disabled(isPreparingStudy)
-                .accessibilityHint(L10n.string("new.result.start_study_hint", "开始这句话的填空练习。"))
             }
         }
         .padding(.vertical, 8)
