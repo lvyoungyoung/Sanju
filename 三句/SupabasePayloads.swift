@@ -265,6 +265,24 @@ struct SupabaseSentenceStudyTopicQueueRequest: Encodable {
     }
 }
 
+struct SupabaseCreateStudySceneRequest: Encodable {
+    let name: String
+
+    enum CodingKeys: String, CodingKey {
+        case name = "p_name"
+    }
+}
+
+struct SupabaseStudySceneQueueRequest: Encodable {
+    let sceneID: String
+    let limit: Int
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "p_scene_id"
+        case limit = "p_limit"
+    }
+}
+
 struct SupabaseSentenceStudyResultRequest: Encodable {
     let sentenceID: String
     let wasCorrect: Bool

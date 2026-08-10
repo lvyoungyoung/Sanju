@@ -1409,6 +1409,7 @@ extension AppModel {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
             refreshLocalSentenceStudyTopicSummaries()
+            userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
             return
         }
@@ -1420,6 +1421,7 @@ extension AppModel {
                 sentenceStudyTodayCount = 0
                 sentenceStudyReviewableTodayCount = 0
                 sentenceStudyTopicSummaries = [:]
+                userStudySceneSummaries = []
                 isRepeatingSentenceStudyQueue = false
                 return
             }
@@ -1430,13 +1432,33 @@ extension AppModel {
             var summaries = (try? await supabaseService.fetchSentenceStudyTopicSummaries(session: session)) ?? sentenceStudyTopicSummaries
             summaries[.favorites] = makeFavoriteStudyTopicSummary()
             sentenceStudyTopicSummaries = summaries
+            userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
         } catch {
             sentenceStudyDueCount = 0
             sentenceStudyTodayCount = 0
             sentenceStudyReviewableTodayCount = 0
             sentenceStudyTopicSummaries = [:]
+            userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
         }
+    }
+
+    func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
+        guard isSignedIn else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+        guard isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+
+        let session = try await ensureValidSession()
+        let scene = try await supabaseService.createUserStudyScene(session: session, name: name)
+        userStudySceneSummaries.removeAll { $0.id == scene.id }
+        userStudySceneSummaries.append(scene)
+        userStudySceneSummaries.sort {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+        return scene
     }
 
     func loadSentenceStudyTopicSession(
@@ -1502,6 +1524,34 @@ extension AppModel {
         await refreshSentenceStudyDueCount()
         guard !reviewQueue.isEmpty else { return nil }
         return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
+    }
+
+    func loadUserStudySceneSession(
+        for scene: UserStudySceneSummary
+    ) async throws -> SentenceStudyTopicSession? {
+        guard isSignedIn, isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+
+        let session = try await ensureValidSession()
+        let queue = try await supabaseService.fetchUserStudySceneQueue(
+            session: session,
+            sceneID: scene.id,
+            limit: 1000
+        ).shuffled()
+        if !queue.isEmpty {
+            await refreshSentenceStudyDueCount()
+            return SentenceStudyTopicSession(topic: scene.studyTopic, queue: queue, startsInReviewMode: false)
+        }
+
+        let reviewQueue = try await supabaseService.fetchUserStudySceneTodayReviewQueue(
+            session: session,
+            sceneID: scene.id,
+            limit: 1000
+        ).shuffled()
+        await refreshSentenceStudyDueCount()
+        guard !reviewQueue.isEmpty else { return nil }
+        return SentenceStudyTopicSession(topic: scene.studyTopic, queue: reviewQueue, startsInReviewMode: true)
     }
 
     func refreshFavoriteSentenceStudyCounts() async {

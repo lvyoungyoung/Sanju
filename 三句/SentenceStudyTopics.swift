@@ -9,7 +9,7 @@ struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
 
     init?(rawValue: String) {
         let normalizedValue = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedValue.isEmpty, normalizedValue.count <= 24 else { return nil }
+        guard !normalizedValue.isEmpty, normalizedValue.count <= 64 else { return nil }
         self.rawValue = normalizedValue
     }
 
@@ -87,6 +87,19 @@ struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
         default:
             return nil
         }
+    }
+}
+
+/// A user-created study scene. Its UUID remains stable even if its name is
+/// changed later, so its learning progress can never collide with another scene.
+struct UserStudySceneSummary: Identifiable, Hashable {
+    let id: UUID
+    let name: String
+    let summary: SentenceStudyTopicSummary
+
+    var studyTopic: SentenceStudyTopic {
+        // The prefix reserves user-created scenes from AI-generated topic names.
+        SentenceStudyTopic(rawValue: "scene:\(id.uuidString.lowercased())") ?? .favorites
     }
 }
 

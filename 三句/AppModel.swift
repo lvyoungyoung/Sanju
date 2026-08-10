@@ -448,6 +448,7 @@ final class AppModel: ObservableObject {
     @Published var sentenceStudyTodayCount = 0
     @Published var sentenceStudyReviewableTodayCount = 0
     @Published var sentenceStudyTopicSummaries: [SentenceStudyTopic: SentenceStudyTopicSummary] = [:]
+    @Published var userStudySceneSummaries: [UserStudySceneSummary] = []
     @Published var sentenceStudyQueue: [SentenceStudyQueueItem] = []
     @Published var isLoadingSentenceStudyQueue = false
     @Published var isShowingSentenceStudySession = false

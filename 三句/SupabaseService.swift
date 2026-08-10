@@ -87,6 +87,13 @@ protocol SupabaseServicing {
     func fetchSentenceStudyTopicSummaries(
         session: SupabaseSession
     ) async throws -> [SentenceStudyTopic: SentenceStudyTopicSummary]
+    func fetchUserStudySceneSummaries(
+        session: SupabaseSession
+    ) async throws -> [UserStudySceneSummary]
+    func createUserStudyScene(
+        session: SupabaseSession,
+        name: String
+    ) async throws -> UserStudySceneSummary
     func fetchSentenceStudyTopicQueue(
         session: SupabaseSession,
         topic: SentenceStudyTopic,
@@ -95,6 +102,16 @@ protocol SupabaseServicing {
     func fetchSentenceStudyTopicTodayReviewQueue(
         session: SupabaseSession,
         topic: SentenceStudyTopic,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
+    func fetchUserStudySceneQueue(
+        session: SupabaseSession,
+        sceneID: UUID,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
+    func fetchUserStudySceneTodayReviewQueue(
+        session: SupabaseSession,
+        sceneID: UUID,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
     func fetchSentenceStudyCounts(
@@ -835,6 +852,35 @@ struct SupabaseService: SupabaseServicing {
         }
     }
 
+    func fetchUserStudySceneSummaries(
+        session: SupabaseSession
+    ) async throws -> [UserStudySceneSummary] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_study_scenes",
+            method: "POST",
+            bearerToken: session.accessToken
+        )
+        let records: [SupabaseUserStudySceneSummaryRecord] = try await perform(request)
+        return records.compactMap(Self.makeUserStudySceneSummary(from:))
+    }
+
+    func createUserStudyScene(
+        session: SupabaseSession,
+        name: String
+    ) async throws -> UserStudySceneSummary {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/create_study_scene",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseCreateStudySceneRequest(name: name)
+        )
+        let records: [SupabaseUserStudySceneSummaryRecord] = try await perform(request)
+        guard let scene = records.compactMap(Self.makeUserStudySceneSummary(from:)).first else {
+            throw SupabaseServiceError.invalidResponse
+        }
+        return scene
+    }
+
     func fetchSentenceStudyTopicQueue(
         session: SupabaseSession,
         topic: SentenceStudyTopic,
@@ -860,6 +906,42 @@ struct SupabaseService: SupabaseServicing {
             method: "POST",
             bearerToken: session.accessToken,
             body: SupabaseSentenceStudyTopicQueueRequest(topic: topic.rawValue, limit: limit)
+        )
+        let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchUserStudySceneQueue(
+        session: SupabaseSession,
+        sceneID: UUID,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_study_scene_queue",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseStudySceneQueueRequest(
+                sceneID: sceneID.uuidString.lowercased(),
+                limit: limit
+            )
+        )
+        let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchUserStudySceneTodayReviewQueue(
+        session: SupabaseSession,
+        sceneID: UUID,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_studied_today_scene_queue",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseStudySceneQueueRequest(
+                sceneID: sceneID.uuidString.lowercased(),
+                limit: limit
+            )
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
@@ -1080,6 +1162,23 @@ struct SupabaseService: SupabaseServicing {
             wrongCount: record.wrongCount,
             lastResult: record.lastResult.flatMap(SentenceStudyResult.init(rawValue:)),
             nextReviewAt: record.nextReviewAt
+        )
+    }
+
+    private static func makeUserStudySceneSummary(
+        from record: SupabaseUserStudySceneSummaryRecord
+    ) -> UserStudySceneSummary? {
+        guard let id = UUID(uuidString: record.id) else { return nil }
+        return UserStudySceneSummary(
+            id: id,
+            name: record.name,
+            summary: SentenceStudyTopicSummary(
+                totalCount: record.totalCount,
+                dueCount: record.dueCount,
+                studiedCount: record.studiedCount,
+                reviewableTodayCount: record.reviewableTodayCount,
+                masteryScore: record.masteryScore
+            )
         )
     }
 

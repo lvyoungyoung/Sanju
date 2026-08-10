@@ -152,6 +152,26 @@ struct SupabaseSentenceStudyTopicSummaryRecord: Decodable {
     }
 }
 
+struct SupabaseUserStudySceneSummaryRecord: Decodable {
+    let id: String
+    let name: String
+    let totalCount: Int
+    let dueCount: Int
+    let studiedCount: Int
+    let reviewableTodayCount: Int
+    let masteryScore: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case totalCount = "total_count"
+        case dueCount = "due_count"
+        case studiedCount = "studied_count"
+        case reviewableTodayCount = "reviewable_today_count"
+        case masteryScore = "mastery_score"
+    }
+}
+
 struct SupabaseSentenceStudyProgressRecord: Decodable {
     let id: String
     let sentenceID: String
