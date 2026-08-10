@@ -262,7 +262,9 @@ extension AppModel {
                     english: sentence.english,
                     chinese: sentence.chinese,
                     isFavorite: sentence.isFavorite,
-                    studyTopic: sentence.studyTopic
+                    studyTopic: sentence.studyTopic,
+                    coarseCategory: sentence.coarseCategory,
+                    fineCategories: sentence.fineCategories
                 )
             }
             return MemoryEntry(
@@ -580,7 +582,9 @@ extension AppModel {
                             english: sentence.english,
                             chinese: sentence.chinese,
                             isFavorite: sentence.isFavorite,
-                            studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
+                            studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:)),
+                            coarseCategory: sentence.coarseCategory,
+                            fineCategories: sentence.fineCategories ?? []
                         )
                     }
 
@@ -1409,7 +1413,13 @@ extension AppModel {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
             refreshLocalSentenceStudyTopicSummaries()
-            userStudySceneSummaries = []
+            if isNetworkAvailable,
+               let session = try? await ensureValidSession(),
+               session.isAnonymous {
+                userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
+            } else {
+                userStudySceneSummaries = []
+            }
             isRepeatingSentenceStudyQueue = false
             return
         }
@@ -1444,9 +1454,6 @@ extension AppModel {
     }
 
     func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
-        guard isSignedIn else {
-            throw SentenceStudyTopicLoadingError.networkUnavailable
-        }
         guard isNetworkAvailable else {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }
@@ -1529,7 +1536,7 @@ extension AppModel {
     func loadUserStudySceneSession(
         for scene: UserStudySceneSummary
     ) async throws -> SentenceStudyTopicSession? {
-        guard isSignedIn, isNetworkAvailable else {
+        guard isNetworkAvailable else {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }
 
@@ -1787,11 +1794,15 @@ extension AppModel {
     }
 
     private func refreshLocalSentenceStudyTopicSummaries() {
+        migrateLocalSentenceStudyProgressToCoarseCategories()
+
         let today = localStudyDay()
         let topics = Set(
             memories
                 .flatMap(\.sentences)
-                .compactMap(\.studyTopic)
+                .compactMap { sentence in
+                    sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:))
+                }
         ).union([.favorites])
         sentenceStudyTopicSummaries = Dictionary(
             uniqueKeysWithValues: topics.map { topic in
@@ -2040,7 +2051,89 @@ extension AppModel {
         }
         return studyTopic.usesFavoriteQueue
             ? sentence.isFavorite
-            : sentence.studyTopic == studyTopic
+            : sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:)) == studyTopic
+    }
+
+    private func migrateLocalSentenceStudyProgressToCoarseCategories() {
+        let coarseTopicsBySentenceID = Dictionary(
+            memories
+                .flatMap(\.sentences)
+                .compactMap { sentence -> (UUID, SentenceStudyTopic)? in
+                    guard let coarseTopic = sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:)) else {
+                        return nil
+                    }
+                    return (sentence.id, coarseTopic)
+                },
+            uniquingKeysWith: { existing, _ in existing }
+        )
+
+        guard !coarseTopicsBySentenceID.isEmpty else { return }
+
+        var migratedProgress: [SentenceStudyProgressKey: LocalSentenceStudyProgress] = [:]
+        var didMigrate = false
+
+        for progress in localSentenceStudyProgress.values {
+            let targetTopic = coarseTopicsBySentenceID[progress.sentenceID] ?? progress.studyTopic
+            let targetKey = SentenceStudyProgressKey(sentenceID: progress.sentenceID, studyTopic: targetTopic)
+            let targetProgress: LocalSentenceStudyProgress
+
+            if targetTopic == progress.studyTopic {
+                targetProgress = progress
+            } else {
+                didMigrate = true
+                targetProgress = LocalSentenceStudyProgress(
+                    id: progress.id,
+                    sentenceID: progress.sentenceID,
+                    studyTopic: targetTopic,
+                    learningStep: progress.learningStep,
+                    masteredReviewCount: progress.masteredReviewCount,
+                    correctCount: progress.correctCount,
+                    wrongCount: progress.wrongCount,
+                    lastResult: progress.lastResult,
+                    lastStudiedAt: progress.lastStudiedAt,
+                    lastStudiedDay: progress.lastStudiedDay,
+                    nextReviewDay: progress.nextReviewDay
+                )
+            }
+
+            if let existingProgress = migratedProgress[targetKey] {
+                migratedProgress[targetKey] = mergeLocalStudyProgress(existingProgress, targetProgress)
+                didMigrate = true
+            } else {
+                migratedProgress[targetKey] = targetProgress
+            }
+        }
+
+        guard didMigrate else { return }
+        localSentenceStudyProgress = migratedProgress
+        persistLocalSentenceStudyProgress()
+    }
+
+    private func mergeLocalStudyProgress(
+        _ current: LocalSentenceStudyProgress,
+        _ candidate: LocalSentenceStudyProgress
+    ) -> LocalSentenceStudyProgress {
+        let currentDate = current.lastStudiedAt ?? .distantPast
+        let candidateDate = candidate.lastStudiedAt ?? .distantPast
+        let latest = candidateDate >= currentDate ? candidate : current
+
+        return LocalSentenceStudyProgress(
+            id: latest.id,
+            sentenceID: latest.sentenceID,
+            studyTopic: latest.studyTopic,
+            learningStep: max(current.learningStep, candidate.learningStep),
+            masteredReviewCount: max(current.masteredReviewCount, candidate.masteredReviewCount),
+            correctCount: current.correctCount + candidate.correctCount,
+            wrongCount: current.wrongCount + candidate.wrongCount,
+            lastResult: latest.lastResult,
+            lastStudiedAt: max(current.lastStudiedAt ?? .distantPast, candidate.lastStudiedAt ?? .distantPast) == .distantPast
+                ? nil
+                : latest.lastStudiedAt,
+            lastStudiedDay: max(current.lastStudiedDay ?? .distantPast, candidate.lastStudiedDay ?? .distantPast) == .distantPast
+                ? nil
+                : latest.lastStudiedDay,
+            nextReviewDay: max(current.nextReviewDay, candidate.nextReviewDay)
+        )
     }
 
     private func localProgress(

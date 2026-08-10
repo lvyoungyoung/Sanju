@@ -14,19 +14,25 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
     let chinese: String
     var isFavorite: Bool
     var studyTopic: SentenceStudyTopic?
+    var coarseCategory: String?
+    var fineCategories: [String]
 
     init(
         id: UUID = UUID(),
         english: String,
         chinese: String,
         isFavorite: Bool = false,
-        studyTopic: SentenceStudyTopic? = nil
+        studyTopic: SentenceStudyTopic? = nil,
+        coarseCategory: String? = nil,
+        fineCategories: [String] = []
     ) {
         self.id = id
         self.english = english
         self.chinese = chinese
         self.isFavorite = isFavorite
         self.studyTopic = studyTopic
+        self.coarseCategory = coarseCategory
+        self.fineCategories = fineCategories
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -35,6 +41,8 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case chinese
         case isFavorite
         case studyTopic
+        case coarseCategory
+        case fineCategories
     }
 
     init(from decoder: Decoder) throws {
@@ -44,6 +52,8 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         chinese = try container.decode(String.self, forKey: .chinese)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         studyTopic = try container.decodeIfPresent(SentenceStudyTopic.self, forKey: .studyTopic)
+        coarseCategory = try container.decodeIfPresent(String.self, forKey: .coarseCategory)
+        fineCategories = try container.decodeIfPresent([String].self, forKey: .fineCategories) ?? []
     }
 }
 

@@ -488,7 +488,9 @@ struct SupabaseService: SupabaseServicing {
                 english: english,
                 chinese: chinese,
                 isFavorite: sentence.isFavorite ?? false,
-                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
+                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:)),
+                coarseCategory: sentence.coarseCategory,
+                fineCategories: sentence.fineCategories ?? []
             )
         }
 
@@ -560,7 +562,9 @@ struct SupabaseService: SupabaseServicing {
                 english: english,
                 chinese: chinese,
                 isFavorite: sentence.isFavorite ?? false,
-                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
+                studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:)),
+                coarseCategory: sentence.coarseCategory,
+                fineCategories: sentence.fineCategories ?? []
             )
         }
 
@@ -652,7 +656,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite,study_topic)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite,study_topic,coarse_category,fine_categories)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -720,7 +724,9 @@ struct SupabaseService: SupabaseServicing {
                 english: sentence.english,
                 chinese: sentence.chinese,
                 isFavorite: sentence.isFavorite,
-                studyTopic: sentence.studyTopic?.rawValue
+                studyTopic: sentence.studyTopic?.rawValue,
+                coarseCategory: sentence.coarseCategory,
+                fineCategories: sentence.fineCategories
             )
         }
 
@@ -742,7 +748,9 @@ struct SupabaseService: SupabaseServicing {
                 english: sentence.english,
                 chinese: sentence.chinese,
                 isFavorite: sentence.isFavorite,
-                studyTopic: sentence.studyTopic
+                studyTopic: sentence.studyTopic,
+                coarseCategory: sentence.coarseCategory,
+                fineCategories: sentence.fineCategories
             )
         }
 

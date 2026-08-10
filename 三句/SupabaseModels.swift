@@ -63,6 +63,8 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let chinese: String
     let isFavorite: Bool
     let studyTopic: String?
+    let coarseCategory: String?
+    let fineCategories: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -71,6 +73,8 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case chinese
         case isFavorite = "is_favorite"
         case studyTopic = "study_topic"
+        case coarseCategory = "coarse_category"
+        case fineCategories = "fine_categories"
     }
 }
 
@@ -226,6 +230,8 @@ struct SupabaseGeneratedSentence: Decodable {
     let chinese: String
     let isFavorite: Bool?
     let studyTopic: String?
+    let coarseCategory: String?
+    let fineCategories: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -233,6 +239,8 @@ struct SupabaseGeneratedSentence: Decodable {
         case chinese
         case isFavorite = "is_favorite"
         case studyTopic = "study_topic"
+        case coarseCategory = "coarse_category"
+        case fineCategories = "fine_categories"
     }
 }
 

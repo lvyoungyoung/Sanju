@@ -357,6 +357,8 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let chinese: String
     let isFavorite: Bool
     let studyTopic: String?
+    let coarseCategory: String?
+    let fineCategories: [String]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -366,6 +368,8 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case chinese
         case isFavorite = "is_favorite"
         case studyTopic = "study_topic"
+        case coarseCategory = "coarse_category"
+        case fineCategories = "fine_categories"
     }
 }
 

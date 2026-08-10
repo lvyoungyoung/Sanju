@@ -60,7 +60,9 @@ struct CloudSyncManager {
                         english: sentence.english,
                         chinese: sentence.chinese,
                         isFavorite: sentence.isFavorite,
-                        studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:))
+                        studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:)),
+                        coarseCategory: sentence.coarseCategory,
+                        fineCategories: sentence.fineCategories ?? []
                     )
                 }
 

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A learning scene is created from the category returned for a sentence.
+/// A learning scene is created from the coarse category returned for a sentence.
 /// `favorites` is the one user-created scene and intentionally remains stable.
 struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
     static let favorites = SentenceStudyTopic(uncheckedRawValue: "favorites")

@@ -286,10 +286,6 @@ struct StudyView: View {
 
     private var createSceneButton: some View {
         Button {
-            guard appModel.isSignedIn else {
-                appModel.isShowingSignInSheet = true
-                return
-            }
             newSceneName = ""
             isShowingCreateScene = true
         } label: {
