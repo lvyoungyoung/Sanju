@@ -478,6 +478,7 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
+                sceneHint: sentence.sceneHint ?? "",
                 isFavorite: sentence.isFavorite ?? false
             )
         }
@@ -549,6 +550,7 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
+                sceneHint: sentence.sceneHint ?? "",
                 isFavorite: sentence.isFavorite ?? false
             )
         }
@@ -641,7 +643,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,is_favorite)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,scene_hint,is_favorite)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -708,6 +710,7 @@ struct SupabaseService: SupabaseServicing {
                 sortOrder: index + 1,
                 english: sentence.english,
                 chinese: sentence.chinese,
+                sceneHint: sentence.sceneHint,
                 isFavorite: sentence.isFavorite
             )
         }
@@ -729,6 +732,7 @@ struct SupabaseService: SupabaseServicing {
                 id: UUID(uuidString: sentencePayloads[index].id) ?? sentence.id,
                 english: sentence.english,
                 chinese: sentence.chinese,
+                sceneHint: sentence.sceneHint,
                 isFavorite: sentence.isFavorite
             )
         }

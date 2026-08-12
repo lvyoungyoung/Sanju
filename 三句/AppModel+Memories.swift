@@ -263,6 +263,7 @@ extension AppModel {
                     id: sentence.id,
                     english: sentence.english,
                     chinese: sentence.chinese,
+                    sceneHint: sentence.sceneHint,
                     isFavorite: sentence.isFavorite
                 )
             }
@@ -580,6 +581,7 @@ extension AppModel {
                             id: id,
                             english: sentence.english,
                             chinese: sentence.chinese,
+                            sceneHint: sentence.sceneHint ?? "",
                             isFavorite: sentence.isFavorite
                         )
                     }

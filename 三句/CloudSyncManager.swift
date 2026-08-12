@@ -59,6 +59,7 @@ struct CloudSyncManager {
                         id: sentenceID,
                         english: sentence.english,
                         chinese: sentence.chinese,
+                        sceneHint: sentence.sceneHint ?? "",
                         isFavorite: sentence.isFavorite
                     )
                 }

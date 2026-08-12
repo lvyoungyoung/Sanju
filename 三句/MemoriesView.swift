@@ -4,9 +4,6 @@ import UIKit
 
 struct MemoriesView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .title2) private var compactHeroTitleFontSize: CGFloat = 23
-    @ScaledMetric(relativeTo: .title2) private var regularHeroTitleFontSize: CGFloat = 26
     @State private var memoryPendingDeletion: MemoryEntry?
     @State private var isPerformingInitialLoad = false
     @State private var hasCompletedInitialLoad = false
@@ -25,10 +22,6 @@ struct MemoriesView: View {
         "人物", "风景", "旅行", "美食", "生活场景", "动物",
         "植物", "建筑", "活动", "物品", "截图/信息"
     ]
-
-    private var heroTitleFontSize: CGFloat {
-        horizontalSizeClass == .compact ? compactHeroTitleFontSize : regularHeroTitleFontSize
-    }
 
     private var availableMemoryTags: [String] {
         let existingTags = Set(appModel.memories.flatMap(\.tags))
@@ -71,14 +64,16 @@ struct MemoriesView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: AppSpacing.large) {
-                    memoriesHero
+            VStack(spacing: 0) {
+                if !availableMemoryTags.isEmpty {
+                    memoryTagFilterBar
+                        .padding(.horizontal, AppSpacing.xLarge)
+                        .padding(.top, AppSpacing.xLarge)
+                        .padding(.bottom, AppSpacing.medium)
+                }
 
-                    if !availableMemoryTags.isEmpty {
-                        memoryTagFilterBar
-                    }
-
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: AppSpacing.large) {
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
                         PendingCloudSyncProgressCard(
                             completedCount: appModel.pendingCloudSyncCompletedCount,
@@ -141,12 +136,17 @@ struct MemoriesView: View {
                         }
                         .padding(.top, 4)
                     }
+                    }
+                    .padding(.horizontal, AppSpacing.xLarge)
+                    .padding(.top, availableMemoryTags.isEmpty ? AppSpacing.xLarge : AppSpacing.medium)
+                    .padding(.bottom, AppSpacing.xxxLarge)
                 }
-                .padding(.horizontal, AppSpacing.xLarge)
-                .padding(.top, AppSpacing.xLarge)
-                .padding(.bottom, AppSpacing.xxxLarge)
+                .coordinateSpace(name: MemoryScrollMetrics.coordinateSpaceName)
+                .refreshable {
+                    guard appModel.isSignedIn else { return }
+                    await appModel.refreshRemoteContent()
+                }
             }
-            .coordinateSpace(name: MemoryScrollMetrics.coordinateSpaceName)
             .background(Color(.systemGroupedBackground))
             .toolbar(.hidden, for: .navigationBar)
             .task {
@@ -171,10 +171,6 @@ struct MemoriesView: View {
                 Task {
                     await loadMoreMemoriesIfNeeded()
                 }
-            }
-            .refreshable {
-                guard appModel.isSignedIn else { return }
-                await appModel.refreshRemoteContent()
             }
             .alert(L10n.string("memory.delete.alert_title", "删除这条回忆？"), isPresented: memoryDeleteAlertBinding) {
                 Button(L10n.string("common.delete", "删除"), role: .destructive) {
@@ -201,54 +197,6 @@ struct MemoriesView: View {
                 }
             }
         )
-    }
-
-    private var memoriesHero: some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.95, green: 0.98, blue: 0.94),
-                            Color(red: 0.94, green: 0.97, blue: 0.99)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    Text(L10n.string("memories.hero.eyebrow", "回忆"))
-                        .font(.system(size: AppFontSize.sectionLabel, weight: .bold))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
-
-                    Text(L10n.string("memories.hero.title", "把你记录过的画面留成一页一页可回看的学习素材"))
-                        .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppHeroTextColor.title)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 110)
-            }
-            .padding(AppSpacing.xLarge)
-
-            VStack(spacing: 6) {
-                Text("\(appModel.recordedMemoriesCount)")
-                    .font(.system(size: AppFontSize.heroStat, weight: .bold))
-                    .foregroundStyle(AppHeroTextColor.title)
-
-                Text(L10n.string("memories.hero.count_label", "已记录"))
-                    .font(.system(size: AppFontSize.badge, weight: .medium))
-                    .foregroundStyle(AppHeroTextColor.tertiary)
-            }
-            .frame(width: 92, height: 92)
-            .background(Color.white.opacity(0.74), in: Circle())
-            .padding(.top, AppSpacing.xLarge)
-            .padding(.trailing, AppSpacing.xLarge)
-        }
-        .appHeroShadow()
     }
 
     private var memoryTagFilterBar: some View {

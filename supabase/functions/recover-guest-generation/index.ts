@@ -110,6 +110,7 @@ Deno.serve(async (req) => {
           id: isUUID(sentence?.id) ? sentence.id : crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
+          scene_hint: String(sentence?.scene_hint ?? "").trim(),
           is_favorite: false,
         })),
       },

@@ -349,6 +349,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let sortOrder: Int
     let english: String
     let chinese: String
+    let sceneHint: String
     let isFavorite: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -357,6 +358,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case sortOrder = "sort_order"
         case english
         case chinese
+        case sceneHint = "scene_hint"
         case isFavorite = "is_favorite"
     }
 }

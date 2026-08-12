@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 interface Sentence {
   english: string
   chinese: string
+  scene_hint: string
 }
 
 type FinalizedSentence = Sentence & {
@@ -62,18 +63,19 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
-9. english 和 chinese 都必须是字符串
+8. 每一项必须且只能包含 english、chinese 和 scene_hint 三个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+9. english、chinese 和 scene_hint 都必须是字符串
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
 12. 不要输出任何多余字段
 13. 不要转义整个 JSON 对象
 14. 不要在 JSON 前后添加任何字符
-15. 每句中文控制在 8 到 30 个汉字之间
-16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+15. scene_hint 必须是 2 到 12 个汉字的简短场景提示，例如“雨天通勤”“朋友聚会”“厨房烹饪”。它用于匹配用户自建学习场景，必须概括这句话所描述的场景；不要使用具体人名、地点名、情绪词或一次性细节。
+16. 每句中文控制在 8 到 30 个汉字之间
+17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -283,8 +285,16 @@ function normalizeSentenceArray(value: any): Sentence[] {
     .map((item: any) => ({
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
+      scene_hint: normalizeSceneHint(item?.scene_hint),
     }))
     .filter((item: Sentence) => item.english && item.chinese)
+}
+
+function normalizeSceneHint(value: unknown): string {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
@@ -299,7 +309,7 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
     const chinese = decodeJSONStringFragment(match[2]).trim()
 
     if (english && chinese) {
-      matches.push({ english, chinese })
+      matches.push({ english, chinese, scene_hint: "" })
     }
   }
 
@@ -319,7 +329,7 @@ function extractLooseSentencePairs(content: string): Sentence[] | null {
     const chinese = extractLooseChineseValue(tail)
 
     if (english && chinese) {
-      matches.push({ english, chinese })
+      matches.push({ english, chinese, scene_hint: "" })
     }
   }
 
@@ -831,6 +841,7 @@ Deno.serve(async (req) => {
       id: crypto.randomUUID(),
       english: sentence.english,
       chinese: sentence.chinese,
+      scene_hint: sentence.scene_hint,
       is_favorite: false,
     }))
 
@@ -1625,7 +1636,16 @@ async function fetchSentenceEmbeddings(sentences: FinalizedSentence[]): Promise<
         model: "qwen3.7-text-embedding",
         input: {
           texts: sentences.map(
-            (sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`
+            (sentence) => {
+              const sceneHint = normalizeSceneHint(sentence.scene_hint)
+              return [
+                `English: ${sentence.english}`,
+                `Chinese: ${sentence.chinese}`,
+                sceneHint ? `Scene: ${sceneHint}` : null,
+              ]
+                .filter((value): value is string => Boolean(value))
+                .join("\n")
+            }
           ),
         },
         parameters: {
@@ -1764,6 +1784,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         id,
         english,
         chinese,
+        scene_hint,
         is_favorite,
         sort_order
       )
@@ -1798,6 +1819,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         id: sentence.id,
         english: String(sentence.english ?? "").trim(),
         chinese: String(sentence.chinese ?? "").trim(),
+        scene_hint: normalizeSceneHint(sentence.scene_hint),
         is_favorite: sentence.is_favorite === true,
       })),
     },
@@ -1848,6 +1870,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
         id: crypto.randomUUID(),
         english: String(sentence?.english ?? "").trim(),
         chinese: String(sentence?.chinese ?? "").trim(),
+        scene_hint: normalizeSceneHint(sentence?.scene_hint),
         is_favorite: false,
       })),
     },

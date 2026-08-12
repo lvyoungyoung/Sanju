@@ -12,17 +12,20 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
     let english: String
     let chinese: String
+    let sceneHint: String
     var isFavorite: Bool
 
     init(
         id: UUID = UUID(),
         english: String,
         chinese: String,
+        sceneHint: String = "",
         isFavorite: Bool = false
     ) {
         self.id = id
         self.english = english
         self.chinese = chinese
+        self.sceneHint = sceneHint
         self.isFavorite = isFavorite
     }
 
@@ -30,6 +33,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case id
         case english
         case chinese
+        case sceneHint
         case isFavorite
     }
 
@@ -38,6 +42,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         id = try container.decode(UUID.self, forKey: .id)
         english = try container.decode(String.self, forKey: .english)
         chinese = try container.decode(String.self, forKey: .chinese)
+        sceneHint = try container.decodeIfPresent(String.self, forKey: .sceneHint) ?? ""
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 }
