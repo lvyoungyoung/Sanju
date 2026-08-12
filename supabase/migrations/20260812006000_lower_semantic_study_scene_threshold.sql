@@ -21,7 +21,9 @@ begin
     and user_id = p_user_id;
 
   if v_embedding is null then
-    raise exception 'Study scene embedding not found';
+    -- Historical scenes created before semantic matching may not have an
+    -- embedding yet. Leave them empty instead of blocking future migrations.
+    return 0;
   end if;
 
   delete from public.study_scene_sentences where scene_id = p_scene_id;
@@ -95,7 +97,12 @@ do $$
 declare
   scene_record record;
 begin
-  for scene_record in select id, user_id from public.study_scenes
+  for scene_record in
+    select scene.id, scene.user_id
+    from public.study_scenes as scene
+    join public.study_scene_embeddings as embedding
+      on embedding.scene_id = scene.id
+     and embedding.user_id = scene.user_id
   loop
     perform public.refresh_semantic_study_scene_matches_for_owner(
       scene_record.id,
