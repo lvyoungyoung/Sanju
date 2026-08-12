@@ -50,6 +50,7 @@ struct StudySceneDetailView: View {
             }
         }
         .background(AppSurfaceColor.page)
+        .toolbar(.hidden, for: .tabBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task(id: route) {
@@ -121,7 +122,7 @@ struct StudySceneDetailView: View {
             }
             .padding(.horizontal, AppSpacing.xLarge)
             .padding(.top, AppSpacing.xLarge)
-            .padding(.bottom, 108)
+            .padding(.bottom, 92)
         }
         .safeAreaInset(edge: .bottom) {
             studyButton
@@ -155,21 +156,24 @@ struct StudySceneDetailView: View {
                     ProgressView()
                         .tint(AppTextColor.inverse)
                 } else {
-                    Text(L10n.string("study.scene.detail.start", "去学习"))
+                    Label(
+                        L10n.string("study.scene.detail.start", "去学习"),
+                        systemImage: "book.closed.fill"
+                    )
                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(minWidth: 116)
+            .padding(.horizontal, AppSpacing.large)
+            .frame(height: AppControlHeight.regular)
             .foregroundStyle(AppTextColor.inverse)
             .background(items.isEmpty ? AppSurfaceColor.subtleFill : Color.orange, in: Capsule())
-            .padding(.horizontal, AppSpacing.xLarge)
-            .padding(.top, AppSpacing.small)
-            .padding(.bottom, AppSpacing.medium)
         }
         .buttonStyle(.plain)
         .disabled(items.isEmpty || isStartingStudy)
-        .background(.ultraThinMaterial)
+        .appSurfaceShadow()
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, AppSpacing.large)
     }
 
     private var errorAlertBinding: Binding<Bool> {
