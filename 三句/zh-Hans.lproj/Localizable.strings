@@ -307,6 +307,13 @@
 "study.scene.empty.action_hint" = "这个场景还没有可学习的句子，去上传相关照片吧。";
 "study.scene.my_scenes" = "我的学习场景";
 "study.scene.name_placeholder" = "输入你想学习的场景";
+"study.scene.detail.all_sentences" = "全部句子";
+"study.scene.detail.empty_subtitle" = "以后生成相关画面时，它们会自动出现在这里。";
+"study.scene.detail.empty_title" = "暂未找到匹配句子";
+"study.scene.detail.loading_subtitle" = "马上就好，正在整理相关表达";
+"study.scene.detail.loading_title" = "正在寻找这个主题的句子";
+"study.scene.detail.sentence_count" = "共 %d 句";
+"study.scene.detail.start" = "去学习";
 "auth.delete_account.guest_noop" = "当前是匿名状态，无需删除账号。";
 "auth.nickname_update.sign_in_required" = "请先登录后再修改昵称。";
 "auth.signup.confirm_email" = "注册成功，请前往邮箱完成验证后再登录。";

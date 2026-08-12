@@ -100,6 +100,11 @@ protocol SupabaseServicing {
         sceneID: UUID,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
+    func fetchUserStudySceneDetailSentences(
+        session: SupabaseSession,
+        sceneID: UUID,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem]
     func fetchUserStudySceneTodayReviewQueue(
         session: SupabaseSession,
         sceneID: UUID,
@@ -871,6 +876,24 @@ struct SupabaseService: SupabaseServicing {
     ) async throws -> [SentenceStudyQueueItem] {
         let request = try makeRequest(
             path: "/rest/v1/rpc/get_study_scene_queue",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseStudySceneQueueRequest(
+                sceneID: sceneID.uuidString.lowercased(),
+                limit: limit
+            )
+        )
+        let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
+    }
+
+    func fetchUserStudySceneDetailSentences(
+        session: SupabaseSession,
+        sceneID: UUID,
+        limit: Int
+    ) async throws -> [SentenceStudyQueueItem] {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_study_scene_detail_sentences",
             method: "POST",
             bearerToken: session.accessToken,
             body: SupabaseStudySceneQueueRequest(

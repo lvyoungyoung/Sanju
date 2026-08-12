@@ -1563,6 +1563,25 @@ extension AppModel {
         return SentenceStudyTopicSession(topic: scene.studyTopic, queue: reviewQueue, startsInReviewMode: true)
     }
 
+    func loadUserStudySceneDetailSentences(
+        for scene: UserStudySceneSummary
+    ) async throws -> [SentenceStudyQueueItem] {
+        guard isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+
+        let session = try await ensureValidSession()
+        guard !session.isAnonymous else {
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+
+        return try await supabaseService.fetchUserStudySceneDetailSentences(
+            session: session,
+            sceneID: scene.id,
+            limit: 1000
+        )
+    }
+
     func refreshFavoriteSentenceStudyCounts() async {
         let favoriteSentenceIDs = currentFavoriteSentenceIDs()
         guard !favoriteSentenceIDs.isEmpty else {

@@ -24,8 +24,11 @@ struct MainTabView: View {
                 Label(L10n.string("tab.memories", "回忆"), systemImage: "photo.on.rectangle")
             }
 
-            NavigationStack {
+            NavigationStack(path: $appModel.studyNavigationPath) {
                 StudyView()
+                    .navigationDestination(for: StudySceneDetailRoute.self) { route in
+                        StudySceneDetailView(route: route)
+                    }
             }
             .tag(AppTab.study)
             .tabItem {
@@ -48,8 +51,12 @@ struct MainTabView: View {
         }
         .tint(.orange)
         .onChange(of: appModel.selectedTab) { _, selectedTab in
-            guard selectedTab != .profile else { return }
-            appModel.profileNavigationPath = []
+            if selectedTab != .profile {
+                appModel.profileNavigationPath = []
+            }
+            if selectedTab != .study {
+                appModel.studyNavigationPath = []
+            }
         }
     }
 

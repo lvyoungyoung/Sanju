@@ -307,6 +307,13 @@
 "study.scene.empty.action_hint" = "There are no sentences in this scene yet. Upload a related photo to add some.";
 "study.scene.my_scenes" = "My Study Scenes";
 "study.scene.name_placeholder" = "Name a scene you want to learn";
+"study.scene.detail.all_sentences" = "All Sentences";
+"study.scene.detail.empty_subtitle" = "Related sentences from future memories will appear here automatically.";
+"study.scene.detail.empty_title" = "No matching sentences yet";
+"study.scene.detail.loading_subtitle" = "Just a moment while we organize related expressions.";
+"study.scene.detail.loading_title" = "Finding sentences for this scene";
+"study.scene.detail.sentence_count" = "%d sentences";
+"study.scene.detail.start" = "Start Studying";
 "auth.delete_account.guest_noop" = "You are currently using a guest session, so there is no account to delete.";
 "auth.nickname_update.sign_in_required" = "Please sign in before updating your nickname.";
 "auth.signup.confirm_email" = "Account created. Please verify your email before signing in.";

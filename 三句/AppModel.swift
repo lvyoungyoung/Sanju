@@ -460,6 +460,7 @@ final class AppModel: ObservableObject {
     @Published var draftGeneratedMemoryID: UUID?
     @Published var selectedTab: AppTab = .newLearning
     @Published var memoriesNavigationPath: [UUID] = []
+    @Published var studyNavigationPath: [StudySceneDetailRoute] = []
     @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
     let speech = SpeechService()
@@ -629,12 +630,14 @@ final class AppModel: ObservableObject {
     func openNewLearningFromExternalLink() {
         selectedTab = .newLearning
         memoriesNavigationPath = []
+        studyNavigationPath = []
         profileNavigationPath = []
     }
 
     func openMemoryFromExternalLink(_ memoryID: UUID) {
         selectedTab = .memories
         memoriesNavigationPath = []
+        studyNavigationPath = []
         profileNavigationPath = []
 
         Task { @MainActor [weak self] in

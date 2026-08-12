@@ -80,6 +80,23 @@ struct UserStudySceneSummary: Identifiable, Hashable {
     }
 }
 
+/// Navigation value for the study tab. Keeping Favorites in the same route
+/// model lets it behave like every other study scene without creating a
+/// second, special-purpose screen.
+enum StudySceneDetailRoute: Hashable {
+    case favorites
+    case userScene(UserStudySceneSummary)
+
+    var title: String {
+        switch self {
+        case .favorites:
+            return SentenceStudyTopic.favorites.title
+        case let .userScene(scene):
+            return scene.name
+        }
+    }
+}
+
 struct SentenceStudyTopicSummary: Hashable {
     let totalCount: Int
     let dueCount: Int
