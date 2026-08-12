@@ -304,6 +304,7 @@
 "study.scene.create_failed" = "Unable to create this study scene right now. Please try again later.";
 "study.scene.create_hint" = "For example: beach trips, meeting friends, rainy-day commutes";
 "study.scene.create_title" = "Create My Study Scene";
+"study.scene.creating" = "Organizing your scene...";
 "study.scene.action.upload" = "Upload";
 "study.scene.empty.action_hint" = "There are no sentences in this scene yet. Upload a related photo to add some.";
 "study.scene.my_scenes" = "My Study Scenes";

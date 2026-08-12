@@ -187,6 +187,7 @@ Git tag：
 - `moderate-image-v1`
 - `recover-guest-generation`
 - `confirm-purchase`
+- `create-study-scene`
 - `delete-account`
 - `migrate-guest-credits`
 - `cleanup-guest-generation-jobs`

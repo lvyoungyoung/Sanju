@@ -8,6 +8,11 @@ interface Sentence {
   fine_categories: string[]
 }
 
+type FinalizedSentence = Sentence & {
+  id: string
+  is_favorite: boolean
+}
+
 interface GeneratedContent {
   sentences: Sentence[]
   tags: string[]
@@ -860,7 +865,7 @@ Deno.serve(async (req) => {
     }
 
     const { sentences, tags, provider, mimoFailureReason } = completionResult
-    const finalizedSentences = sentences.map((sentence) => ({
+    const finalizedSentences: FinalizedSentence[] = sentences.map((sentence) => ({
       id: crypto.randomUUID(),
       english: sentence.english,
       chinese: sentence.chinese,
@@ -992,6 +997,10 @@ Deno.serve(async (req) => {
       provider,
       mimoFailureReason,
     })
+
+    // Search indexing is intentionally best-effort. The atomic generation
+    // transaction has already persisted the memory and deducted one credit.
+    await indexGeneratedSentencesForStudyScenes(adminClient, user.id, finalizedSentences)
 
     if (authenticatedClientRequestID) {
       await markAuthenticatedGenerationJobCompleted(adminClient, {
@@ -1548,6 +1557,107 @@ async function finalizeGuestGeneration(
   return {
     ok: true,
     remainingCredits: normalizeRPCInteger(data),
+  }
+}
+
+async function indexGeneratedSentencesForStudyScenes(
+  adminClient: any,
+  userID: string,
+  sentences: FinalizedSentence[]
+): Promise<void> {
+  const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
+  const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
+  if (sentences.length === 0) {
+    return
+  }
+
+  if (!apiKey || !embeddingURL) {
+    console.error("[generate-memory-v2] semantic indexing skipped: missing DashScope embedding configuration")
+    return
+  }
+
+  try {
+    const response = await fetchWithTimeout(
+      embeddingURL,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "qwen3.7-text-embedding",
+          input: {
+            texts: sentences.map(
+              (sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`
+            ),
+          },
+          parameters: {
+            dimension: 1024,
+            output_type: "dense",
+            text_type: "document",
+          },
+        }),
+      },
+      8_000
+    )
+    const rawText = await response.text()
+    if (!response.ok) {
+      throw new Error(`Embedding request failed: HTTP ${response.status}`)
+    }
+
+    const payload = JSON.parse(rawText)
+    const embeddings = Array.isArray(payload?.data)
+      ? payload.data.map((item: any) => item?.embedding)
+      : Array.isArray(payload?.output?.embeddings)
+        ? payload.output.embeddings.map((item: any) => item?.embedding)
+        : []
+
+    if (
+      embeddings.length !== sentences.length ||
+      embeddings.some(
+        (embedding: unknown) =>
+          !Array.isArray(embedding) ||
+          embedding.length !== 1024 ||
+          !embedding.every((value) => typeof value === "number" && Number.isFinite(value))
+      )
+    ) {
+      throw new Error("Embedding response had an invalid vector")
+    }
+
+    const { error: upsertError } = await adminClient.from("sentence_embeddings").upsert(
+      sentences.map((sentence, index) => ({
+        sentence_id: sentence.id,
+        user_id: userID,
+        embedding: embeddings[index],
+        model: "qwen3.7-text-embedding",
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "sentence_id" }
+    )
+    if (upsertError) {
+      throw new Error(`Embedding storage failed: ${upsertError.message}`)
+    }
+
+    await Promise.all(
+      sentences.map(async (sentence) => {
+        const { error } = await adminClient.rpc(
+          "refresh_semantic_study_scene_matches_for_sentence",
+          {
+            p_sentence_id: sentence.id,
+            p_user_id: userID,
+          }
+        )
+        if (error) {
+          throw new Error(`Scene matching failed: ${error.message}`)
+        }
+      })
+    )
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2] semantic sentence indexing failed",
+      error instanceof Error ? error.message : String(error)
+    )
   }
 }
 

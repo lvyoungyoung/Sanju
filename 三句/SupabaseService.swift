@@ -877,13 +877,13 @@ struct SupabaseService: SupabaseServicing {
         name: String
     ) async throws -> UserStudySceneSummary {
         let request = try makeRequest(
-            path: "/rest/v1/rpc/create_study_scene",
+            path: "/functions/v1/create-study-scene",
             method: "POST",
             bearerToken: session.accessToken,
             body: SupabaseCreateStudySceneRequest(name: name)
         )
-        let records: [SupabaseUserStudySceneSummaryRecord] = try await perform(request)
-        guard let scene = records.compactMap(Self.makeUserStudySceneSummary(from:)).first else {
+        let response: SupabaseCreateUserStudySceneResponse = try await perform(request)
+        guard let scene = Self.makeUserStudySceneSummary(from: response.scene) else {
             throw SupabaseServiceError.invalidResponse
         }
         return scene

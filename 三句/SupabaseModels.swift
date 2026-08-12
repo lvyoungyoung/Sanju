@@ -176,6 +176,10 @@ struct SupabaseUserStudySceneSummaryRecord: Decodable {
     }
 }
 
+struct SupabaseCreateUserStudySceneResponse: Decodable {
+    let scene: SupabaseUserStudySceneSummaryRecord
+}
+
 struct SupabaseSentenceStudyProgressRecord: Decodable {
     let id: String
     let sentenceID: String

@@ -36,6 +36,7 @@ on:
           - all
           - cleanup-guest-generation-jobs
           - confirm-purchase
+          - create-study-scene
           - delete-account
           - generate-memory-v2
           - migrate-guest-credits

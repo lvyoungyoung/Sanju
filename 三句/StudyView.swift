@@ -435,7 +435,11 @@ private struct CreateStudySceneSheet: View {
             } label: {
                 Group {
                     if isCreating {
-                        ProgressView().tint(AppTextColor.inverse)
+                        HStack(spacing: AppSpacing.small) {
+                            ProgressView().tint(AppTextColor.inverse)
+                            Text(L10n.string("study.scene.creating", "正在整理场景..."))
+                                .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                        }
                     } else {
                         Text(L10n.string("common.create", "创建"))
                             .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))

@@ -304,6 +304,7 @@
 "study.scene.create_failed" = "暂时无法创建学习场景，请稍后再试。";
 "study.scene.create_hint" = "例如：海边度假、和朋友聚会、雨天通勤";
 "study.scene.create_title" = "创建我的学习场景";
+"study.scene.creating" = "正在整理场景...";
 "study.scene.action.upload" = "去上传";
 "study.scene.empty.action_hint" = "这个场景还没有可学习的句子，去上传相关照片吧。";
 "study.scene.my_scenes" = "我的学习场景";

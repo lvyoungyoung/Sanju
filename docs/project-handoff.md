@@ -338,6 +338,7 @@
 当前函数清单在 `scripts/edge-functions.txt`：
 
 - `generate-memory-v2`：生成三句、图片审核、MiMo/Kimi fallback、扣次数、写 memory。
+- `create-study-scene`：为用户自定义学习场景生成语义向量，并建立与已有句子向量的匹配关系。
 - `moderate-image-v1`：阿里云图片审核。
 - `recover-guest-generation`：匿名生成任务恢复。
 - `confirm-purchase`：购买验证和次数发放。
@@ -562,6 +563,16 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 8. 修改客户端后至少跑一次 `xcodebuild`。
 9. 发布后端时先 staging，再 production。
 10. 不要要求用户“复制保存文件”，用户和你在同一个 workspace。
+
+## 自定义场景语义匹配
+
+用户创建“我的学习场景”时，客户端将场景名称提交给 `create-study-scene`。函数使用阿里云百炼 `qwen3.7-text-embedding` 生成 1024 维向量；场景名按 `query`、用户句子按 `document` 生成向量，数据库再用精确余弦相似度匹配，阈值当前为 `0.55`。
+
+- 表：`sentence_embeddings`、`study_scene_embeddings`。
+- 新生成的登录用户句子会在 `generate-memory-v2` 原子化落库后异步式地补写向量并匹配已有场景；这一步失败不会影响生成结果或可用次数。
+- 第一版不回填历史句子向量，因此旧句子可能不会进入新建的自定义场景。
+- 必需环境变量：`DASHSCOPE_API_KEY`、`DASHSCOPE_EMBEDDING_URL`。后者应填写百炼原生接口 `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding`；地址不内置默认值，以便和 MiMo、Kimi 的服务地址配置方式保持一致。
+- 数据库 migration：`20260811006000_add_semantic_study_scene_matching.sql`。需先于两条相关 Edge Function 部署。
 
 ## 24. 当前高价值待办
 

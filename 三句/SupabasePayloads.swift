@@ -267,10 +267,6 @@ struct SupabaseSentenceStudyTopicQueueRequest: Encodable {
 
 struct SupabaseCreateStudySceneRequest: Encodable {
     let name: String
-
-    enum CodingKeys: String, CodingKey {
-        case name = "p_name"
-    }
 }
 
 struct SupabaseStudySceneQueueRequest: Encodable {
