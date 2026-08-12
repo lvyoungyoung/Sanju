@@ -12,13 +12,11 @@ struct StudyView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
-                header
-
                 LazyVStack(spacing: AppSpacing.medium) {
                     topicCard(.favorites)
 
                     if !appModel.userStudySceneSummaries.isEmpty {
-                        Text(L10n.string("study.scene.my_scenes", "我的学习场景"))
+                        Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
                             .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
                             .foregroundStyle(AppTextColor.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -52,7 +50,7 @@ struct StudyView: View {
             Text(errorMessage ?? "")
         }
         .alert(
-            L10n.string("study.scene.delete_confirmation_title", "删除这个学习场景？"),
+            L10n.string("study.scene.delete_confirmation_title", "删除这个学习主题？"),
             isPresented: sceneDeletionAlertBinding,
             presenting: scenePendingDeletion
         ) { scene in
@@ -64,7 +62,7 @@ struct StudyView: View {
             Text(
                 L10n.string(
                     "study.scene.delete_confirmation_message",
-                    "删除后，该场景的匹配结果和学习记录将被清除，原始回忆和句子不会受到影响。"
+                    "删除后，该主题的匹配结果和学习记录将被清除，原始回忆和句子不会受到影响。"
                 )
             )
         }
@@ -78,56 +76,6 @@ struct StudyView: View {
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            Text(L10n.string("study.topic.page_title", "学习"))
-                .font(.system(size: AppFontSize.pageTitle, weight: .bold))
-                .foregroundStyle(AppTextColor.title)
-
-            Text(
-                L10n.string(
-                    "study.topic.page_subtitle",
-                    "按场景练习，让你更自然地说出眼前的画面。"
-                )
-            )
-            .font(.system(size: AppFontSize.body))
-            .foregroundStyle(AppTextColor.secondary)
-
-            HStack(spacing: AppSpacing.small) {
-                studyMetric(
-                    title: L10n.string("study.metric.due_today", "今日待学"),
-                    value: appModel.sentenceStudyDueCount
-                )
-                studyMetric(
-                    title: L10n.string("study.metric.studied_today", "今日已学"),
-                    value: appModel.sentenceStudyTodayCount
-                )
-            }
-            .padding(.top, AppSpacing.small)
-        }
-        .padding(AppSpacing.xLarge)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(AppStroke.subtle, lineWidth: 1)
-        }
-    }
-
-    private func studyMetric(title: String, value: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: AppFontSize.metadata, weight: .medium))
-                .foregroundStyle(AppTextColor.secondary)
-            Text("\(value)")
-                .font(.system(size: AppFontSize.heroStat, weight: .bold, design: .rounded))
-                .foregroundStyle(AppTextColor.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AppSpacing.large)
-        .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
     }
 
     private func topicCard(_ topic: SentenceStudyTopic) -> some View {
@@ -161,7 +109,7 @@ struct StudyView: View {
                 scenePendingDeletion = scene
             } label: {
                 Label(
-                    L10n.string("study.scene.delete", "删除学习场景"),
+                    L10n.string("study.scene.delete", "删除学习主题"),
                     systemImage: "trash"
                 )
             }
@@ -235,7 +183,7 @@ struct StudyView: View {
             isShowingCreateScene = true
         } label: {
             Label(
-                L10n.string("study.scene.create", "创建我的学习场景"),
+                L10n.string("study.scene.create", "创建我的学习主题"),
                 systemImage: "plus.circle.fill"
             )
             .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
@@ -286,7 +234,7 @@ struct StudyView: View {
             appModel.studyNavigationPath.append(.userScene(scene))
         } catch {
             errorMessage = error.localizedDescription.isEmpty
-                ? L10n.string("study.scene.create_failed", "暂时无法创建学习场景，请稍后再试。")
+                ? L10n.string("study.scene.create_failed", "暂时无法创建学习主题，请稍后再试。")
                 : error.localizedDescription
         }
     }
@@ -301,7 +249,7 @@ struct StudyView: View {
             try await appModel.deleteUserStudyScene(scene)
         } catch {
             errorMessage = error.localizedDescription.isEmpty
-                ? L10n.string("study.scene.delete_failed", "暂时无法删除学习场景，请稍后再试。")
+                ? L10n.string("study.scene.delete_failed", "暂时无法删除学习主题，请稍后再试。")
                 : error.localizedDescription
         }
     }
@@ -314,7 +262,7 @@ private struct CreateStudySceneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
-            Text(L10n.string("study.scene.create_title", "创建我的学习场景"))
+            Text(L10n.string("study.scene.create_title", "创建我的学习主题"))
                 .font(.system(size: AppFontSize.field, weight: .bold))
                 .foregroundStyle(AppTextColor.title)
 
@@ -323,7 +271,7 @@ private struct CreateStudySceneSheet: View {
                 .foregroundStyle(AppTextColor.secondary)
 
             TextField(
-                L10n.string("study.scene.name_placeholder", "输入你想学习的场景"),
+                L10n.string("study.scene.name_placeholder", "输入你想学习的主题"),
                 text: $sceneName
             )
             .textInputAutocapitalization(.never)
@@ -339,7 +287,7 @@ private struct CreateStudySceneSheet: View {
                     if isCreating {
                         HStack(spacing: AppSpacing.small) {
                             ProgressView().tint(AppTextColor.inverse)
-                            Text(L10n.string("study.scene.creating", "正在整理场景..."))
+                            Text(L10n.string("study.scene.creating", "正在整理主题..."))
                                 .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         }
                     } else {

@@ -145,7 +145,7 @@ enum SentenceStudyTopicLoadingError: LocalizedError {
         case .networkUnavailable:
             return L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
         case .signInRequired:
-            return L10n.string("study.error.sign_in_required", "登录后即可创建自己的学习场景。")
+            return L10n.string("study.error.sign_in_required", "登录后即可创建自己的学习主题。")
         }
     }
 }
