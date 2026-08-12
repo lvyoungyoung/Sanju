@@ -214,7 +214,7 @@ struct StudyView: View {
             Spacer(minLength: AppSpacing.small)
 
             Image(systemName: "chevron.right")
-                .font(.system(size: AppIconSize.small, weight: .semibold))
+                .font(.system(size: AppIconSize.regular, weight: .semibold))
                 .foregroundStyle(AppTextColor.tertiary)
         }
         .padding(AppSpacing.large)
