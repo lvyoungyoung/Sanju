@@ -16,30 +16,18 @@ struct StudyView: View {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 header
 
-                if totalAvailableCount == 0 && appModel.userStudySceneSummaries.isEmpty {
-                    EmptyStateView(
-                        title: L10n.string("study.topic.empty.title", "还没有主题内容"),
-                        subtitle: L10n.string("study.topic.empty.subtitle", "完成一次生成后，AI 会自动把句子归入适合学习的主题。"),
-                        systemImage: "sparkles"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 72)
-                } else {
-                    LazyVStack(spacing: AppSpacing.medium) {
-                        ForEach(studyTopics) { topic in
-                            topicCard(topic)
-                        }
+                LazyVStack(spacing: AppSpacing.medium) {
+                    topicCard(.favorites)
 
-                        if !appModel.userStudySceneSummaries.isEmpty {
-                            Text(L10n.string("study.scene.my_scenes", "我的学习场景"))
-                                .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                                .foregroundStyle(AppTextColor.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.top, AppSpacing.small)
+                    if !appModel.userStudySceneSummaries.isEmpty {
+                        Text(L10n.string("study.scene.my_scenes", "我的学习场景"))
+                            .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                            .foregroundStyle(AppTextColor.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, AppSpacing.small)
 
-                            ForEach(appModel.userStudySceneSummaries) { scene in
-                                userStudySceneCard(scene)
-                            }
+                        ForEach(appModel.userStudySceneSummaries) { scene in
+                            userStudySceneCard(scene)
                         }
                     }
                 }
@@ -127,7 +115,7 @@ struct StudyView: View {
             HStack(spacing: AppSpacing.small) {
                 studyMetric(
                     title: L10n.string("study.metric.due_today", "今日待学"),
-                    value: topicDueCount
+                    value: appModel.sentenceStudyDueCount
                 )
                 studyMetric(
                     title: L10n.string("study.metric.studied_today", "今日已学"),
@@ -338,22 +326,6 @@ struct StudyView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private var totalAvailableCount: Int {
-        appModel.sentenceStudyTopicSummaries.values.reduce(0) { $0 + $1.totalCount }
-    }
-
-    private var studyTopics: [SentenceStudyTopic] {
-        var topics = appModel.sentenceStudyTopicSummaries.keys
-            .filter { $0 != .favorites }
-            .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        topics.insert(.favorites, at: 0)
-        return topics
-    }
-
-    private var topicDueCount: Int {
-        appModel.sentenceStudyTopicSummaries.values.reduce(0) { $0 + $1.dueCount }
     }
 
     private var errorAlertBinding: Binding<Bool> {

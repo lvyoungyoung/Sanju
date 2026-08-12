@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A learning scene is created from the coarse category returned for a sentence.
-/// `favorites` is the one user-created scene and intentionally remains stable.
+/// A stable identifier for sentence learning progress.
+/// `favorites` represents the user's saved sentences; custom scenes use a separate namespace.
 struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
     static let favorites = SentenceStudyTopic(uncheckedRawValue: "favorites")
 
@@ -37,10 +37,7 @@ struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
-        if usesFavoriteQueue {
-            return L10n.string("study.topic.favorites", "收藏")
-        }
-        return Self.legacyTitle(for: rawValue) ?? rawValue
+        usesFavoriteQueue ? L10n.string("study.topic.favorites", "收藏") : rawValue
     }
 
     var iconName: String {
@@ -68,26 +65,6 @@ struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
         rawValue == Self.favorites.rawValue
     }
 
-    private static func legacyTitle(for value: String) -> String? {
-        switch value {
-        case "weather":
-            return L10n.string("study.topic.weather", "描述天气")
-        case "kitchen":
-            return L10n.string("study.topic.kitchen", "厨房场景")
-        case "outdoor_scenery":
-            return L10n.string("study.topic.outdoor_scenery", "户外风景")
-        case "city_streets":
-            return L10n.string("study.topic.city_streets", "城市与街道")
-        case "people_daily_life":
-            return L10n.string("study.topic.people_daily_life", "人物与日常")
-        case "travel":
-            return L10n.string("study.topic.travel", "旅行见闻")
-        case "food_drink":
-            return L10n.string("study.topic.food_drink", "美食与饮品")
-        default:
-            return nil
-        }
-    }
 }
 
 /// A user-created study scene. Its UUID remains stable even if its name is
@@ -98,7 +75,7 @@ struct UserStudySceneSummary: Identifiable, Hashable {
     let summary: SentenceStudyTopicSummary
 
     var studyTopic: SentenceStudyTopic {
-        // The prefix reserves user-created scenes from AI-generated topic names.
+        // The prefix keeps user-created scene progress distinct from sentence category values.
         SentenceStudyTopic(rawValue: "scene:\(id.uuidString.lowercased())") ?? .favorites
     }
 }

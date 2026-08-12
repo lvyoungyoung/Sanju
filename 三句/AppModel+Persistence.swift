@@ -457,8 +457,9 @@ extension AppModel {
             return
         }
 
+        let favoriteProgressRecords = progressRecords.filter(\.studyTopic.usesFavoriteQueue)
         localSentenceStudyProgress = Dictionary(
-            progressRecords.map {
+            favoriteProgressRecords.map {
                 (SentenceStudyProgressKey(sentenceID: $0.sentenceID, studyTopic: $0.studyTopic), $0)
             },
             uniquingKeysWith: { current, candidate in
@@ -467,6 +468,13 @@ extension AppModel {
                 return currentDate >= candidateDate ? current : candidate
             }
         )
+
+        // Old builds persisted category-scoped local progress. Categories are
+        // no longer a study source, so retain only favorites before it can be
+        // synced into a later signed-in session.
+        if favoriteProgressRecords.count != progressRecords.count {
+            persistLocalSentenceStudyProgress()
+        }
     }
 
     func clearLocalSentenceStudyProgress() {

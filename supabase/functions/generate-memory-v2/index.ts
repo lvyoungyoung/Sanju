@@ -3,9 +3,6 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 interface Sentence {
   english: string
   chinese: string
-  coarse_category: string | null
-  study_topic: string | null
-  fine_categories: string[]
 }
 
 type FinalizedSentence = Sentence & {
@@ -65,21 +62,18 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english、chinese、coarse_category、medium_category 和 fine_categories 五个字段，必须显式写出 chinese 字段名，不能只写中文字符串
-9. english 和 chinese 都必须是字符串；coarse_category 和 medium_category 必须是字符串或 null；fine_categories 必须是长度为 2 的字符串数组
+8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+9. english 和 chinese 都必须是字符串
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
-12. coarse_category 是粗粒度分类，只能从以下分类中选择一个：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息。它用于把大量内容稳定归入大类。
-13. medium_category 是中粒度学习场景名，使用 2 到 8 个汉字的常见名称，例如“户外风景”“城市街道”“朋友聚会”“家庭生活”“宠物日常”“餐饮美食”。不要过细到某一次具体事件，不要写情绪、语法点或物品名称；相近场景必须尽量使用同一个常见名称。如果一句话确实不适合按场景学习，返回 null。
-14. fine_categories 是两个细粒度分类，必须恰好包含 2 个不重复的 2 到 10 个汉字短语，例如“公园遛狗”“草地奔跑”或“雨天通勤”“地铁站台”。它们可以具体描述动作、地点或画面元素，但不要使用情绪词。
-15. 不要输出任何多余字段
-16. 不要转义整个 JSON 对象
-17. 不要在 JSON 前后添加任何字符
-18. 每句中文控制在 8 到 30 个汉字之间
-19. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+12. 不要输出任何多余字段
+13. 不要转义整个 JSON 对象
+14. 不要在 JSON 前后添加任何字符
+15. 每句中文控制在 8 到 30 个汉字之间
+16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","coarse_category":"动物","medium_category":"宠物日常","fine_categories":["公园遛狗","草地奔跑"]},{"english":"...","chinese":"...","coarse_category":"动物","medium_category":"宠物日常","fine_categories":["宠物互动","户外活动"]},{"english":"...","chinese":"...","coarse_category":"动物","medium_category":"宠物日常","fine_categories":["小狗玩耍","晴天草地"]}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -289,42 +283,8 @@ function normalizeSentenceArray(value: any): Sentence[] {
     .map((item: any) => ({
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
-      coarse_category: normalizeCoarseCategory(item?.coarse_category),
-      study_topic: normalizeStudyTopic(item?.medium_category ?? item?.study_topic),
-      fine_categories: normalizeFineCategories(item?.fine_categories),
     }))
     .filter((item: Sentence) => item.english && item.chinese)
-}
-
-function normalizeCoarseCategory(value: unknown): string | null {
-  const category = typeof value === "string" ? value.trim() : ""
-  return (MEMORY_TAGS as readonly string[]).includes(category) ? category : null
-}
-
-function normalizeFineCategories(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  const categories: string[] = []
-  for (const rawValue of value) {
-    const category = typeof rawValue === "string" ? rawValue.replace(/\s+/g, "").trim() : ""
-    if (category.length >= 2 && category.length <= 10 && !categories.includes(category)) {
-      categories.push(category)
-    }
-    if (categories.length === 2) {
-      break
-    }
-  }
-  return categories
-}
-
-function normalizeStudyTopic(value: unknown): string | null {
-  const topic = typeof value === "string" ? value.replace(/\s+/g, "").trim() : ""
-  if (topic.length < 2 || topic.length > 8 || topic === "收藏" || topic === "favorites") {
-    return null
-  }
-  return topic
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
@@ -339,7 +299,7 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
     const chinese = decodeJSONStringFragment(match[2]).trim()
 
     if (english && chinese) {
-      matches.push({ english, chinese, coarse_category: null, study_topic: null, fine_categories: [] })
+      matches.push({ english, chinese })
     }
   }
 
@@ -359,7 +319,7 @@ function extractLooseSentencePairs(content: string): Sentence[] | null {
     const chinese = extractLooseChineseValue(tail)
 
     if (english && chinese) {
-      matches.push({ english, chinese, coarse_category: null, study_topic: null, fine_categories: [] })
+      matches.push({ english, chinese })
     }
   }
 
@@ -872,9 +832,6 @@ Deno.serve(async (req) => {
       english: sentence.english,
       chinese: sentence.chinese,
       is_favorite: false,
-      coarse_category: sentence.coarse_category,
-      study_topic: sentence.study_topic,
-      fine_categories: sentence.fine_categories,
     }))
 
     if (isAnonymous) {
@@ -1808,9 +1765,6 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         english,
         chinese,
         is_favorite,
-        coarse_category,
-        study_topic,
-        fine_categories,
         sort_order
       )
     `
@@ -1845,9 +1799,6 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         english: String(sentence.english ?? "").trim(),
         chinese: String(sentence.chinese ?? "").trim(),
         is_favorite: sentence.is_favorite === true,
-        coarse_category: normalizeCoarseCategory(sentence.coarse_category),
-        study_topic: normalizeStudyTopic(sentence.study_topic),
-        fine_categories: normalizeFineCategories(sentence.fine_categories),
       })),
     },
     remainingCredits: job.remaining_credits ?? args.fallbackRemainingCredits,
@@ -1898,9 +1849,6 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
         english: String(sentence?.english ?? "").trim(),
         chinese: String(sentence?.chinese ?? "").trim(),
         is_favorite: false,
-        coarse_category: normalizeCoarseCategory(sentence?.coarse_category),
-        study_topic: normalizeStudyTopic(sentence?.study_topic),
-        fine_categories: normalizeFineCategories(sentence?.fine_categories),
       })),
     },
     remainingCredits: completedJob?.remaining_credits ?? args.fallbackRemainingCredits,

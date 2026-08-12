@@ -62,9 +62,6 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let english: String
     let chinese: String
     let isFavorite: Bool
-    let studyTopic: String?
-    let coarseCategory: String?
-    let fineCategories: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -72,9 +69,6 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case english
         case chinese
         case isFavorite = "is_favorite"
-        case studyTopic = "study_topic"
-        case coarseCategory = "coarse_category"
-        case fineCategories = "fine_categories"
     }
 }
 
@@ -135,24 +129,6 @@ struct SupabaseSentenceStudyQueueRecord: Decodable {
         wrongCount = try container.decode(Int.self, forKey: .wrongCount)
         lastResult = try container.decodeIfPresent(String.self, forKey: .lastResult)
         nextReviewAt = try container.decodeIfPresent(Date.self, forKey: .nextReviewAt)
-    }
-}
-
-struct SupabaseSentenceStudyTopicSummaryRecord: Decodable {
-    let topic: String
-    let totalCount: Int
-    let dueCount: Int
-    let studiedCount: Int
-    let reviewableTodayCount: Int
-    let masteryScore: Int
-
-    enum CodingKeys: String, CodingKey {
-        case topic
-        case totalCount = "total_count"
-        case dueCount = "due_count"
-        case studiedCount = "studied_count"
-        case reviewableTodayCount = "reviewable_today_count"
-        case masteryScore = "mastery_score"
     }
 }
 
@@ -233,18 +209,12 @@ struct SupabaseGeneratedSentence: Decodable {
     let english: String
     let chinese: String
     let isFavorite: Bool?
-    let studyTopic: String?
-    let coarseCategory: String?
-    let fineCategories: [String]?
 
     enum CodingKeys: String, CodingKey {
         case id
         case english
         case chinese
         case isFavorite = "is_favorite"
-        case studyTopic = "study_topic"
-        case coarseCategory = "coarse_category"
-        case fineCategories = "fine_categories"
     }
 }
 

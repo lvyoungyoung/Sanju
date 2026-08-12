@@ -263,10 +263,7 @@ extension AppModel {
                     id: sentence.id,
                     english: sentence.english,
                     chinese: sentence.chinese,
-                    isFavorite: sentence.isFavorite,
-                    studyTopic: sentence.studyTopic,
-                    coarseCategory: sentence.coarseCategory,
-                    fineCategories: sentence.fineCategories
+                    isFavorite: sentence.isFavorite
                 )
             }
             return MemoryEntry(
@@ -583,10 +580,7 @@ extension AppModel {
                             id: id,
                             english: sentence.english,
                             chinese: sentence.chinese,
-                            isFavorite: sentence.isFavorite,
-                            studyTopic: sentence.studyTopic.flatMap(SentenceStudyTopic.init(rawValue:)),
-                            coarseCategory: sentence.coarseCategory,
-                            fineCategories: sentence.fineCategories ?? []
+                            isFavorite: sentence.isFavorite
                         )
                     }
 
@@ -1414,7 +1408,7 @@ extension AppModel {
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
-            refreshLocalSentenceStudyTopicSummaries()
+            sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
             return
@@ -1435,9 +1429,7 @@ extension AppModel {
             sentenceStudyTodayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? 0
             sentenceStudyReviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? 0
             await refreshFavoriteSentenceStudyCounts()
-            var summaries = (try? await supabaseService.fetchSentenceStudyTopicSummaries(session: session)) ?? sentenceStudyTopicSummaries
-            summaries[.favorites] = makeFavoriteStudyTopicSummary()
-            sentenceStudyTopicSummaries = summaries
+            sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
         } catch {
             sentenceStudyDueCount = 0
@@ -1492,9 +1484,13 @@ extension AppModel {
     func loadSentenceStudyTopicSession(
         for topic: SentenceStudyTopic
     ) async throws -> SentenceStudyTopicSession? {
+        // Built-in category queues were removed. Custom scenes use
+        // loadUserStudySceneSession instead of this favorites-only path.
+        guard topic.usesFavoriteQueue else { return nil }
+
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
-            refreshLocalSentenceStudyTopicSummaries()
+            sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
 
             let queue = localSentenceStudyDueQueue(limit: Int.max, topic: topic).shuffled()
             if !queue.isEmpty {
@@ -1515,28 +1511,8 @@ extension AppModel {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }
 
-        if topic.usesFavoriteQueue {
-            let queue = try await supabaseService.fetchSentenceStudyQueue(
-                session: session,
-                limit: 1000
-            ).shuffled()
-            if !queue.isEmpty {
-                await refreshSentenceStudyDueCount()
-                return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
-            }
-
-            let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-                session: session,
-                limit: 1000
-            ).shuffled()
-            await refreshSentenceStudyDueCount()
-            guard !reviewQueue.isEmpty else { return nil }
-            return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
-        }
-
-        let queue = try await supabaseService.fetchSentenceStudyTopicQueue(
+        let queue = try await supabaseService.fetchSentenceStudyQueue(
             session: session,
-            topic: topic,
             limit: 1000
         ).shuffled()
         if !queue.isEmpty {
@@ -1544,10 +1520,9 @@ extension AppModel {
             return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
         }
 
-        let reviewQueue = try await supabaseService.fetchSentenceStudyTopicTodayReviewQueue(
+        let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
             session: session,
-            topic: topic,
-            limit: 200
+            limit: 1000
         ).shuffled()
         await refreshSentenceStudyDueCount()
         guard !reviewQueue.isEmpty else { return nil }
@@ -1771,6 +1746,8 @@ extension AppModel {
     func loadSentenceStudyTodayReviewQueue(
         for topic: SentenceStudyTopic = .favorites
     ) async throws -> [SentenceStudyQueueItem] {
+        guard topic.usesFavoriteQueue else { return [] }
+
         guard isSignedIn else {
             let reviewQueue = localSentenceStudyTodayReviewQueue(limit: 1000, topic: topic).shuffled()
             sentenceStudyQueue = reviewQueue
@@ -1784,20 +1761,11 @@ extension AppModel {
 
         let todayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? sentenceStudyTodayCount
         sentenceStudyTodayCount = todayCount
-        let reviewQueue: [SentenceStudyQueueItem]
-        if topic.usesFavoriteQueue {
-            let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? sentenceStudyReviewableTodayCount
-            reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-                session: session,
-                limit: max(reviewableTodayCount, 1)
-            ).shuffled()
-        } else {
-            reviewQueue = try await supabaseService.fetchSentenceStudyTopicTodayReviewQueue(
-                session: session,
-                topic: topic,
-                limit: 1000
-            ).shuffled()
-        }
+        let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? sentenceStudyReviewableTodayCount
+        let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
+            session: session,
+            limit: max(reviewableTodayCount, 1)
+        ).shuffled()
         sentenceStudyQueue = reviewQueue
         sentenceStudyReviewableTodayCount = reviewQueue.count
         isRepeatingSentenceStudyQueue = !reviewQueue.isEmpty
@@ -1816,52 +1784,6 @@ extension AppModel {
         sentenceStudyTodayCount = localStudiedTodayCount(today: today)
         sentenceStudyDueCount = localSentenceStudyDueQueue(limit: Int.max, today: today).count
         sentenceStudyReviewableTodayCount = localSentenceStudyTodayReviewQueue(limit: Int.max, today: today).count
-    }
-
-    private func refreshLocalSentenceStudyTopicSummaries() {
-        migrateLocalSentenceStudyProgressToCoarseCategories()
-
-        let today = localStudyDay()
-        let topics = Set(
-            memories
-                .flatMap(\.sentences)
-                .compactMap { sentence in
-                    sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:))
-                }
-        ).union([.favorites])
-        sentenceStudyTopicSummaries = Dictionary(
-            uniqueKeysWithValues: topics.map { topic in
-                let sentences = studySentences(for: topic)
-                let dueCount = localSentenceStudyCandidates(today: today, topic: topic)
-                    .filter { $0.priority < 99 }
-                    .count
-                let studiedCount = sentences.filter {
-                    (localProgress(for: $0.id, topic: topic)?.correctCount ?? 0) > 0
-                }.count
-                let reviewableTodayCount = sentences.filter { sentence in
-                    guard let lastStudiedDay = localProgress(for: sentence.id, topic: topic)?.lastStudiedDay else {
-                        return false
-                    }
-                    return isSameLocalStudyDay(lastStudiedDay, today)
-                }.count
-                return (
-                    topic,
-                    SentenceStudyTopicSummary(
-                        totalCount: sentences.count,
-                        dueCount: dueCount,
-                        studiedCount: studiedCount,
-                        reviewableTodayCount: reviewableTodayCount,
-                        masteryScore: sentences.isEmpty
-                            ? 0
-                            : sentences.reduce(0) { partialResult, sentence in
-                                partialResult + SentenceStudyMastery.score(
-                                    forCorrectCount: localProgress(for: sentence.id, topic: topic)?.correctCount ?? 0
-                                )
-                            } / sentences.count
-                    )
-                )
-            }
-        )
     }
 
     private func makeFavoriteStudyTopicSummary() -> SentenceStudyTopicSummary {
@@ -1962,7 +1884,7 @@ extension AppModel {
         }
         persistLocalSentenceStudyProgress()
         refreshLocalSentenceStudyCounts()
-        refreshLocalSentenceStudyTopicSummaries()
+        sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
         return makeSentenceStudyProgress(from: progress)
     }
 
@@ -2064,101 +1986,11 @@ extension AppModel {
         return progress.learningStep < 5 ? 1 : 3
     }
 
-    private func studySentences(for topic: SentenceStudyTopic) -> [SentenceRecord] {
-        memories.flatMap(\.sentences).filter { sentence in
-            matches(sentence: sentence, studyTopic: topic)
-        }
-    }
-
     private func matches(sentence: SentenceRecord, studyTopic: SentenceStudyTopic?) -> Bool {
         guard let studyTopic else {
             return sentence.isFavorite
         }
-        return studyTopic.usesFavoriteQueue
-            ? sentence.isFavorite
-            : sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:)) == studyTopic
-    }
-
-    private func migrateLocalSentenceStudyProgressToCoarseCategories() {
-        let coarseTopicsBySentenceID = Dictionary(
-            memories
-                .flatMap(\.sentences)
-                .compactMap { sentence -> (UUID, SentenceStudyTopic)? in
-                    guard let coarseTopic = sentence.coarseCategory.flatMap(SentenceStudyTopic.init(rawValue:)) else {
-                        return nil
-                    }
-                    return (sentence.id, coarseTopic)
-                },
-            uniquingKeysWith: { existing, _ in existing }
-        )
-
-        guard !coarseTopicsBySentenceID.isEmpty else { return }
-
-        var migratedProgress: [SentenceStudyProgressKey: LocalSentenceStudyProgress] = [:]
-        var didMigrate = false
-
-        for progress in localSentenceStudyProgress.values {
-            let targetTopic = coarseTopicsBySentenceID[progress.sentenceID] ?? progress.studyTopic
-            let targetKey = SentenceStudyProgressKey(sentenceID: progress.sentenceID, studyTopic: targetTopic)
-            let targetProgress: LocalSentenceStudyProgress
-
-            if targetTopic == progress.studyTopic {
-                targetProgress = progress
-            } else {
-                didMigrate = true
-                targetProgress = LocalSentenceStudyProgress(
-                    id: progress.id,
-                    sentenceID: progress.sentenceID,
-                    studyTopic: targetTopic,
-                    learningStep: progress.learningStep,
-                    masteredReviewCount: progress.masteredReviewCount,
-                    correctCount: progress.correctCount,
-                    wrongCount: progress.wrongCount,
-                    lastResult: progress.lastResult,
-                    lastStudiedAt: progress.lastStudiedAt,
-                    lastStudiedDay: progress.lastStudiedDay,
-                    nextReviewDay: progress.nextReviewDay
-                )
-            }
-
-            if let existingProgress = migratedProgress[targetKey] {
-                migratedProgress[targetKey] = mergeLocalStudyProgress(existingProgress, targetProgress)
-                didMigrate = true
-            } else {
-                migratedProgress[targetKey] = targetProgress
-            }
-        }
-
-        guard didMigrate else { return }
-        localSentenceStudyProgress = migratedProgress
-        persistLocalSentenceStudyProgress()
-    }
-
-    private func mergeLocalStudyProgress(
-        _ current: LocalSentenceStudyProgress,
-        _ candidate: LocalSentenceStudyProgress
-    ) -> LocalSentenceStudyProgress {
-        let currentDate = current.lastStudiedAt ?? .distantPast
-        let candidateDate = candidate.lastStudiedAt ?? .distantPast
-        let latest = candidateDate >= currentDate ? candidate : current
-
-        return LocalSentenceStudyProgress(
-            id: latest.id,
-            sentenceID: latest.sentenceID,
-            studyTopic: latest.studyTopic,
-            learningStep: max(current.learningStep, candidate.learningStep),
-            masteredReviewCount: max(current.masteredReviewCount, candidate.masteredReviewCount),
-            correctCount: current.correctCount + candidate.correctCount,
-            wrongCount: current.wrongCount + candidate.wrongCount,
-            lastResult: latest.lastResult,
-            lastStudiedAt: max(current.lastStudiedAt ?? .distantPast, candidate.lastStudiedAt ?? .distantPast) == .distantPast
-                ? nil
-                : latest.lastStudiedAt,
-            lastStudiedDay: max(current.lastStudiedDay ?? .distantPast, candidate.lastStudiedDay ?? .distantPast) == .distantPast
-                ? nil
-                : latest.lastStudiedDay,
-            nextReviewDay: max(current.nextReviewDay, candidate.nextReviewDay)
-        )
+        return studyTopic.usesFavoriteQueue && sentence.isFavorite
     }
 
     private func localProgress(

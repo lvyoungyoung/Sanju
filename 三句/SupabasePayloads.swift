@@ -255,16 +255,6 @@ struct SupabaseSentenceStudyQueueRequest: Encodable {
     }
 }
 
-struct SupabaseSentenceStudyTopicQueueRequest: Encodable {
-    let topic: String
-    let limit: Int
-
-    enum CodingKeys: String, CodingKey {
-        case topic = "p_topic"
-        case limit = "p_limit"
-    }
-}
-
 struct SupabaseCreateStudySceneRequest: Encodable {
     let name: String
 }
@@ -360,9 +350,6 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let english: String
     let chinese: String
     let isFavorite: Bool
-    let studyTopic: String?
-    let coarseCategory: String?
-    let fineCategories: [String]
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -371,9 +358,6 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case english
         case chinese
         case isFavorite = "is_favorite"
-        case studyTopic = "study_topic"
-        case coarseCategory = "coarse_category"
-        case fineCategories = "fine_categories"
     }
 }
 

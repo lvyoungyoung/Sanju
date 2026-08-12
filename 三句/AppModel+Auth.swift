@@ -1495,9 +1495,7 @@ extension AppModel {
         localSentenceStudyProgress.values.filter { progress in
             guard let location = locateSentence(progress.sentenceID) else { return false }
             let sentence = memories[location.memoryIndex].sentences[location.sentenceIndex]
-            return progress.studyTopic.usesFavoriteQueue
-                ? sentence.isFavorite
-                : sentence.studyTopic == progress.studyTopic
+            return progress.studyTopic.usesFavoriteQueue && sentence.isFavorite
         }
     }
 
