@@ -244,7 +244,7 @@ begin
 
   insert into public.study_scenes as scene (user_id, name)
   values (p_user_id, v_name)
-  on conflict (user_id, name) do update set updated_at = now()
+  on conflict on constraint study_scenes_user_id_name_key do update set updated_at = now()
   returning scene.id into v_scene_id;
 
   insert into public.study_scene_embeddings as scene_embedding (scene_id, user_id, embedding, model)

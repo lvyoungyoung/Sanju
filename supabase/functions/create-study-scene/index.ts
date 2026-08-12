@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
           error: "Failed to create study scene",
           // Staging is a controlled test environment. Returning the database
           // diagnostic here avoids hiding migration or function-signature bugs.
-          ...(req.headers.get("host")?.startsWith("api-staging.") ? { diagnostic } : {}),
+          ...(isStagingRequest(req) ? { diagnostic } : {}),
         },
         500
       )
@@ -158,4 +158,14 @@ function jsonResponse(data: unknown, status = 200) {
     status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   })
+}
+
+function isStagingRequest(req: Request): boolean {
+  const hosts = [
+    req.headers.get("host"),
+    req.headers.get("x-forwarded-host"),
+    req.headers.get("origin"),
+  ].filter((value): value is string => Boolean(value))
+
+  return hosts.some((value) => value.includes("api-staging.sanju.cc"))
 }
