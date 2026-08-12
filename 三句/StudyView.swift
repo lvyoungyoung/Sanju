@@ -8,6 +8,8 @@ struct StudyView: View {
     @State private var isShowingCreateScene = false
     @State private var newSceneName = ""
     @State private var isCreatingScene = false
+    @State private var scenePendingDeletion: UserStudySceneSummary?
+    @State private var isDeletingScene = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -62,6 +64,23 @@ struct StudyView: View {
             }
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert(
+            L10n.string("study.scene.delete_confirmation_title", "删除这个学习场景？"),
+            isPresented: sceneDeletionAlertBinding,
+            presenting: scenePendingDeletion
+        ) { scene in
+            Button(L10n.string("common.delete", "删除"), role: .destructive) {
+                Task { await deleteScene(scene) }
+            }
+            Button(L10n.string("common.cancel", "取消"), role: .cancel) {}
+        } message: { _ in
+            Text(
+                L10n.string(
+                    "study.scene.delete_confirmation_message",
+                    "删除后，该场景的匹配结果和学习记录将被清除，原始回忆和句子不会受到影响。"
+                )
+            )
         }
         .fullScreenCover(item: $topicSession) { session in
             SentenceStudySessionView(
@@ -282,10 +301,25 @@ struct StudyView: View {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                 .stroke(AppStroke.subtle, lineWidth: 1)
         }
+        .contextMenu {
+            Button(role: .destructive) {
+                scenePendingDeletion = scene
+            } label: {
+                Label(
+                    L10n.string("study.scene.delete", "删除学习场景"),
+                    systemImage: "trash"
+                )
+            }
+        }
+        .disabled(isDeletingScene)
     }
 
     private var createSceneButton: some View {
         Button {
+            guard appModel.isSignedIn else {
+                appModel.isShowingSignInSheet = true
+                return
+            }
             newSceneName = ""
             isShowingCreateScene = true
         } label: {
@@ -331,6 +365,17 @@ struct StudyView: View {
         )
     }
 
+    private var sceneDeletionAlertBinding: Binding<Bool> {
+        Binding(
+            get: { scenePendingDeletion != nil },
+            set: { isPresented in
+                if !isPresented {
+                    scenePendingDeletion = nil
+                }
+            }
+        )
+    }
+
     private func action(for summary: SentenceStudyTopicSummary) -> (title: String, isEnabled: Bool) {
         if summary.dueCount > 0 {
             return (L10n.string("study.topic.action.start", "去学习"), true)
@@ -364,6 +409,21 @@ struct StudyView: View {
         } catch {
             errorMessage = error.localizedDescription.isEmpty
                 ? L10n.string("study.scene.create_failed", "暂时无法创建学习场景，请稍后再试。")
+                : error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func deleteScene(_ scene: UserStudySceneSummary) async {
+        scenePendingDeletion = nil
+        isDeletingScene = true
+        defer { isDeletingScene = false }
+
+        do {
+            try await appModel.deleteUserStudyScene(scene)
+        } catch {
+            errorMessage = error.localizedDescription.isEmpty
+                ? L10n.string("study.scene.delete_failed", "暂时无法删除学习场景，请稍后再试。")
                 : error.localizedDescription
         }
     }

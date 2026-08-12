@@ -269,6 +269,14 @@ struct SupabaseCreateStudySceneRequest: Encodable {
     let name: String
 }
 
+struct SupabaseDeleteStudySceneRequest: Encodable {
+    let sceneID: String
+
+    enum CodingKeys: String, CodingKey {
+        case sceneID = "p_scene_id"
+    }
+}
+
 struct SupabaseStudySceneQueueRequest: Encodable {
     let sceneID: String
     let limit: Int

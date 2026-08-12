@@ -1415,13 +1415,7 @@ extension AppModel {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
             refreshLocalSentenceStudyTopicSummaries()
-            if isNetworkAvailable,
-               let session = try? await ensureValidSession(),
-               session.isAnonymous {
-                userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
-            } else {
-                userStudySceneSummaries = []
-            }
+            userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
             return
         }
@@ -1456,6 +1450,11 @@ extension AppModel {
     }
 
     func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
+        guard isSignedIn else {
+            isShowingSignInSheet = true
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+
         guard isNetworkAvailable else {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }
@@ -1468,6 +1467,26 @@ extension AppModel {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
         return scene
+    }
+
+    func deleteUserStudyScene(_ scene: UserStudySceneSummary) async throws {
+        guard isSignedIn else {
+            isShowingSignInSheet = true
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+
+        guard isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+
+        let session = try await ensureValidSession()
+        guard !session.isAnonymous else {
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+
+        try await supabaseService.deleteUserStudyScene(session: session, sceneID: scene.id)
+        userStudySceneSummaries.removeAll { $0.id == scene.id }
+        await refreshSentenceStudyDueCount()
     }
 
     func loadSentenceStudyTopicSession(
@@ -1543,6 +1562,10 @@ extension AppModel {
         }
 
         let session = try await ensureValidSession()
+        guard !session.isAnonymous else {
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+
         let queue = try await supabaseService.fetchUserStudySceneQueue(
             session: session,
             sceneID: scene.id,

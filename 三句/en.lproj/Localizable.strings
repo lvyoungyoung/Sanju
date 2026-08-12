@@ -305,6 +305,11 @@
 "study.scene.create_hint" = "For example: beach trips, meeting friends, rainy-day commutes";
 "study.scene.create_title" = "Create My Study Scene";
 "study.scene.creating" = "Organizing your scene...";
+"study.scene.delete" = "Delete Study Scene";
+"study.scene.delete_confirmation_message" = "This removes the scene's matches and learning progress. Your original memories and sentences will remain.";
+"study.scene.delete_confirmation_title" = "Delete this study scene?";
+"study.scene.delete_failed" = "Unable to delete this study scene right now. Please try again later.";
+"study.error.sign_in_required" = "Sign in to create your own study scenes.";
 "study.scene.action.upload" = "Upload";
 "study.scene.empty.action_hint" = "There are no sentences in this scene yet. Upload a related photo to add some.";
 "study.scene.my_scenes" = "My Study Scenes";

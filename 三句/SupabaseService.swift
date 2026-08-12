@@ -94,6 +94,10 @@ protocol SupabaseServicing {
         session: SupabaseSession,
         name: String
     ) async throws -> UserStudySceneSummary
+    func deleteUserStudyScene(
+        session: SupabaseSession,
+        sceneID: UUID
+    ) async throws
     func fetchSentenceStudyTopicQueue(
         session: SupabaseSession,
         topic: SentenceStudyTopic,
@@ -887,6 +891,19 @@ struct SupabaseService: SupabaseServicing {
             throw SupabaseServiceError.invalidResponse
         }
         return scene
+    }
+
+    func deleteUserStudyScene(
+        session: SupabaseSession,
+        sceneID: UUID
+    ) async throws {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/delete_study_scene",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseDeleteStudySceneRequest(sceneID: sceneID.uuidString.lowercased())
+        )
+        _ = try await performWithoutBody(request)
     }
 
     func fetchSentenceStudyTopicQueue(

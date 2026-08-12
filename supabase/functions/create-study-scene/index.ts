@@ -49,6 +49,10 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Invalid JWT" }, 401)
     }
 
+    if (user.is_anonymous === true) {
+      return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
+    }
+
     const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
     const { data, error } = await adminClient.rpc("create_study_scene_with_embedding", {
       p_user_id: user.id,
