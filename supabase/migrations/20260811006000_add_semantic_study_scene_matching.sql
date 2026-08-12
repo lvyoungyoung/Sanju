@@ -103,23 +103,23 @@ as $$
       and scene.user_id = p_user_id
   )
   select
-    id,
-    name,
-    count(sentence_id)::integer,
-    count(sentence_id) filter (
-      where (last_studied_on is null or last_studied_on < (now() at time zone 'Asia/Shanghai')::date)
-        and (progress_id is null or (next_review_at at time zone 'Asia/Shanghai')::date <= (now() at time zone 'Asia/Shanghai')::date)
+    scene_sentences.id,
+    scene_sentences.name,
+    count(scene_sentences.sentence_id)::integer,
+    count(scene_sentences.sentence_id) filter (
+      where (scene_sentences.last_studied_on is null or scene_sentences.last_studied_on < (now() at time zone 'Asia/Shanghai')::date)
+        and (scene_sentences.progress_id is null or (scene_sentences.next_review_at at time zone 'Asia/Shanghai')::date <= (now() at time zone 'Asia/Shanghai')::date)
     )::integer,
-    count(sentence_id) filter (where correct_count > 0)::integer,
-    count(sentence_id) filter (where last_studied_on = (now() at time zone 'Asia/Shanghai')::date)::integer,
+    count(scene_sentences.sentence_id) filter (where scene_sentences.correct_count > 0)::integer,
+    count(scene_sentences.sentence_id) filter (where scene_sentences.last_studied_on = (now() at time zone 'Asia/Shanghai')::date)::integer,
     coalesce(round(avg(case
-      when correct_count <= 0 then 0
-      when correct_count <= 2 then 40
-      when correct_count <= 4 then 70
+      when scene_sentences.correct_count <= 0 then 0
+      when scene_sentences.correct_count <= 2 then 40
+      when scene_sentences.correct_count <= 4 then 70
       else 100
     end))::integer, 0)
   from scene_sentences
-  group by id, name;
+  group by scene_sentences.id, scene_sentences.name;
 $$;
 
 create or replace function public.refresh_semantic_study_scene_matches_for_owner(

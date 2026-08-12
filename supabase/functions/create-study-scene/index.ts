@@ -58,8 +58,22 @@ Deno.serve(async (req) => {
     })
 
     if (error) {
-      console.error("[create-study-scene] database update failed", error.message)
-      return jsonResponse({ error: "Failed to create study scene" }, 500)
+      const diagnostic = {
+        code: error.code ?? null,
+        message: error.message,
+        details: error.details ?? null,
+        hint: error.hint ?? null,
+      }
+      console.error("[create-study-scene] database update failed", JSON.stringify(diagnostic))
+      return jsonResponse(
+        {
+          error: "Failed to create study scene",
+          // Staging is a controlled test environment. Returning the database
+          // diagnostic here avoids hiding migration or function-signature bugs.
+          ...(req.headers.get("host")?.startsWith("api-staging.") ? { diagnostic } : {}),
+        },
+        500
+      )
     }
 
     const scene = Array.isArray(data) ? data[0] : data
