@@ -258,7 +258,9 @@ extension AppModel {
         if isAnonymous {
             let localSentences = generationResult.memory.sentences.map { sentence in
                 SentenceRecord(
-                    id: UUID(),
+                    // Keep the server-issued ID so its staged anonymous embedding can
+                    // be promoted when this memory is copied into an account later.
+                    id: sentence.id,
                     english: sentence.english,
                     chinese: sentence.chinese,
                     isFavorite: sentence.isFavorite,

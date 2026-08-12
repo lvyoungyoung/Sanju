@@ -10,7 +10,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Method Not Allowed" }, 405)
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")
+    const supabaseUrl = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -105,7 +105,9 @@ Deno.serve(async (req) => {
         createdAt: job.created_at,
         tags: Array.isArray(job.tags) ? job.tags : [],
         sentences: sentences.map((sentence: any) => ({
-          id: crypto.randomUUID(),
+          // Completed guest jobs already contain server-issued sentence IDs. Preserve
+          // them so a recovered local memory keeps its staged semantic embedding.
+          id: isUUID(sentence?.id) ? sentence.id : crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
           is_favorite: false,
@@ -135,4 +137,9 @@ function jsonResponse(data: unknown, status = 200) {
       "Content-Type": "application/json; charset=utf-8",
     },
   })
+}
+
+function isUUID(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }

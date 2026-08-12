@@ -12,7 +12,7 @@ const MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 Deno.serve(async (req) => {
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")
+    const supabaseUrl = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 

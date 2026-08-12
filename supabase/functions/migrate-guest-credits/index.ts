@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Method Not Allowed" }, 405)
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")
+    const supabaseUrl = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 

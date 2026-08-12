@@ -498,7 +498,9 @@ Deno.serve(async (req) => {
     const mimoBaseURL = Deno.env.get("MIMO_BASE_URL")
     const kimiApiKey = Deno.env.get("KIMI_API_KEY")
     const kimiBaseURL = Deno.env.get("KIMI_BASE_URL")
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")
+    // Use the project-local gateway inside Edge Runtime. Public URL loopback
+    // can time out after infrastructure upgrades even while client traffic works.
+    const supabaseUrl = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
     const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 
@@ -915,6 +917,11 @@ Deno.serve(async (req) => {
         provider,
         mimoFailureReason,
       })
+
+      // Anonymous memories do not have memory_sentences rows until they are
+      // copied into an account. Keep vectors by their stable sentence IDs now;
+      // the database promotes them automatically when that copy is inserted.
+      await stageGuestSentenceEmbeddings(adminClient, user.id, guestJobID!, finalizedSentences)
 
       return jsonResponse({
         memory: {
@@ -1565,65 +1572,12 @@ async function indexGeneratedSentencesForStudyScenes(
   userID: string,
   sentences: FinalizedSentence[]
 ): Promise<void> {
-  const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
-  const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
   if (sentences.length === 0) {
     return
   }
 
-  if (!apiKey || !embeddingURL) {
-    console.error("[generate-memory-v2] semantic indexing skipped: missing DashScope embedding configuration")
-    return
-  }
-
   try {
-    const response = await fetchWithTimeout(
-      embeddingURL,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "qwen3.7-text-embedding",
-          input: {
-            texts: sentences.map(
-              (sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`
-            ),
-          },
-          parameters: {
-            dimension: 1024,
-            output_type: "dense",
-            text_type: "document",
-          },
-        }),
-      },
-      8_000
-    )
-    const rawText = await response.text()
-    if (!response.ok) {
-      throw new Error(`Embedding request failed: HTTP ${response.status}`)
-    }
-
-    const payload = JSON.parse(rawText)
-    const embeddings = Array.isArray(payload?.data)
-      ? payload.data.map((item: any) => item?.embedding)
-      : Array.isArray(payload?.output?.embeddings)
-        ? payload.output.embeddings.map((item: any) => item?.embedding)
-        : []
-
-    if (
-      embeddings.length !== sentences.length ||
-      embeddings.some(
-        (embedding: unknown) =>
-          !Array.isArray(embedding) ||
-          embedding.length !== 1024 ||
-          !embedding.every((value) => typeof value === "number" && Number.isFinite(value))
-      )
-    ) {
-      throw new Error("Embedding response had an invalid vector")
-    }
+    const embeddings = await fetchSentenceEmbeddings(sentences)
 
     const { error: upsertError } = await adminClient.from("sentence_embeddings").upsert(
       sentences.map((sentence, index) => ({
@@ -1659,6 +1613,98 @@ async function indexGeneratedSentencesForStudyScenes(
       error instanceof Error ? error.message : String(error)
     )
   }
+}
+
+async function stageGuestSentenceEmbeddings(
+  adminClient: any,
+  userID: string,
+  guestJobID: string,
+  sentences: FinalizedSentence[]
+): Promise<void> {
+  if (sentences.length === 0) {
+    return
+  }
+
+  try {
+    const embeddings = await fetchSentenceEmbeddings(sentences)
+    const { error } = await adminClient.from("guest_sentence_embeddings").upsert(
+      sentences.map((sentence, index) => ({
+        sentence_id: sentence.id,
+        guest_user_id: userID,
+        guest_job_id: guestJobID,
+        embedding: embeddings[index],
+        model: "qwen3.7-text-embedding",
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "sentence_id" }
+    )
+    if (error) {
+      throw new Error(`Guest embedding storage failed: ${error.message}`)
+    }
+  } catch (error) {
+    console.error(
+      "[generate-memory-v2] anonymous semantic sentence staging failed",
+      error instanceof Error ? error.message : String(error)
+    )
+  }
+}
+
+async function fetchSentenceEmbeddings(sentences: FinalizedSentence[]): Promise<number[][]> {
+  const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
+  const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
+  if (!apiKey || !embeddingURL) {
+    throw new Error("Missing DashScope embedding configuration")
+  }
+
+  const response = await fetchWithTimeout(
+    embeddingURL,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "qwen3.7-text-embedding",
+        input: {
+          texts: sentences.map(
+            (sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`
+          ),
+        },
+        parameters: {
+          dimension: 1024,
+          output_type: "dense",
+          text_type: "document",
+        },
+      }),
+    },
+    8_000
+  )
+  const rawText = await response.text()
+  if (!response.ok) {
+    throw new Error(`Embedding request failed: HTTP ${response.status}`)
+  }
+
+  const payload = JSON.parse(rawText)
+  const embeddings = Array.isArray(payload?.data)
+    ? payload.data.map((item: any) => item?.embedding)
+    : Array.isArray(payload?.output?.embeddings)
+      ? payload.output.embeddings.map((item: any) => item?.embedding)
+      : []
+
+  if (
+    embeddings.length !== sentences.length ||
+    embeddings.some(
+      (embedding: unknown) =>
+        !Array.isArray(embedding) ||
+        embedding.length !== 1024 ||
+        !embedding.every((value) => typeof value === "number" && Number.isFinite(value))
+    )
+  ) {
+    throw new Error("Embedding response had an invalid vector")
+  }
+
+  return embeddings as number[][]
 }
 
 async function updateMemoryGenerationDiagnostics(
@@ -2126,7 +2172,7 @@ function buildModerationFunctionURL(): string | null {
     return configuredURL
   }
 
-  const supabaseURL = Deno.env.get("SUPABASE_URL")?.trim()
+  const supabaseURL = (Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL"))?.trim()
   if (!supabaseURL) {
     return null
   }
