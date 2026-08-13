@@ -3,7 +3,10 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 const MIMO_TIMEOUT_MS = 30_000
 const KIMI_TIMEOUT_MS = 40_000
 const MAX_SOURCE_SENTENCES = 60
-const MAX_EXPRESSIONS_PER_KIND = 6
+const MAX_EXPRESSIONS_PER_KIND = 20
+// Include extraction-rule changes in the fingerprint so existing topics refresh
+// instead of continuing to show a result generated with older limits or prompts.
+const EXTRACTION_CACHE_VERSION = "semantic-topic-expressions-v3"
 
 type ExpressionKind = "word" | "phrase"
 
@@ -99,9 +102,9 @@ Deno.serve(async (req) => {
     }
 
     const fingerprint = await sha256(
-      sourceSentences
+      [EXTRACTION_CACHE_VERSION, ...sourceSentences
         .map((sentence) => `${topicName}|${sentence.id}|${sentence.english}|${sentence.chinese}`)
-        .join("\n")
+      ].join("\n")
     )
 
     const { data: cachedExpressions, error: cachedError } = await userClient.rpc(
@@ -303,7 +306,7 @@ function buildExtractionPrompt(topicName: string, sentences: SourceSentence[]): 
 
 Topic name: ${topicName}
 
-Read the source sentences below. Select the English words and natural phrases that are most useful for learning THIS topic. Prioritize expressions that are concrete, reusable in similar real-life situations, and representative of the topic. Do NOT require literal repetition across multiple sentences: semantic relevance and learning value matter more than frequency.
+Read the source sentences below. Select the English words and natural phrases that are IMPORTANT and COMMONLY USEFUL specifically in THIS topic. Prioritize the vocabulary and expressions a learner would repeatedly need when describing, understanding, or talking about this kind of scene. Choose concrete, reusable, topic-representative language rather than generic English that could fit almost any scene. Do NOT require literal repetition across multiple sentences: semantic relevance, topic importance, and learning value matter more than frequency.
 
 Every selected word or phrase must occur naturally in at least one source sentence, and its sentence_ids must point to one or two source sentences where it really appears. Do not include articles, pronouns, auxiliary verbs, isolated prepositions, proper names, or weak one-off details. Do not invent expressions that are absent from the source sentences.
 
@@ -316,7 +319,7 @@ Rules:
 3. Chinese definitions must be concise and natural.
 4. sentence_ids must reference only the source sentence IDs below; each item needs 1 or 2 different IDs.
 5. A word or phrase must genuinely occur in every sentence ID you give it, allowing only basic inflection changes for single words.
-6. Prefer learning value over frequency. A strong topic-specific expression that appears once is better than a generic word that repeats.
+6. Prefer words and phrases that are important and commonly useful for this specific topic. A strong topic-specific expression that appears once is better than generic English that repeats.
 7. Omit a category instead of inventing weak items.
 
 Source sentences:
