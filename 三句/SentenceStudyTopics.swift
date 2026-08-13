@@ -136,6 +136,34 @@ struct SentenceStudyTopicSession: Identifiable {
     var id: String { topic.rawValue }
 }
 
+enum StudyTopicExpressionKind: String, Codable, Hashable, CaseIterable {
+    case word
+    case phrase
+}
+
+struct StudyTopicExpressionExample: Identifiable, Hashable {
+    let id: UUID
+    let english: String
+    let chinese: String
+}
+
+struct StudyTopicExpression: Identifiable, Hashable {
+    let id: UUID
+    let kind: StudyTopicExpressionKind
+    let english: String
+    let chinese: String
+    let partOfSpeech: String?
+    let occurrenceCount: Int
+    let examples: [StudyTopicExpressionExample]
+}
+
+struct StudyTopicExpressionSourceSentence: Encodable {
+    let id: UUID
+    let english: String
+    let chinese: String
+}
+
+
 enum SentenceStudyTopicLoadingError: LocalizedError {
     case networkUnavailable
     case signInRequired

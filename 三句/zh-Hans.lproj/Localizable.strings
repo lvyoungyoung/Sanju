@@ -314,6 +314,16 @@
 "study.scene.detail.loading_title" = "正在寻找这个主题的句子";
 "study.scene.detail.sentence_count" = "共 %d 句";
 "study.scene.detail.start" = "去学习";
+"study.scene.detail.tab.sentences" = "句子";
+"study.scene.detail.tab.words" = "常用单词";
+"study.scene.detail.tab.phrases" = "常用短语";
+"study.scene.detail.expressions_loading_title" = "正在整理常用表达";
+"study.scene.detail.expressions_loading_subtitle" = "从你的句子里挑出值得记住的内容";
+"study.scene.detail.expressions_empty_title" = "再积累几句，这里会慢慢整理出来";
+"study.scene.detail.expressions_empty_subtitle" = "常用单词和短语会从这个主题的句子中提炼出来。";
+"study.scene.detail.expression_count" = "在本主题中出现 %d 次";
+"study.scene.detail.play_pronunciation" = "播放发音";
+"study.scene.detail.view_examples" = "查看例句";
 "auth.delete_account.guest_noop" = "当前是匿名状态，无需删除账号。";
 "auth.nickname_update.sign_in_required" = "请先登录后再修改昵称。";
 "auth.signup.confirm_email" = "注册成功，请前往邮箱完成验证后再登录。";

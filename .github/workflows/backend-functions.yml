@@ -38,6 +38,7 @@ on:
           - confirm-purchase
           - create-study-scene
           - delete-account
+          - extract-study-topic-expressions
           - generate-memory-v2
           - migrate-guest-credits
           - moderate-image-v1

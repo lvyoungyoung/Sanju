@@ -9,8 +9,31 @@ struct StudySceneDetailView: View {
     @State private var isStartingStudy = false
     @State private var studySession: SentenceStudyTopicSession?
     @State private var errorMessage: String?
+    @State private var selectedSection: DetailSection = .sentences
+    @State private var expressions: [StudyTopicExpression] = []
+    @State private var isLoadingExpressions = false
+    @State private var didLoadExpressions = false
 
     private var title: String { route.title }
+
+    private enum DetailSection: String, CaseIterable, Identifiable {
+        case sentences
+        case words
+        case phrases
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .sentences:
+                return L10n.string("study.scene.detail.tab.sentences", "句子")
+            case .words:
+                return L10n.string("study.scene.detail.tab.words", "常用单词")
+            case .phrases:
+                return L10n.string("study.scene.detail.tab.phrases", "常用短语")
+            }
+        }
+    }
 
     private var items: [StudySceneDetailSentence] {
         switch route {
@@ -41,6 +64,11 @@ struct StudySceneDetailView: View {
         }
     }
 
+    private var displayedExpressions: [StudyTopicExpression] {
+        let kind: StudyTopicExpressionKind = selectedSection == .words ? .word : .phrase
+        return expressions.filter { $0.kind == kind }
+    }
+
     var body: some View {
         Group {
             if isLoading {
@@ -58,6 +86,10 @@ struct StudySceneDetailView: View {
         }
         .refreshable {
             await loadDetail()
+        }
+        .onChange(of: selectedSection) { _, section in
+            guard section != .sentences else { return }
+            Task { await loadExpressionsIfNeeded() }
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -97,35 +129,100 @@ struct StudySceneDetailView: View {
     private var detailContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
-                sceneHeader
+                sectionPicker
 
-                if items.isEmpty {
-                    EmptyStateView(
-                        title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
-                        subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
-                        systemImage: "text.badge.xmark"
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 60)
-                } else {
-                    LazyVStack(spacing: AppSpacing.medium) {
-                        ForEach(items) { item in
-                            StudySceneDetailSentenceCard(
-                                item: item,
-                                canUnfavorite: route.isFavorites
-                            )
-                        }
-                        ContentFooterHint(isLoading: false)
-                            .padding(.top, AppSpacing.small)
-                    }
+                switch selectedSection {
+                case .sentences:
+                    sentenceContent
+                case .words, .phrases:
+                    expressionContent
                 }
             }
             .padding(.horizontal, AppSpacing.xLarge)
             .padding(.top, AppSpacing.xLarge)
-            .padding(.bottom, 92)
+            .padding(.bottom, selectedSection == .sentences ? 92 : AppSpacing.xLarge)
         }
         .safeAreaInset(edge: .bottom) {
-            studyButton
+            if selectedSection == .sentences {
+                studyButton
+            }
+        }
+    }
+
+    private var sectionPicker: some View {
+        HStack(spacing: AppSpacing.xSmall) {
+            ForEach(DetailSection.allCases) { section in
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        selectedSection = section
+                    }
+                } label: {
+                    Text(section.title)
+                        .font(.system(size: AppFontSize.body, weight: .semibold))
+                        .foregroundStyle(selectedSection == section ? AppTextColor.primary : AppTextColor.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: AppControlHeight.compact)
+                        .background(
+                            selectedSection == section ? AppSurfaceColor.card : Color.clear,
+                            in: Capsule()
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(AppSpacing.xSmall)
+        .background(AppSurfaceColor.subtleFill, in: Capsule())
+    }
+
+    @ViewBuilder
+    private var sentenceContent: some View {
+        sceneHeader
+
+        if items.isEmpty {
+            EmptyStateView(
+                title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
+                subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
+                systemImage: "text.badge.xmark"
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 60)
+        } else {
+            LazyVStack(spacing: AppSpacing.medium) {
+                ForEach(items) { item in
+                    StudySceneDetailSentenceCard(
+                        item: item,
+                        canUnfavorite: route.isFavorites
+                    )
+                }
+                ContentFooterHint(isLoading: false)
+                    .padding(.top, AppSpacing.small)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var expressionContent: some View {
+        if isLoadingExpressions {
+            SyncLoadingState(
+                title: L10n.string("study.scene.detail.expressions_loading_title", "正在整理常用表达"),
+                subtitle: L10n.string("study.scene.detail.expressions_loading_subtitle", "从你的句子里挑出值得记住的内容")
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 88)
+        } else if displayedExpressions.isEmpty {
+            EmptyStateView(
+                title: L10n.string("study.scene.detail.expressions_empty_title", "再积累几句，这里会慢慢整理出来"),
+                subtitle: L10n.string("study.scene.detail.expressions_empty_subtitle", "常用单词和短语会从这个主题的句子中提炼出来。"),
+                systemImage: "text.word.spacing"
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 70)
+        } else {
+            LazyVStack(spacing: AppSpacing.medium) {
+                ForEach(displayedExpressions) { expression in
+                    StudyTopicExpressionCard(expression: expression)
+                }
+            }
         }
     }
 
@@ -189,6 +286,8 @@ struct StudySceneDetailView: View {
     private func loadDetail() async {
         isLoading = true
         defer { isLoading = false }
+        didLoadExpressions = false
+        expressions = []
 
         switch route {
         case .favorites:
@@ -199,8 +298,39 @@ struct StudySceneDetailView: View {
             } catch {
                 errorMessage = error.localizedDescription.isEmpty
                     ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
-                    : error.localizedDescription
+                : error.localizedDescription
             }
+        }
+
+        if selectedSection != .sentences {
+            await loadExpressionsIfNeeded()
+        }
+    }
+
+    @MainActor
+    private func loadExpressionsIfNeeded() async {
+        guard !didLoadExpressions, !isLoadingExpressions else { return }
+        didLoadExpressions = true
+        guard !items.isEmpty else { return }
+
+        isLoadingExpressions = true
+        defer { isLoadingExpressions = false }
+
+        do {
+            expressions = try await appModel.extractStudyTopicExpressions(
+                topicKey: route.expressionTopicKey,
+                sourceSentences: items.map {
+                    StudyTopicExpressionSourceSentence(
+                        id: $0.id,
+                        english: $0.english,
+                        chinese: $0.chinese
+                    )
+                }
+            )
+        } catch {
+            errorMessage = error.localizedDescription.isEmpty
+                ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
+                : error.localizedDescription
         }
     }
 
@@ -237,6 +367,15 @@ private extension StudySceneDetailRoute {
             return true
         }
         return false
+    }
+
+    var expressionTopicKey: String {
+        switch self {
+        case .favorites:
+            return "favorites"
+        case let .userScene(scene):
+            return "scene:\(scene.id.uuidString.lowercased())"
+        }
     }
 }
 
@@ -320,4 +459,98 @@ private struct StudySceneDetailSentenceCard: View {
         formatter.setLocalizedDateFormatFromTemplate("yMMMd")
         return formatter
     }()
+}
+
+private struct StudyTopicExpressionCard: View {
+    @EnvironmentObject private var appModel: AppModel
+    let expression: StudyTopicExpression
+    @State private var showsExamples = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.large) {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                    Text(expression.english)
+                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                        .foregroundStyle(AppTextColor.primary)
+
+                    if let partOfSpeech = expression.partOfSpeech,
+                       !partOfSpeech.isEmpty {
+                        Text(partOfSpeech)
+                            .font(.system(size: AppFontSize.caption, weight: .medium))
+                            .foregroundStyle(AppTextColor.tertiary)
+                    }
+                }
+
+                Spacer(minLength: AppSpacing.medium)
+
+                Button {
+                    appModel.speech.speak(expression.english)
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.system(size: AppIconSize.regular, weight: .semibold))
+                        .foregroundStyle(Color.orange)
+                        .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
+                        .background(AppSurfaceColor.elevated, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("study.scene.detail.play_pronunciation", "播放发音"))
+            }
+
+            Text(expression.chinese)
+                .font(.system(size: AppFontSize.sectionLabel))
+                .foregroundStyle(AppTextColor.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(
+                L10n.string(
+                    "study.scene.detail.expression_count",
+                    "在本主题中出现 %d 次",
+                    expression.occurrenceCount
+                )
+            )
+            .font(.system(size: AppFontSize.caption, weight: .medium))
+            .foregroundStyle(AppTextColor.tertiary)
+
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showsExamples.toggle()
+                }
+            } label: {
+                HStack(spacing: AppSpacing.small) {
+                    Text(L10n.string("study.scene.detail.view_examples", "查看例句"))
+                    Image(systemName: showsExamples ? "chevron.up" : "chevron.down")
+                }
+                .font(.system(size: AppFontSize.body, weight: .semibold))
+                .foregroundStyle(Color.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            if showsExamples {
+                VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                    ForEach(expression.examples) { example in
+                        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+                            Text(example.english)
+                                .font(.system(size: AppFontSize.body, weight: .medium))
+                                .foregroundStyle(AppTextColor.primary)
+                            Text(example.chinese)
+                                .font(.system(size: AppFontSize.caption))
+                                .foregroundStyle(AppTextColor.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if example.id != expression.examples.last?.id {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(AppSpacing.large)
+                .background(AppSurfaceColor.subtleFill, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+            }
+        }
+        .padding(AppSpacing.xLarge)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .appCardShadow()
+    }
 }

@@ -1582,6 +1582,22 @@ extension AppModel {
         )
     }
 
+    func extractStudyTopicExpressions(
+        topicKey: String,
+        sourceSentences: [StudyTopicExpressionSourceSentence]
+    ) async throws -> [StudyTopicExpression] {
+        guard isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+
+        let session = try await ensureValidSession()
+        return try await supabaseService.extractStudyTopicExpressions(
+            session: session,
+            topicKey: topicKey,
+            sourceSentences: session.isAnonymous ? sourceSentences : nil
+        )
+    }
+
     func refreshFavoriteSentenceStudyCounts() async {
         let favoriteSentenceIDs = currentFavoriteSentenceIDs()
         guard !favoriteSentenceIDs.isEmpty else {

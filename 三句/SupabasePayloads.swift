@@ -277,6 +277,46 @@ struct SupabaseStudySceneQueueRequest: Encodable {
     }
 }
 
+struct SupabaseExtractStudyTopicExpressionsRequest: Encodable {
+    let topicKey: String
+    let sourceSentences: [StudyTopicExpressionSourceSentence]?
+
+    enum CodingKeys: String, CodingKey {
+        case topicKey
+        case sourceSentences
+    }
+}
+
+struct SupabaseStudyTopicExpressionResponse: Decodable {
+    let expressions: [SupabaseStudyTopicExpressionRecord]
+}
+
+struct SupabaseStudyTopicExpressionRecord: Decodable {
+    let id: String
+    let kind: String
+    let english: String
+    let chinese: String
+    let partOfSpeech: String?
+    let occurrenceCount: Int
+    let examples: [SupabaseStudyTopicExpressionExampleRecord]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case kind
+        case english
+        case chinese
+        case partOfSpeech = "part_of_speech"
+        case occurrenceCount = "occurrence_count"
+        case examples
+    }
+}
+
+struct SupabaseStudyTopicExpressionExampleRecord: Decodable {
+    let id: String
+    let english: String
+    let chinese: String
+}
+
 struct SupabaseSentenceStudyResultRequest: Encodable {
     let sentenceID: String
     let wasCorrect: Bool

@@ -110,6 +110,11 @@ protocol SupabaseServicing {
         sceneID: UUID,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
+    func extractStudyTopicExpressions(
+        session: SupabaseSession,
+        topicKey: String,
+        sourceSentences: [StudyTopicExpressionSourceSentence]?
+    ) async throws -> [StudyTopicExpression]
     func fetchSentenceStudyCounts(
         session: SupabaseSession,
         sentenceIDs: [UUID]
@@ -923,6 +928,24 @@ struct SupabaseService: SupabaseServicing {
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
     }
 
+    func extractStudyTopicExpressions(
+        session: SupabaseSession,
+        topicKey: String,
+        sourceSentences: [StudyTopicExpressionSourceSentence]?
+    ) async throws -> [StudyTopicExpression] {
+        let request = try makeRequest(
+            path: "/functions/v1/extract-study-topic-expressions",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseExtractStudyTopicExpressionsRequest(
+                topicKey: topicKey,
+                sourceSentences: sourceSentences
+            )
+        )
+        let response: SupabaseStudyTopicExpressionResponse = try await perform(request)
+        return response.expressions.compactMap(Self.makeStudyTopicExpression(from:))
+    }
+
     func fetchSentenceStudyCounts(
         session: SupabaseSession,
         sentenceIDs: [UUID]
@@ -1155,6 +1178,36 @@ struct SupabaseService: SupabaseServicing {
                 reviewableTodayCount: record.reviewableTodayCount,
                 masteryScore: record.masteryScore
             )
+        )
+    }
+
+    private static func makeStudyTopicExpression(
+        from record: SupabaseStudyTopicExpressionRecord
+    ) -> StudyTopicExpression? {
+        guard let id = UUID(uuidString: record.id),
+              let kind = StudyTopicExpressionKind(rawValue: record.kind),
+              !record.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !record.chinese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+
+        let examples = record.examples.compactMap { example -> StudyTopicExpressionExample? in
+            guard let id = UUID(uuidString: example.id) else { return nil }
+            return StudyTopicExpressionExample(
+                id: id,
+                english: example.english,
+                chinese: example.chinese
+            )
+        }
+
+        return StudyTopicExpression(
+            id: id,
+            kind: kind,
+            english: record.english,
+            chinese: record.chinese,
+            partOfSpeech: record.partOfSpeech,
+            occurrenceCount: record.occurrenceCount,
+            examples: examples
         )
     }
 
