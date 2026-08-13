@@ -34,7 +34,7 @@ const MEMORY_TAGS = [
 
 function buildPromptText(
   englishLevel: "简单" | "中等" | "高级",
-  languageStyle: "平铺直叙" | "抒情优美" | "生动活泼"
+  languageStyle: "平铺直叙" | "抒情优美"
 ): string {
   const englishLevelPrompt =
     englishLevel === "简单"
@@ -46,9 +46,7 @@ function buildPromptText(
   const languageStylePrompt =
     languageStyle === "抒情优美"
       ? "整体风格请明显更细腻、更有画面感、更有情绪和节奏。可以适度使用温柔、优美、富有氛围感的词语，让句子读起来更柔和、更有美感，但仍然要自然、准确、易懂。允许轻微的抒情和意境表达，但不要写成诗歌，不要过度夸张，不要脱离图片内容。"
-      : languageStyle === "生动活泼"
-        ? "整体风格请生动、活泼、自然，像人看到眼前画面时会脱口而出的日常英语。优先使用具体而有动作感的动词、自然的口语化搭配和有节奏感的表达。允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞，让句子更有记忆点，但幽默必须来自画面中真实可见的对比、动作或细节。不要写段子、网络梗、夸张笑话或生硬的拟人化；不要虚构图片中没有的动作、对话、情绪或细节。"
-      : "整体风格请尽量客观、直接、朴素、清楚，像日常口语或基础学习材料，不要刻意营造氛围，不要使用文学化修饰，不要写得太美，也不要加入抽象感受、联想、象征或情绪渲染。优先描述看得见的内容本身。"
+      : "整体风格请生动、活泼、自然，像人看到眼前画面时会脱口而出的日常英语。优先使用具体而有动作感的动词、自然的口语化搭配和有节奏感的表达。允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞，让句子更有记忆点，但幽默必须来自画面中真实可见的对比、动作或细节。不要写段子、网络梗、夸张笑话或生硬的拟人化；不要虚构图片中没有的动作、对话、情绪或细节。"
 
   return `
 请根据这张图片，生成三句适合英语学习的英文描述，并为每句提供对应的中文翻译。
@@ -441,7 +439,7 @@ function normalizeOptionalUUID(value: unknown): string | undefined {
 interface RequestBody {
   imageBase64: string
   englishLevel?: "简单" | "中等" | "高级"
-  languageStyle?: "平铺直叙" | "抒情优美" | "生动活泼"
+  languageStyle?: "平铺直叙" | "抒情优美"
   guestJobID?: string
   clientRequestID?: string
 }

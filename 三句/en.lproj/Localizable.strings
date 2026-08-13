@@ -55,7 +55,6 @@
 "generation_error.no_credits" = "No generation credits left. Please purchase more first.";
 "generation_error.session_unavailable" = "Unable to start a guest session. Please check your network and try again.";
 "language_style.lyrical" = "Lyrical";
-"language_style.lively" = "Lively";
 "language_style.plain" = "Plain";
 "learning_reminder.notification_body" = "Spend two minutes today practicing the sentences you saved.";
 "learning_reminder.notification_title" = "Time to study";
