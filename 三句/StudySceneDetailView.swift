@@ -88,7 +88,7 @@ struct StudySceneDetailView: View {
             await loadDetail()
         }
         .onChange(of: selectedSection) { _, section in
-            guard section != .sentences else { return }
+            guard route.supportsExpressionTabs, section != .sentences else { return }
             Task { await loadExpressionsIfNeeded() }
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
@@ -129,7 +129,9 @@ struct StudySceneDetailView: View {
     private var detailContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
-                sectionPicker
+                if route.supportsExpressionTabs {
+                    sectionPicker
+                }
 
                 switch selectedSection {
                 case .sentences:
@@ -302,7 +304,7 @@ struct StudySceneDetailView: View {
             }
         }
 
-        if selectedSection != .sentences {
+        if route.supportsExpressionTabs, selectedSection != .sentences {
             await loadExpressionsIfNeeded()
         }
     }
@@ -364,6 +366,13 @@ struct StudySceneDetailView: View {
 private extension StudySceneDetailRoute {
     var isFavorites: Bool {
         if case .favorites = self {
+            return true
+        }
+        return false
+    }
+
+    var supportsExpressionTabs: Bool {
+        if case .userScene = self {
             return true
         }
         return false
