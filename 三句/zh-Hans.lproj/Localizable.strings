@@ -55,6 +55,7 @@
 "generation_error.no_credits" = "可用生成次数不足，请先购买。";
 "generation_error.session_unavailable" = "暂时无法建立访客会话，请检查网络后重试。";
 "language_style.lyrical" = "抒情优雅";
+"language_style.lively" = "生动活泼";
 "language_style.plain" = "平铺直叙";
 "learning_reminder.notification_body" = "今天也花 2 分钟，把收藏里的句子练一遍。";
 "learning_reminder.notification_title" = "该学习啦";

@@ -333,6 +333,7 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
 enum LanguageStyle: String, CaseIterable, Codable, Identifiable {
     case plain = "平铺直叙"
     case lyrical = "抒情优美"
+    case lively = "生动活泼"
 
     var id: String { rawValue }
 
@@ -342,6 +343,8 @@ enum LanguageStyle: String, CaseIterable, Codable, Identifiable {
             return L10n.string("language_style.plain", "平铺直叙")
         case .lyrical:
             return L10n.string("language_style.lyrical", "抒情优雅")
+        case .lively:
+            return L10n.string("language_style.lively", "生动活泼")
         }
     }
 }
