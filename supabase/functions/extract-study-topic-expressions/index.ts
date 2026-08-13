@@ -1,9 +1,9 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 
-const MIMO_TIMEOUT_MS = 20_000
-const KIMI_TIMEOUT_MS = 25_000
-const MAX_SOURCE_SENTENCES = 120
-const MAX_EXPRESSIONS_PER_KIND = 12
+const MIMO_TIMEOUT_MS = 30_000
+const KIMI_TIMEOUT_MS = 40_000
+const MAX_SOURCE_SENTENCES = 60
+const MAX_EXPRESSIONS_PER_KIND = 6
 
 type ExpressionKind = "word" | "phrase"
 
@@ -217,7 +217,10 @@ async function extractWithFallback(args: {
         { role: "system", content: "You are MiMo, an AI assistant developed by Xiaomi." },
         { role: "user", content: prompt },
       ],
-      max_completion_tokens: 2048,
+      // MiMo can otherwise spend its entire response budget in reasoning_content
+      // and leave the final content empty, which is not useful to this JSON-only task.
+      thinking: { type: "disabled" },
+      max_completion_tokens: 4096,
     },
     MIMO_TIMEOUT_MS
   )
@@ -234,7 +237,7 @@ async function extractWithFallback(args: {
         { role: "user", content: prompt },
       ],
       thinking: { type: "disabled" },
-      max_completion_tokens: 2048,
+      max_completion_tokens: 4096,
     },
     KIMI_TIMEOUT_MS
   )
@@ -263,7 +266,10 @@ async function requestCompletion(
     const expressions = parseExpressions(content)
     return expressions
       ? { ok: true, expressions }
-      : { ok: false, error: "Invalid model expression response" }
+      : {
+        ok: false,
+        error: `Invalid model expression response: ${diagnosticSnippet(content ?? rawText)}`,
+      }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }
   }
@@ -281,26 +287,58 @@ Rules:
 1. "kind" is exactly "word" or "phrase".
 2. Return at most ${MAX_EXPRESSIONS_PER_KIND} words and ${MAX_EXPRESSIONS_PER_KIND} phrases.
 3. Chinese definitions must be concise and natural.
-4. sentence_ids must reference only the source sentence IDs below; each item needs 2 or 3 different IDs.
+4. sentence_ids must reference only the source sentence IDs below; each item must contain exactly 2 different IDs.
 5. A word or phrase must genuinely occur in every sentence ID you give it, allowing only basic inflection changes for single words.
 6. Omit a category instead of inventing weak items.
 
 Source sentences:
-${sentences.map((sentence) => `ID: ${sentence.id}\nEnglish: ${sentence.english}\nChinese: ${sentence.chinese}`).join("\n\n")}`
+${sentences.map((sentence) => `ID: ${sentence.id}\nEnglish: ${sentence.english}`).join("\n\n")}`
 }
 
 function parseExpressions(content: unknown): ExtractedExpression[] | null {
   if (typeof content !== "string") return null
-  const normalized = content.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/, "")
+  const normalized = content
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "")
+
+  const candidates = [normalized]
   const start = normalized.indexOf("{")
   const end = normalized.lastIndexOf("}")
-  const candidate = start >= 0 && end > start ? normalized.slice(start, end + 1) : normalized
+  if (start >= 0 && end > start) {
+    candidates.push(normalized.slice(start, end + 1))
+  }
+
+  for (const candidate of candidates) {
+    const parsed = parseExpressionPayload(candidate)
+    if (parsed) return parsed
+  }
+  return null
+}
+
+function parseExpressionPayload(candidate: string): ExtractedExpression[] | null {
   try {
-    const value = JSON.parse(candidate)
-    return Array.isArray(value?.expressions) ? value.expressions : null
+    let value: unknown = JSON.parse(candidate)
+    // Some compatible endpoints wrap an otherwise valid JSON response in a
+    // JSON string. Unwrap it once rather than failing the entire extraction.
+    if (typeof value === "string") {
+      value = JSON.parse(value)
+    }
+    return Array.isArray((value as { expressions?: unknown })?.expressions)
+      ? (value as { expressions: ExtractedExpression[] }).expressions
+      : null
   } catch {
     return null
   }
+}
+
+function diagnosticSnippet(value: unknown, maxLength = 400): string {
+  const text = typeof value === "string" ? value : JSON.stringify(value)
+  const normalized = text.replace(/\s+/g, " ").trim()
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 1)}…`
+    : normalized
 }
 
 function sanitizeExpressions(
