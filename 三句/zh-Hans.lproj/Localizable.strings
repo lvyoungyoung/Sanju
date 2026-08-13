@@ -321,7 +321,7 @@
 "study.scene.detail.expressions_loading_subtitle" = "从你的句子里挑出值得记住的内容";
 "study.scene.detail.expressions_empty_title" = "再积累几句，这里会慢慢整理出来";
 "study.scene.detail.expressions_empty_subtitle" = "常用单词和短语会从这个主题的句子中提炼出来。";
-"study.scene.detail.expression_count" = "在本主题中出现 %d 次";
+"study.scene.detail.expression_count" = "收录 %d 条例句";
 "study.scene.detail.play_pronunciation" = "播放发音";
 "study.scene.detail.view_examples" = "查看例句";
 "auth.delete_account.guest_noop" = "当前是匿名状态，无需删除账号。";

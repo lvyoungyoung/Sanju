@@ -70,10 +70,13 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Invalid JWT" }, 401)
     }
 
+    const topicName = user.is_anonymous === true
+      ? "Saved sentences"
+      : await fetchTopicName(userClient, topicKey)
     const sourceSentences = user.is_anonymous === true
       ? normalizeSourceSentences(body.sourceSentences)
       : await fetchTopicSentences(userClient, topicKey)
-    if (sourceSentences.length < 2) {
+    if (sourceSentences.length < 1) {
       return jsonResponse({ expressions: [] })
     }
 
@@ -83,6 +86,7 @@ Deno.serve(async (req) => {
         mimoBaseURL,
         kimiAPIKey,
         kimiBaseURL,
+        topicName,
         sourceSentences,
       })
       if (!result.ok) {
@@ -96,7 +100,7 @@ Deno.serve(async (req) => {
 
     const fingerprint = await sha256(
       sourceSentences
-        .map((sentence) => `${sentence.id}|${sentence.english}|${sentence.chinese}`)
+        .map((sentence) => `${topicName}|${sentence.id}|${sentence.english}|${sentence.chinese}`)
         .join("\n")
     )
 
@@ -131,6 +135,7 @@ Deno.serve(async (req) => {
       mimoBaseURL,
       kimiAPIKey,
       kimiBaseURL,
+      topicName,
       sourceSentences,
     })
     if (!result.ok) {
@@ -185,6 +190,23 @@ async function fetchTopicSentences(
   return normalizeSourceSentences(data)
 }
 
+async function fetchTopicName(userClient: any, topicKey: string): Promise<string> {
+  if (topicKey === "favorites") return "Saved sentences"
+
+  const sceneID = topicKey.slice("scene:".length)
+  const { data, error } = await userClient
+    .from("study_scenes")
+    .select("name")
+    .eq("id", sceneID)
+    .maybeSingle()
+  if (error) {
+    throw new Error(`Study topic name query failed: ${error.message}`)
+  }
+
+  const name = typeof data?.name === "string" ? data.name.trim() : ""
+  return name || "Personal study topic"
+}
+
 function normalizeSourceSentences(value: unknown): SourceSentence[] {
   if (!Array.isArray(value)) return []
   const seen = new Set<string>()
@@ -205,9 +227,10 @@ async function extractWithFallback(args: {
   mimoBaseURL: string
   kimiAPIKey: string
   kimiBaseURL: string
+  topicName: string
   sourceSentences: SourceSentence[]
 }): Promise<{ ok: true; expressions: ExtractedExpression[] } | { ok: false; error: string }> {
-  const prompt = buildExtractionPrompt(args.sourceSentences)
+  const prompt = buildExtractionPrompt(args.topicName, args.sourceSentences)
   const mimoResult = await requestCompletion(
     args.mimoBaseURL,
     { "Content-Type": "application/json", "api-key": args.mimoAPIKey },
@@ -275,10 +298,14 @@ async function requestCompletion(
   }
 }
 
-function buildExtractionPrompt(sentences: SourceSentence[]): string {
+function buildExtractionPrompt(topicName: string, sentences: SourceSentence[]): string {
   return `You are curating useful language from a user's personal study topic.
 
-Read the source sentences below. Return only high-value, reusable English vocabulary and natural phrases that repeat across at least two DIFFERENT source sentences. Do not include articles, pronouns, auxiliary verbs, generic grammar words, isolated prepositions, names, or one-off details.
+Topic name: ${topicName}
+
+Read the source sentences below. Select the English words and natural phrases that are most useful for learning THIS topic. Prioritize expressions that are concrete, reusable in similar real-life situations, and representative of the topic. Do NOT require literal repetition across multiple sentences: semantic relevance and learning value matter more than frequency.
+
+Every selected word or phrase must occur naturally in at least one source sentence, and its sentence_ids must point to one or two source sentences where it really appears. Do not include articles, pronouns, auxiliary verbs, isolated prepositions, proper names, or weak one-off details. Do not invent expressions that are absent from the source sentences.
 
 Return a JSON object only, with this exact shape:
 {"expressions":[{"kind":"word","english":"...","chinese":"...","part_of_speech":"n.","sentence_ids":["uuid","uuid"]},{"kind":"phrase","english":"...","chinese":"...","part_of_speech":"","sentence_ids":["uuid","uuid"]}]}
@@ -287,9 +314,10 @@ Rules:
 1. "kind" is exactly "word" or "phrase".
 2. Return at most ${MAX_EXPRESSIONS_PER_KIND} words and ${MAX_EXPRESSIONS_PER_KIND} phrases.
 3. Chinese definitions must be concise and natural.
-4. sentence_ids must reference only the source sentence IDs below; each item must contain exactly 2 different IDs.
+4. sentence_ids must reference only the source sentence IDs below; each item needs 1 or 2 different IDs.
 5. A word or phrase must genuinely occur in every sentence ID you give it, allowing only basic inflection changes for single words.
-6. Omit a category instead of inventing weak items.
+6. Prefer learning value over frequency. A strong topic-specific expression that appears once is better than a generic word that repeats.
+7. Omit a category instead of inventing weak items.
 
 Source sentences:
 ${sentences.map((sentence) => `ID: ${sentence.id}\nEnglish: ${sentence.english}`).join("\n\n")}`
@@ -358,10 +386,10 @@ function sanitizeExpressions(
       Array.isArray(item?.sentence_ids)
         ? item.sentence_ids.filter((id: unknown): id is string => typeof id === "string" && byID.has(id))
         : []
-    )).slice(0, 3)
+    )).slice(0, 2)
     const key = `${kind ?? ""}|${english.toLocaleLowerCase()}`
 
-    if (!kind || !english || english.length > 120 || !chinese || chinese.length > 120 || sentenceIDs.length < 2 || seen.has(key) || counts[kind] >= MAX_EXPRESSIONS_PER_KIND) {
+    if (!kind || !english || english.length > 120 || !chinese || chinese.length > 120 || sentenceIDs.length < 1 || seen.has(key) || counts[kind] >= MAX_EXPRESSIONS_PER_KIND) {
       return []
     }
     if (!sentenceIDs.every((id) => expressionOccursInSentence(english, byID.get(id)?.english ?? "", kind))) {

@@ -321,7 +321,7 @@
 "study.scene.detail.expressions_loading_subtitle" = "Picking out words and phrases worth remembering";
 "study.scene.detail.expressions_empty_title" = "Add a few more sentences and this will grow";
 "study.scene.detail.expressions_empty_subtitle" = "Useful words and phrases are distilled from this topic's sentences.";
-"study.scene.detail.expression_count" = "%d times in this topic";
+"study.scene.detail.expression_count" = "%d example(s)";
 "study.scene.detail.play_pronunciation" = "Play pronunciation";
 "study.scene.detail.view_examples" = "View examples";
 "auth.delete_account.guest_noop" = "You are currently using a guest session, so there is no account to delete.";
