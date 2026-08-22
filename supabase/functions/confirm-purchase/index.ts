@@ -4,6 +4,7 @@ import { decodeJwt, importPKCS8, SignJWT } from "npm:jose@5.9.6"
 interface ConfirmPurchaseRequest {
   transactionID: string
   productID: string
+  action?: "discard_orphaned_anonymous_purchase"
 }
 
 interface AppStoreServerConfig {
@@ -77,9 +78,15 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as ConfirmPurchaseRequest
     const transactionID = body.transactionID?.trim()
     const productID = body.productID?.trim()
+    const action = body.action?.trim()
     const credits = creditsForProductID(productID)
 
-    if (!transactionID || !productID || credits == null) {
+    if (
+      !transactionID ||
+      !productID ||
+      credits == null ||
+      (action != null && action !== "discard_orphaned_anonymous_purchase")
+    ) {
       return jsonResponse({ error: "Invalid request payload" }, 400)
     }
 
@@ -91,11 +98,24 @@ Deno.serve(async (req) => {
       transactionID,
       productID,
       bundleID: appStoreConfig.bundleID,
-      userID: user.id,
+      userID: action === "discard_orphaned_anonymous_purchase" ? undefined : user.id,
     })
 
     if (validationError) {
       return jsonResponse({ error: validationError }, 403)
+    }
+
+    if (action === "discard_orphaned_anonymous_purchase") {
+      const discardError = await validateOrphanedAnonymousPurchase(
+        adminClient,
+        transactionPayload,
+        user
+      )
+      if (discardError) {
+        return jsonResponse({ error: discardError }, 403)
+      }
+
+      return jsonResponse({ success: true, discarded: true })
     }
 
     const { data, error } = await adminClient.rpc("confirm_purchase_atomically", {
@@ -348,7 +368,7 @@ function validateAppStoreTransactionPayload(
     transactionID: string
     productID: string
     bundleID: string
-    userID: string
+    userID?: string
   }
 ): string | null {
   const transactionID = stringValue(payload.transactionId)
@@ -372,11 +392,51 @@ function validateAppStoreTransactionPayload(
     return "Transaction has been revoked"
   }
 
-  if (!appAccountToken || appAccountToken.toLowerCase() !== expected.userID.toLowerCase()) {
+  if (
+    expected.userID &&
+    (!appAccountToken || appAccountToken.toLowerCase() !== expected.userID.toLowerCase())
+  ) {
     return "Transaction does not belong to current user"
   }
 
   return null
+}
+
+async function validateOrphanedAnonymousPurchase(
+  // The project schema is intentionally untyped in this Edge Function.
+  adminClient: any,
+  payload: AppStoreTransactionPayload,
+  currentUser: { id: string; is_anonymous?: boolean }
+): Promise<string | null> {
+  if (currentUser.is_anonymous !== true) {
+    return "Only anonymous users can discard orphaned anonymous purchases"
+  }
+
+  const originalUserID = stringValue(payload.appAccountToken)
+  if (!originalUserID || !isUUID(originalUserID)) {
+    return "Transaction is missing a valid anonymous account token"
+  }
+
+  if (originalUserID.toLowerCase() === currentUser.id.toLowerCase()) {
+    return "Transaction belongs to current user"
+  }
+
+  const { data, error } = await adminClient.auth.admin.getUserById(originalUserID)
+  if (error || !data.user) {
+    return "Original anonymous account could not be verified"
+  }
+
+  if (data.user.is_anonymous !== true) {
+    return "Transaction belongs to a signed-in account"
+  }
+
+  return null
+}
+
+function isUUID(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
+  )
 }
 
 function stringValue(value: unknown): string | null {

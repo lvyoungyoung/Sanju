@@ -94,10 +94,9 @@ extension AppModel {
             return true
         }
 
-        // A reinstall can leave an anonymous purchase bound to a now-lost guest ID.
-        // Keep it unfinished, but do not let its retry overwrite a new purchase result.
+        // A failed orphan check is kept quiet locally so it cannot overwrite a new purchase result.
         if ignoredUnfinishedPurchaseTransactionIDs.contains(grant.transactionID) {
-            return false
+            return await finishOrphanedAnonymousPurchaseIfEligible(grant)
         }
 
         guard !processingPurchaseTransactionIDs.contains(grant.transactionID) else {
@@ -124,6 +123,10 @@ extension AppModel {
         } catch {
             if let applicationError = error as? PurchaseGrantApplicationError {
                 if case .appAccountTokenMismatch = applicationError {
+                    if await finishOrphanedAnonymousPurchaseIfEligible(grant) {
+                        return true
+                    }
+
                     ignoredUnfinishedPurchaseTransactionIDs.insert(grant.transactionID)
                     defaults.set(
                         Array(ignoredUnfinishedPurchaseTransactionIDs),
@@ -158,6 +161,42 @@ extension AppModel {
         }
         _ = try purchaseAppAccountToken(for: session)
         return session
+    }
+
+    private func finishOrphanedAnonymousPurchaseIfEligible(_ grant: PurchaseGrant) async -> Bool {
+        guard await discardOrphanedAnonymousPurchaseIfEligible(grant) else {
+            return false
+        }
+
+        ignoredUnfinishedPurchaseTransactionIDs.remove(grant.transactionID)
+        defaults.set(
+            Array(ignoredUnfinishedPurchaseTransactionIDs),
+            forKey: AppStorageKey.ignoredUnfinishedPurchaseTransactions
+        )
+        purchaseErrorMessage = nil
+        await grant.finish()
+        return true
+    }
+
+    private func discardOrphanedAnonymousPurchaseIfEligible(_ grant: PurchaseGrant) async -> Bool {
+        guard grant.appAccountToken != nil else {
+            return false
+        }
+
+        do {
+            let session = try await preparePurchaseSession()
+            guard session.isAnonymous else {
+                return false
+            }
+
+            return try await supabaseService.discardOrphanedAnonymousPurchase(
+                session: session,
+                transactionID: grant.transactionID,
+                productID: grant.productID
+            )
+        } catch {
+            return false
+        }
     }
 
     private func validatedSession(for grant: PurchaseGrant) async throws -> SupabaseSession {

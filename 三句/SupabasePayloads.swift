@@ -177,6 +177,17 @@ struct SupabaseConfirmPurchaseResponse: Decodable {
     let remainingCredits: Int
 }
 
+struct SupabaseDiscardOrphanedAnonymousPurchaseRequest: Encodable {
+    let transactionID: String
+    let productID: String
+    let action = "discard_orphaned_anonymous_purchase"
+}
+
+struct SupabaseDiscardOrphanedAnonymousPurchaseResponse: Decodable {
+    let success: Bool
+    let discarded: Bool
+}
+
 struct SupabaseGenerateMemoryRequest: Encodable {
     let imageBase64: String
     let englishLevel: String

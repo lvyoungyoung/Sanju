@@ -43,6 +43,11 @@ protocol SupabaseServicing {
         transactionID: String,
         productID: String
     ) async throws -> Int
+    func discardOrphanedAnonymousPurchase(
+        session: SupabaseSession,
+        transactionID: String,
+        productID: String
+    ) async throws -> Bool
     func generateMemorySentences(
         session: SupabaseSession,
         imageData: Data,
@@ -450,6 +455,25 @@ struct SupabaseService: SupabaseServicing {
 
         let response: SupabaseConfirmPurchaseResponse = try await perform(request)
         return response.remainingCredits
+    }
+
+    func discardOrphanedAnonymousPurchase(
+        session: SupabaseSession,
+        transactionID: String,
+        productID: String
+    ) async throws -> Bool {
+        let request = try makeRequest(
+            path: "/functions/v1/confirm-purchase",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseDiscardOrphanedAnonymousPurchaseRequest(
+                transactionID: transactionID,
+                productID: productID
+            )
+        )
+
+        let response: SupabaseDiscardOrphanedAnonymousPurchaseResponse = try await perform(request)
+        return response.success && response.discarded
     }
 
     func generateMemorySentences(
