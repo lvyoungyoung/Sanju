@@ -40,11 +40,6 @@ struct StudyView: View {
         .task {
             await appModel.refreshSentenceStudyDueCount()
         }
-        .onChange(of: availableSceneNames) { _ in
-            // Remote memories can finish syncing after the creation sheet is already open.
-            guard isShowingCreateScene else { return }
-            refreshSceneSuggestions()
-        }
         .refreshable {
             await appModel.refreshSentenceStudyDueCount()
         }
@@ -75,7 +70,7 @@ struct StudyView: View {
         .sheet(isPresented: $isShowingCreateScene) {
             CreateStudySceneSheet(
                 sceneName: $newSceneName,
-                suggestedSceneNames: displayedSceneSuggestions,
+                suggestedSceneNames: $displayedSceneSuggestions,
                 isCreating: isCreatingScene,
                 onRefreshSuggestions: refreshSceneSuggestions,
                 onCreate: createScene
@@ -297,8 +292,9 @@ struct StudyView: View {
 }
 
 private struct CreateStudySceneSheet: View {
+    @EnvironmentObject private var appModel: AppModel
     @Binding var sceneName: String
-    let suggestedSceneNames: [String]
+    @Binding var suggestedSceneNames: [String]
     let isCreating: Bool
     let onRefreshSuggestions: () -> Void
     let onCreate: () async -> Void
@@ -393,5 +389,24 @@ private struct CreateStudySceneSheet: View {
             .disabled(isCreating || sceneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(AppSpacing.xLarge)
+        .onAppear {
+            if suggestedSceneNames.isEmpty {
+                onRefreshSuggestions()
+            }
+        }
+        .onChange(of: sceneHintSignature) { _ in
+            // The sheet can appear before the first remote-memory sync finishes.
+            guard suggestedSceneNames.isEmpty else { return }
+            onRefreshSuggestions()
+        }
+    }
+
+    private var sceneHintSignature: [String] {
+        appModel.memories
+            .flatMap(\.sentences)
+            .map(\.sceneHint)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
     }
 }
