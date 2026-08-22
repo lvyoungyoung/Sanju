@@ -338,7 +338,7 @@ struct StudyView: View {
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
-                    .blur(radius: 8)
+                    .blur(radius: 4)
                     .scaleEffect(1.14)
                     .overlay(Color.black.opacity(0.42))
             } else {
