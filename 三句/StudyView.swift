@@ -144,6 +144,7 @@ struct StudyView: View {
                 }
                 .padding(AppSpacing.xLarge)
             }
+            .frame(maxWidth: .infinity, minHeight: 142, maxHeight: 142)
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
@@ -260,7 +261,7 @@ struct StudyView: View {
             }
             .padding(AppSpacing.large)
         }
-        .frame(maxWidth: .infinity, minHeight: 174, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 174, maxHeight: 174, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
@@ -330,16 +331,22 @@ struct StudyView: View {
 
     @ViewBuilder
     private func topicPhotoBackground(image: UIImage?, fallbackTint: Color) -> some View {
-        if let image {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .blur(radius: 16)
-                .scaleEffect(1.14)
-                .overlay(Color.black.opacity(0.42))
-        } else {
-            fallbackTint.opacity(0.13)
+        GeometryReader { proxy in
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .clipped()
+                    .blur(radius: 16)
+                    .scaleEffect(1.14)
+                    .overlay(Color.black.opacity(0.42))
+            } else {
+                fallbackTint.opacity(0.13)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
         }
+        .allowsHitTesting(false)
     }
 
     private var createSceneTile: some View {
