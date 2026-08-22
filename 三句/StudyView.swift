@@ -143,6 +143,7 @@ struct StudyView: View {
                 .padding(AppSpacing.xLarge)
             }
             .frame(maxWidth: .infinity, minHeight: 142, maxHeight: 142)
+            .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
@@ -243,6 +244,7 @@ struct StudyView: View {
             .padding(AppSpacing.large)
         }
         .frame(maxWidth: .infinity, minHeight: 174, maxHeight: 174, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
