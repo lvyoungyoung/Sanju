@@ -40,6 +40,11 @@ struct StudyView: View {
         .task {
             await appModel.refreshSentenceStudyDueCount()
         }
+        .onChange(of: availableSceneNames) { _ in
+            // Remote memories can finish syncing after the creation sheet is already open.
+            guard isShowingCreateScene else { return }
+            refreshSceneSuggestions()
+        }
         .refreshable {
             await appModel.refreshSentenceStudyDueCount()
         }
