@@ -121,7 +121,6 @@ struct StudyView: View {
 
                         masteryProgress(
                             summary: summary,
-                            tint: tint,
                             textColor: AppTextColor.secondary
                         )
                     }
@@ -236,7 +235,6 @@ struct StudyView: View {
 
                 masteryProgress(
                     summary: scene.summary,
-                    tint: tint,
                     textColor: AppTextColor.secondary
                 )
             }
@@ -276,31 +274,17 @@ struct StudyView: View {
 
     private func masteryProgress(
         summary: SentenceStudyTopicSummary,
-        tint: Color,
         textColor: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(
-                L10n.string(
-                    "study.topic.mastery",
-                    "掌握度 %d%%",
-                    summary.masteryScore
-                )
+        Text(
+            L10n.string(
+                "study.topic.mastery",
+                "掌握度 %d%%",
+                summary.masteryScore
             )
-            .font(.system(size: AppFontSize.caption, weight: .medium))
-            .foregroundStyle(textColor)
-
-            GeometryReader { proxy in
-                Capsule()
-                    .fill(AppSurfaceColor.secondaryFill)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(tint)
-                            .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
-                    }
-            }
-            .frame(height: 5)
-        }
+        )
+        .font(.system(size: AppFontSize.caption, weight: .medium))
+        .foregroundStyle(textColor)
     }
 
     private func sceneTint(for scene: UserStudySceneSummary) -> Color {
