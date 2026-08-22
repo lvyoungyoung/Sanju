@@ -570,6 +570,9 @@ extension AppModel {
         if let rawTransactionIDs = defaults.array(forKey: AppStorageKey.processedPurchaseTransactions) as? [String] {
             processedPurchaseTransactionIDs = Set(rawTransactionIDs)
         }
+        if let rawTransactionIDs = defaults.array(forKey: AppStorageKey.ignoredUnfinishedPurchaseTransactions) as? [String] {
+            ignoredUnfinishedPurchaseTransactionIDs = Set(rawTransactionIDs)
+        }
 
         loadPendingMemoryImageUploads()
         loadPendingGeneratedMemoryImage()
@@ -955,7 +958,8 @@ extension AppModel {
             AppStorageKey.learningReminderMinute,
             AppStorageKey.autoSpeakSolvedSentence,
             AppStorageKey.localSentenceStudyProgress,
-            AppStorageKey.processedPurchaseTransactions
+            AppStorageKey.processedPurchaseTransactions,
+            AppStorageKey.ignoredUnfinishedPurchaseTransactions
         ].forEach(defaults.removeObject)
 
         KeychainStorage.remove(for: AppStorageKey.supabaseSession)
@@ -965,6 +969,7 @@ extension AppModel {
         profile = nil
         memories = []
         processedPurchaseTransactionIDs = []
+        ignoredUnfinishedPurchaseTransactionIDs = []
         processingPurchaseTransactionIDs = []
         pendingGuestCreditMigration = nil
         englishLevel = .simple

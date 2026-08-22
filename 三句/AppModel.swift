@@ -378,6 +378,7 @@ enum AppStorageKey {
     static let localSentenceStudyProgress = "sanju.localSentenceStudyProgress"
     static let supabaseSession = "sanju.supabaseSession"
     static let processedPurchaseTransactions = "sanju.processedPurchaseTransactions"
+    static let ignoredUnfinishedPurchaseTransactions = "sanju.ignoredUnfinishedPurchaseTransactions"
 }
 
 enum KimiServiceError: LocalizedError {
@@ -472,6 +473,9 @@ final class AppModel: ObservableObject {
     let networkStatusMonitor = NetworkStatusMonitor()
     var supabaseSession: SupabaseSession?
     var processedPurchaseTransactionIDs: Set<String> = []
+    // Locally suppresses legacy transactions whose anonymous owner was lost after reinstall.
+    // These transactions remain unfinished and never grant credits.
+    var ignoredUnfinishedPurchaseTransactionIDs: Set<String> = []
     var processingPurchaseTransactionIDs: Set<String> = []
     var isRecoveringPendingPurchases = false
     var pendingMemoryImageUploads: [PendingMemoryImageUpload] = []

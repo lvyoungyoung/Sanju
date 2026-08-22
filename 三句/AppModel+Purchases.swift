@@ -94,6 +94,12 @@ extension AppModel {
             return true
         }
 
+        // A reinstall can leave an anonymous purchase bound to a now-lost guest ID.
+        // Keep it unfinished, but do not let its retry overwrite a new purchase result.
+        if ignoredUnfinishedPurchaseTransactionIDs.contains(grant.transactionID) {
+            return false
+        }
+
         guard !processingPurchaseTransactionIDs.contains(grant.transactionID) else {
             return false
         }
@@ -117,7 +123,16 @@ extension AppModel {
             return true
         } catch {
             if let applicationError = error as? PurchaseGrantApplicationError {
-                purchaseErrorMessage = applicationError.localizedDescription
+                if case .appAccountTokenMismatch = applicationError {
+                    ignoredUnfinishedPurchaseTransactionIDs.insert(grant.transactionID)
+                    defaults.set(
+                        Array(ignoredUnfinishedPurchaseTransactionIDs),
+                        forKey: AppStorageKey.ignoredUnfinishedPurchaseTransactions
+                    )
+                    purchaseErrorMessage = nil
+                } else {
+                    purchaseErrorMessage = applicationError.localizedDescription
+                }
             } else {
                 purchaseErrorMessage = L10n.string(
                     "purchase.sync_failed_after_purchase",
