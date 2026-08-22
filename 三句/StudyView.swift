@@ -96,27 +96,25 @@ struct StudyView: View {
             masteryScore: cachedSummary.masteryScore
         )
         let tint = SentenceStudyTopic.favorites.tintColor
-        let coverImage = favoriteCoverImage
-        let usesPhotoCover = coverImage != nil
 
         return NavigationLink(value: StudySceneDetailRoute.favorites) {
             ZStack {
-                topicPhotoBackground(image: coverImage, fallbackTint: tint)
+                topicPhotoBackground(image: nil, fallbackTint: tint)
 
                 HStack(alignment: .top, spacing: AppSpacing.large) {
                     Image(systemName: "heart.fill")
                         .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
+                        .foregroundStyle(tint)
                         .frame(width: 48, height: 48)
                         .background(
-                            usesPhotoCover ? Color.black.opacity(0.20) : Color.white.opacity(0.72),
+                            Color.white.opacity(0.72),
                             in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                         )
 
                     VStack(alignment: .leading, spacing: AppSpacing.small) {
                         Text(SentenceStudyTopic.favorites.title)
                             .font(.system(size: AppFontSize.panelTitle, weight: .bold))
-                            .foregroundStyle(usesPhotoCover ? Color.white : AppTextColor.primary)
+                            .foregroundStyle(AppTextColor.primary)
 
                         Text(
                             L10n.string(
@@ -126,12 +124,12 @@ struct StudyView: View {
                             )
                         )
                         .font(.system(size: AppFontSize.metadata, weight: .medium))
-                        .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary)
+                        .foregroundStyle(AppTextColor.secondary)
 
                         masteryProgress(
                             summary: summary,
-                            tint: usesPhotoCover ? Color.white : tint,
-                            textColor: usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary
+                            tint: tint,
+                            textColor: AppTextColor.secondary
                         )
                     }
 
@@ -139,7 +137,7 @@ struct StudyView: View {
 
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: AppIconSize.regular, weight: .semibold))
-                        .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.tertiary)
+                        .foregroundStyle(AppTextColor.tertiary)
                         .padding(.top, AppSpacing.xSmall)
                 }
                 .padding(AppSpacing.xLarge)
@@ -148,7 +146,7 @@ struct StudyView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(usesPhotoCover ? Color.white.opacity(0.14) : tint.opacity(0.18), lineWidth: 1)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
             }
             .appAccentShadow(tint, opacity: 0.08)
         }
@@ -295,15 +293,6 @@ struct StudyView: View {
         return palette[index]
     }
 
-    private var favoriteCoverImage: UIImage? {
-        guard let memory = appModel.memories
-            .sorted(by: { $0.createdAt > $1.createdAt })
-            .first(where: { $0.sentences.contains(where: \.isFavorite) }) else {
-            return nil
-        }
-        return memoryImage(for: memory.id)
-    }
-
     private func memoryImage(for memoryID: UUID) -> UIImage? {
         guard let imageData = appModel.memories.first(where: { $0.id == memoryID })?.imageData,
               !imageData.isEmpty else {
@@ -321,7 +310,7 @@ struct StudyView: View {
                     .scaledToFill()
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
-                    .blur(radius: 2)
+                    .blur(radius: 1)
                     .scaleEffect(1.14)
                     .overlay(Color.black.opacity(0.42))
             } else {
