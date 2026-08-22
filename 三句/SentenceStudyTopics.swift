@@ -72,6 +72,7 @@ struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
 struct UserStudySceneSummary: Identifiable, Hashable {
     let id: UUID
     let name: String
+    let coverMemoryID: UUID?
     let summary: SentenceStudyTopicSummary
 
     var studyTopic: SentenceStudyTopic {

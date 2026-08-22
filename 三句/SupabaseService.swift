@@ -1195,6 +1195,7 @@ struct SupabaseService: SupabaseServicing {
         return UserStudySceneSummary(
             id: id,
             name: record.name,
+            coverMemoryID: record.coverMemoryID.flatMap(UUID.init(uuidString:)),
             summary: SentenceStudyTopicSummary(
                 totalCount: record.totalCount,
                 dueCount: record.dueCount,

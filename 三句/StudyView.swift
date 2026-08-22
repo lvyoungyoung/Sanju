@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct StudyView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -95,45 +96,58 @@ struct StudyView: View {
             masteryScore: cachedSummary.masteryScore
         )
         let tint = SentenceStudyTopic.favorites.tintColor
+        let coverImage = favoriteCoverImage
+        let usesPhotoCover = coverImage != nil
 
         return NavigationLink(value: StudySceneDetailRoute.favorites) {
-            HStack(alignment: .top, spacing: AppSpacing.large) {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 48, height: 48)
-                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+            ZStack {
+                topicPhotoBackground(image: coverImage, fallbackTint: tint)
 
-                VStack(alignment: .leading, spacing: AppSpacing.small) {
-                    Text(SentenceStudyTopic.favorites.title)
-                        .font(.system(size: AppFontSize.panelTitle, weight: .bold))
-                        .foregroundStyle(AppTextColor.primary)
-
-                    Text(
-                        L10n.string(
-                            "study.scene.detail.sentence_count",
-                            "共 %d 句",
-                            summary.totalCount
+                HStack(alignment: .top, spacing: AppSpacing.large) {
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            usesPhotoCover ? Color.black.opacity(0.20) : Color.white.opacity(0.72),
+                            in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                         )
-                    )
-                    .font(.system(size: AppFontSize.metadata, weight: .medium))
-                    .foregroundStyle(AppTextColor.secondary)
 
-                    masteryProgress(summary: summary, tint: tint)
+                    VStack(alignment: .leading, spacing: AppSpacing.small) {
+                        Text(SentenceStudyTopic.favorites.title)
+                            .font(.system(size: AppFontSize.panelTitle, weight: .bold))
+                            .foregroundStyle(usesPhotoCover ? Color.white : AppTextColor.primary)
+
+                        Text(
+                            L10n.string(
+                                "study.scene.detail.sentence_count",
+                                "共 %d 句",
+                                summary.totalCount
+                            )
+                        )
+                        .font(.system(size: AppFontSize.metadata, weight: .medium))
+                        .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary)
+
+                        masteryProgress(
+                            summary: summary,
+                            tint: usesPhotoCover ? Color.white : tint,
+                            textColor: usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary
+                        )
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: AppIconSize.regular, weight: .semibold))
+                        .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.tertiary)
+                        .padding(.top, AppSpacing.xSmall)
                 }
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: AppIconSize.regular, weight: .semibold))
-                    .foregroundStyle(AppTextColor.tertiary)
-                    .padding(.top, AppSpacing.xSmall)
+                .padding(AppSpacing.xLarge)
             }
-            .padding(AppSpacing.xLarge)
-            .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(tint.opacity(0.18), lineWidth: 1)
+                    .stroke(usesPhotoCover ? Color.white.opacity(0.14) : tint.opacity(0.18), lineWidth: 1)
             }
             .appAccentShadow(tint, opacity: 0.08)
         }
@@ -196,54 +210,69 @@ struct StudyView: View {
         scene: UserStudySceneSummary,
         tint: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            HStack {
-                Image(systemName: "rectangle.3.group.fill")
-                    .font(.system(size: AppIconSize.prominent, weight: .semibold))
-                    .foregroundStyle(tint)
-                    .frame(width: 36, height: 36)
-                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        let coverImage = scene.coverMemoryID.flatMap(memoryImage(for:))
+        let usesPhotoCover = coverImage != nil
+
+        return ZStack {
+            topicPhotoBackground(image: coverImage, fallbackTint: tint)
+
+            VStack(alignment: .leading, spacing: AppSpacing.small) {
+                HStack {
+                    Image(systemName: "rectangle.3.group.fill")
+                        .font(.system(size: AppIconSize.prominent, weight: .semibold))
+                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
+                        .frame(width: 36, height: 36)
+                        .background(
+                            usesPhotoCover ? Color.black.opacity(0.20) : tint.opacity(0.12),
+                            in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
+                        )
+
+                    Spacer(minLength: AppSpacing.small)
+
+                    Text("\(scene.summary.masteryScore)%")
+                        .font(.system(size: AppFontSize.metadata, weight: .bold))
+                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
+                }
 
                 Spacer(minLength: AppSpacing.small)
 
-                Text("\(scene.summary.masteryScore)%")
-                    .font(.system(size: AppFontSize.metadata, weight: .bold))
-                    .foregroundStyle(tint)
-            }
+                Text(scene.name)
+                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                    .foregroundStyle(usesPhotoCover ? Color.white : AppTextColor.primary)
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: AppSpacing.small)
-
-            Text(scene.name)
-                .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                .foregroundStyle(AppTextColor.primary)
-                .lineLimit(2, reservesSpace: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            Text(
-                L10n.string(
-                    "study.scene.detail.sentence_count",
-                    "共 %d 句",
-                    scene.summary.totalCount
+                Text(
+                    L10n.string(
+                        "study.scene.detail.sentence_count",
+                        "共 %d 句",
+                        scene.summary.totalCount
+                    )
                 )
-            )
-            .font(.system(size: AppFontSize.metadata, weight: .medium))
-            .foregroundStyle(AppTextColor.secondary)
+                .font(.system(size: AppFontSize.metadata, weight: .medium))
+                .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary)
 
-            masteryProgress(summary: scene.summary, tint: tint)
+                masteryProgress(
+                    summary: scene.summary,
+                    tint: usesPhotoCover ? Color.white : tint,
+                    textColor: usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary
+                )
+            }
+            .padding(AppSpacing.large)
         }
-        .padding(AppSpacing.large)
         .frame(maxWidth: .infinity, minHeight: 174, alignment: .leading)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(AppStroke.subtle, lineWidth: 1)
+                .stroke(usesPhotoCover ? Color.white.opacity(0.14) : AppStroke.subtle, lineWidth: 1)
         }
         .appCardShadow()
     }
 
     private func masteryProgress(
         summary: SentenceStudyTopicSummary,
-        tint: Color
+        tint: Color,
+        textColor: Color
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(
@@ -254,7 +283,7 @@ struct StudyView: View {
                 )
             )
             .font(.system(size: AppFontSize.caption, weight: .medium))
-            .foregroundStyle(AppTextColor.secondary)
+            .foregroundStyle(textColor)
 
             GeometryReader { proxy in
                 Capsule()
@@ -280,6 +309,37 @@ struct StudyView: View {
         ]
         let index = scene.id.uuidString.unicodeScalars.reduce(0) { $0 + Int($1.value) } % palette.count
         return palette[index]
+    }
+
+    private var favoriteCoverImage: UIImage? {
+        guard let memory = appModel.memories
+            .sorted(by: { $0.createdAt > $1.createdAt })
+            .first(where: { $0.sentences.contains(where: \.isFavorite) }) else {
+            return nil
+        }
+        return memoryImage(for: memory.id)
+    }
+
+    private func memoryImage(for memoryID: UUID) -> UIImage? {
+        guard let imageData = appModel.memories.first(where: { $0.id == memoryID })?.imageData,
+              !imageData.isEmpty else {
+            return nil
+        }
+        return UIImage(data: imageData)
+    }
+
+    @ViewBuilder
+    private func topicPhotoBackground(image: UIImage?, fallbackTint: Color) -> some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .blur(radius: 16)
+                .scaleEffect(1.14)
+                .overlay(Color.black.opacity(0.42))
+        } else {
+            fallbackTint.opacity(0.13)
+        }
     }
 
     private var createSceneTile: some View {

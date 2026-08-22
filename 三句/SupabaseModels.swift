@@ -137,6 +137,7 @@ struct SupabaseSentenceStudyQueueRecord: Decodable {
 struct SupabaseUserStudySceneSummaryRecord: Decodable {
     let id: String
     let name: String
+    let coverMemoryID: String?
     let totalCount: Int
     let dueCount: Int
     let studiedCount: Int
@@ -146,6 +147,7 @@ struct SupabaseUserStudySceneSummaryRecord: Decodable {
     enum CodingKeys: String, CodingKey {
         case id
         case name
+        case coverMemoryID = "cover_memory_id"
         case totalCount = "total_count"
         case dueCount = "due_count"
         case studiedCount = "studied_count"
