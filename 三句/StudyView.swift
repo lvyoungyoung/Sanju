@@ -314,7 +314,7 @@ struct StudyView: View {
                     .clipped()
                     .blur(radius: 0.5)
                     .scaleEffect(1.14)
-                    .overlay(Color.black.opacity(0.42))
+                    .overlay(Color.black.opacity(0.24))
             } else {
                 fallbackTint.opacity(0.13)
                     .frame(width: proxy.size.width, height: proxy.size.height)
