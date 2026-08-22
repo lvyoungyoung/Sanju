@@ -21,7 +21,7 @@ struct StudyView: View {
                     .foregroundStyle(AppTextColor.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                LazyVGrid(columns: sceneGridColumns, spacing: AppSpacing.medium) {
+                LazyVStack(spacing: AppSpacing.medium) {
                     ForEach(appModel.userStudySceneSummaries) { scene in
                         userStudySceneCard(scene)
                     }
@@ -77,13 +77,6 @@ struct StudyView: View {
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
-    }
-
-    private var sceneGridColumns: [GridItem] {
-        [
-            GridItem(.flexible(), spacing: AppSpacing.medium),
-            GridItem(.flexible(), spacing: AppSpacing.medium)
-        ]
     }
 
     private var favoriteTopicCard: some View {
@@ -190,7 +183,7 @@ struct StudyView: View {
         let tint = sceneTint(for: scene)
 
         return NavigationLink(value: StudySceneDetailRoute.userScene(scene)) {
-            sceneGridCardContent(scene: scene, tint: tint)
+            sceneListCardContent(scene: scene, tint: tint)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -206,24 +199,28 @@ struct StudyView: View {
         .disabled(isDeletingScene)
     }
 
-    private func sceneGridCardContent(
+    private func sceneListCardContent(
         scene: UserStudySceneSummary,
         tint: Color
     ) -> some View {
         let coverImage = scene.coverMemoryID.flatMap(memoryImage(for:))
-        let usesPhotoCover = coverImage != nil
 
-        return ZStack {
-            topicPhotoBackground(image: coverImage, fallbackTint: tint)
+        return HStack(spacing: AppSpacing.medium) {
+            sceneCover(image: coverImage, tint: tint)
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Spacer(minLength: AppSpacing.small)
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+                    Text(scene.name)
+                        .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                        .foregroundStyle(AppTextColor.primary)
+                        .lineLimit(1)
 
-                Text(scene.name)
-                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                    .foregroundStyle(usesPhotoCover ? Color.white : AppTextColor.primary)
-                    .lineLimit(2, reservesSpace: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: AppIconSize.compact, weight: .semibold))
+                        .foregroundStyle(AppTextColor.tertiary)
+                }
 
                 Text(
                     L10n.string(
@@ -233,24 +230,48 @@ struct StudyView: View {
                     )
                 )
                 .font(.system(size: AppFontSize.metadata, weight: .medium))
-                .foregroundStyle(usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary)
+                .foregroundStyle(AppTextColor.secondary)
+
+                Spacer(minLength: AppSpacing.xSmall)
 
                 masteryProgress(
                     summary: scene.summary,
-                    tint: usesPhotoCover ? Color.white : tint,
-                    textColor: usesPhotoCover ? Color.white.opacity(0.82) : AppTextColor.secondary
+                    tint: tint,
+                    textColor: AppTextColor.secondary
                 )
             }
-            .padding(AppSpacing.large)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, minHeight: 174, maxHeight: 174, alignment: .leading)
+        .padding(AppSpacing.medium)
+        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(usesPhotoCover ? Color.white.opacity(0.14) : AppStroke.subtle, lineWidth: 1)
+                .stroke(AppStroke.subtle, lineWidth: 1)
         }
         .appCardShadow()
+    }
+
+    @ViewBuilder
+    private func sceneCover(image: UIImage?, tint: Color) -> some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: AppIconSize.regular, weight: .medium))
+                    .foregroundStyle(tint)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(tint.opacity(0.14))
+            }
+        }
+        .frame(width: 96, height: 104)
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+        .allowsHitTesting(false)
     }
 
     private func masteryProgress(
@@ -333,7 +354,7 @@ struct StudyView: View {
             refreshSceneSuggestions()
             isShowingCreateScene = true
         } label: {
-            VStack(spacing: AppSpacing.medium) {
+            HStack(spacing: AppSpacing.medium) {
                 Image(systemName: "plus")
                     .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
                     .foregroundStyle(AppTextColor.secondary)
@@ -343,11 +364,15 @@ struct StudyView: View {
                 Text(L10n.string("study.scene.create", "创建我的学习主题"))
                     .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                     .foregroundStyle(AppTextColor.primary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: AppIconSize.compact, weight: .semibold))
+                    .foregroundStyle(AppTextColor.tertiary)
             }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 174)
+            .padding(AppSpacing.medium)
+            .frame(maxWidth: .infinity, minHeight: 104)
             .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
