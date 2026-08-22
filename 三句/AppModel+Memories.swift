@@ -1474,10 +1474,10 @@ extension AppModel {
 
         let session = try await ensureValidSession()
         let scene = try await supabaseService.createUserStudyScene(session: session, name: name)
-        userStudySceneSummaries.removeAll { $0.id == scene.id }
-        userStudySceneSummaries.append(scene)
-        userStudySceneSummaries.sort {
-            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        if let existingIndex = userStudySceneSummaries.firstIndex(where: { $0.id == scene.id }) {
+            userStudySceneSummaries[existingIndex] = scene
+        } else {
+            userStudySceneSummaries.insert(scene, at: 0)
         }
         return scene
     }
