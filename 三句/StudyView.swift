@@ -218,23 +218,6 @@ struct StudyView: View {
             topicPhotoBackground(image: coverImage, fallbackTint: tint)
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                HStack {
-                    Image(systemName: "rectangle.3.group.fill")
-                        .font(.system(size: AppIconSize.prominent, weight: .semibold))
-                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            usesPhotoCover ? Color.black.opacity(0.20) : tint.opacity(0.12),
-                            in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                        )
-
-                    Spacer(minLength: AppSpacing.small)
-
-                    Text("\(scene.summary.masteryScore)%")
-                        .font(.system(size: AppFontSize.metadata, weight: .bold))
-                        .foregroundStyle(usesPhotoCover ? Color.white : tint)
-                }
-
                 Spacer(minLength: AppSpacing.small)
 
                 Text(scene.name)
