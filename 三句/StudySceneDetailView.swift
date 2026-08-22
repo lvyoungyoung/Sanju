@@ -135,8 +135,6 @@ struct StudySceneDetailView: View {
 
     @ViewBuilder
     private var sentenceContent: some View {
-        sceneHeader
-
         if items.isEmpty {
             EmptyStateView(
                 title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
@@ -156,24 +154,6 @@ struct StudySceneDetailView: View {
                 ContentFooterHint(isLoading: false)
                     .padding(.top, AppSpacing.small)
             }
-        }
-    }
-
-    private var sceneHeader: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            Text(L10n.string("study.scene.detail.all_sentences", "全部句子"))
-                .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                .foregroundStyle(AppTextColor.secondary)
-
-            Text(
-                L10n.string(
-                    "study.scene.detail.sentence_count",
-                    "共 %d 句",
-                    items.count
-                )
-            )
-            .font(.system(size: AppFontSize.bodyProminent, weight: .bold))
-            .foregroundStyle(AppTextColor.primary)
         }
     }
 
