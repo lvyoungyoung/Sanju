@@ -12,24 +12,21 @@ struct StudyView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                LazyVStack(spacing: AppSpacing.medium) {
-                    topicCard(.favorites)
+            VStack(alignment: .leading, spacing: AppSpacing.section) {
+                favoriteTopicCard
 
-                    if !appModel.userStudySceneSummaries.isEmpty {
-                        Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
-                            .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                            .foregroundStyle(AppTextColor.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, AppSpacing.small)
+                Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
+                    .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                    .foregroundStyle(AppTextColor.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                        ForEach(appModel.userStudySceneSummaries) { scene in
-                            userStudySceneCard(scene)
-                        }
+                LazyVGrid(columns: sceneGridColumns, spacing: AppSpacing.medium) {
+                    ForEach(appModel.userStudySceneSummaries) { scene in
+                        userStudySceneCard(scene)
                     }
-                }
 
-                createSceneButton
+                    createSceneTile
+                }
             }
             .padding(.horizontal, AppSpacing.xLarge)
             .padding(.top, AppSpacing.xLarge)
@@ -81,16 +78,64 @@ struct StudyView: View {
         }
     }
 
-    private func topicCard(_ topic: SentenceStudyTopic) -> some View {
-        let summary = appModel.sentenceStudyTopicSummaries[topic] ?? .empty
+    private var sceneGridColumns: [GridItem] {
+        [
+            GridItem(.flexible(), spacing: AppSpacing.medium),
+            GridItem(.flexible(), spacing: AppSpacing.medium)
+        ]
+    }
+
+    private var favoriteTopicCard: some View {
+        let cachedSummary = appModel.sentenceStudyTopicSummaries[.favorites] ?? .empty
+        let summary = SentenceStudyTopicSummary(
+            totalCount: appModel.favorites.count,
+            dueCount: cachedSummary.dueCount,
+            studiedCount: cachedSummary.studiedCount,
+            reviewableTodayCount: cachedSummary.reviewableTodayCount,
+            masteryScore: cachedSummary.masteryScore
+        )
+        let tint = SentenceStudyTopic.favorites.tintColor
 
         return NavigationLink(value: StudySceneDetailRoute.favorites) {
-            sceneCardContent(
-                title: topic.title,
-                iconName: topic.iconName,
-                tint: topic.tintColor,
-                summary: summary
-            )
+            HStack(alignment: .top, spacing: AppSpacing.large) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 48, height: 48)
+                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+
+                VStack(alignment: .leading, spacing: AppSpacing.small) {
+                    Text(SentenceStudyTopic.favorites.title)
+                        .font(.system(size: AppFontSize.panelTitle, weight: .bold))
+                        .foregroundStyle(AppTextColor.primary)
+
+                    Text(
+                        L10n.string(
+                            "study.scene.detail.sentence_count",
+                            "共 %d 句",
+                            summary.totalCount
+                        )
+                    )
+                    .font(.system(size: AppFontSize.metadata, weight: .medium))
+                    .foregroundStyle(AppTextColor.secondary)
+
+                    masteryProgress(summary: summary, tint: tint)
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: AppIconSize.regular, weight: .semibold))
+                    .foregroundStyle(AppTextColor.tertiary)
+                    .padding(.top, AppSpacing.xSmall)
+            }
+            .padding(AppSpacing.xLarge)
+            .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            }
+            .appAccentShadow(tint, opacity: 0.08)
         }
         .buttonStyle(.plain)
     }
@@ -128,15 +173,10 @@ struct StudyView: View {
     }
 
     private func userStudySceneCard(_ scene: UserStudySceneSummary) -> some View {
-        let tint = Color(red: 0.53, green: 0.40, blue: 0.73)
+        let tint = sceneTint(for: scene)
 
         return NavigationLink(value: StudySceneDetailRoute.userScene(scene)) {
-            sceneCardContent(
-                title: scene.name,
-                iconName: "bookmark.fill",
-                tint: tint,
-                summary: scene.summary
-            )
+            sceneGridCardContent(scene: scene, tint: tint)
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -152,63 +192,97 @@ struct StudyView: View {
         .disabled(isDeletingScene)
     }
 
-    private func sceneCardContent(
-        title: String,
-        iconName: String,
-        tint: Color,
-        summary: SentenceStudyTopicSummary
+    private func sceneGridCardContent(
+        scene: UserStudySceneSummary,
+        tint: Color
     ) -> some View {
-        HStack(spacing: AppSpacing.large) {
-            Image(systemName: iconName)
-                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 44, height: 44)
-                .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack {
+                Image(systemName: "rectangle.3.group.fill")
+                    .font(.system(size: AppIconSize.prominent, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 36, height: 36)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
 
-            VStack(alignment: .leading, spacing: AppSpacing.small) {
-                Text(title)
-                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                    .foregroundStyle(AppTextColor.primary)
+                Spacer(minLength: AppSpacing.small)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(
-                        L10n.string(
-                            "study.topic.mastery",
-                            "掌握度 %d%%",
-                            summary.masteryScore
-                        )
-                    )
-                    .font(.system(size: AppFontSize.metadata, weight: .medium))
-                    .foregroundStyle(AppTextColor.secondary)
-
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(AppSurfaceColor.secondaryFill)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(tint)
-                                    .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
-                            }
-                    }
-                    .frame(height: 5)
-                }
+                Text("\(scene.summary.masteryScore)%")
+                    .font(.system(size: AppFontSize.metadata, weight: .bold))
+                    .foregroundStyle(tint)
             }
 
             Spacer(minLength: AppSpacing.small)
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: AppIconSize.regular, weight: .semibold))
-                .foregroundStyle(AppTextColor.tertiary)
+            Text(scene.name)
+                .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+                .lineLimit(2, reservesSpace: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(
+                L10n.string(
+                    "study.scene.detail.sentence_count",
+                    "共 %d 句",
+                    scene.summary.totalCount
+                )
+            )
+            .font(.system(size: AppFontSize.metadata, weight: .medium))
+            .foregroundStyle(AppTextColor.secondary)
+
+            masteryProgress(summary: scene.summary, tint: tint)
         }
         .padding(AppSpacing.large)
+        .frame(maxWidth: .infinity, minHeight: 174, alignment: .leading)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                 .stroke(AppStroke.subtle, lineWidth: 1)
         }
+        .appCardShadow()
     }
 
-    private var createSceneButton: some View {
+    private func masteryProgress(
+        summary: SentenceStudyTopicSummary,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(
+                L10n.string(
+                    "study.topic.mastery",
+                    "掌握度 %d%%",
+                    summary.masteryScore
+                )
+            )
+            .font(.system(size: AppFontSize.caption, weight: .medium))
+            .foregroundStyle(AppTextColor.secondary)
+
+            GeometryReader { proxy in
+                Capsule()
+                    .fill(AppSurfaceColor.secondaryFill)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(tint)
+                            .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
+                    }
+            }
+            .frame(height: 5)
+        }
+    }
+
+    private func sceneTint(for scene: UserStudySceneSummary) -> Color {
+        let palette: [Color] = [
+            Color(red: 0.29, green: 0.56, blue: 0.86),
+            Color(red: 0.24, green: 0.58, blue: 0.40),
+            Color(red: 0.86, green: 0.45, blue: 0.18),
+            Color(red: 0.56, green: 0.40, blue: 0.78),
+            Color(red: 0.76, green: 0.38, blue: 0.45),
+            Color(red: 0.40, green: 0.45, blue: 0.60)
+        ]
+        let index = scene.id.uuidString.unicodeScalars.reduce(0) { $0 + Int($1.value) } % palette.count
+        return palette[index]
+    }
+
+    private var createSceneTile: some View {
         Button {
             guard appModel.isSignedIn else {
                 appModel.isShowingSignInSheet = true
@@ -218,18 +292,25 @@ struct StudyView: View {
             refreshSceneSuggestions()
             isShowingCreateScene = true
         } label: {
-            Label(
-                L10n.string("study.scene.create", "创建我的学习主题"),
-                systemImage: "plus.circle.fill"
-            )
-            .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-            .foregroundStyle(AppTextColor.primary)
+            VStack(spacing: AppSpacing.medium) {
+                Image(systemName: "plus")
+                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                    .foregroundStyle(AppTextColor.secondary)
+                    .frame(width: 42, height: 42)
+                    .background(AppSurfaceColor.secondaryFill, in: Circle())
+
+                Text(L10n.string("study.scene.create", "创建我的学习主题"))
+                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
             .frame(maxWidth: .infinity)
-            .frame(height: 54)
+            .frame(minHeight: 174)
             .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(AppStroke.highlight, lineWidth: 1)
+                    .stroke(AppStroke.soft, style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
             }
         }
         .buttonStyle(.plain)
