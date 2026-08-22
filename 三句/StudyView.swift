@@ -38,10 +38,10 @@ struct StudyView: View {
         .background(AppSurfaceColor.page)
         .toolbar(.hidden, for: .navigationBar)
         .task {
-            await appModel.refreshSentenceStudyDueCount()
+            await appModel.refreshUserStudySceneSummaries()
         }
         .refreshable {
-            await appModel.refreshSentenceStudyDueCount()
+            await appModel.refreshUserStudySceneSummaries()
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {

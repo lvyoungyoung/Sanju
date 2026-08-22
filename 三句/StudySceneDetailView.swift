@@ -303,7 +303,7 @@ struct StudySceneDetailView: View {
 
         switch route {
         case .favorites:
-            await appModel.refreshFavoriteSentenceStudyCounts()
+            await appModel.refreshSentenceStudyDueCount()
         case let .userScene(scene):
             do {
                 sceneItems = try await appModel.loadUserStudySceneDetailSentences(for: scene)

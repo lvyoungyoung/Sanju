@@ -1443,6 +1443,25 @@ extension AppModel {
         }
     }
 
+    func refreshUserStudySceneSummaries() async {
+        guard isSignedIn else {
+            userStudySceneSummaries = []
+            return
+        }
+
+        do {
+            let session = try await ensureValidSession()
+            guard !session.isAnonymous else {
+                userStudySceneSummaries = []
+                return
+            }
+
+            userStudySceneSummaries = try await supabaseService.fetchUserStudySceneSummaries(session: session)
+        } catch {
+            userStudySceneSummaries = []
+        }
+    }
+
     func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
         guard isSignedIn else {
             isShowingSignInSheet = true
