@@ -5,6 +5,7 @@ struct StudyView: View {
     @State private var errorMessage: String?
     @State private var isShowingCreateScene = false
     @State private var newSceneName = ""
+    @State private var displayedSceneSuggestions: [String] = []
     @State private var isCreatingScene = false
     @State private var scenePendingDeletion: UserStudySceneSummary?
     @State private var isDeletingScene = false
@@ -69,10 +70,12 @@ struct StudyView: View {
         .sheet(isPresented: $isShowingCreateScene) {
             CreateStudySceneSheet(
                 sceneName: $newSceneName,
+                suggestedSceneNames: displayedSceneSuggestions,
                 isCreating: isCreatingScene,
+                onRefreshSuggestions: refreshSceneSuggestions,
                 onCreate: createScene
             )
-            .presentationDetents([.height(285)])
+            .presentationDetents([.height(460)])
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
@@ -90,6 +93,38 @@ struct StudyView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private var availableSceneNames: [String] {
+        let counts = appModel.memories
+            .flatMap(\.sentences)
+            .map(\.sceneHint)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .reduce(into: [String: Int]()) { counts, hint in
+                counts[hint, default: 0] += 1
+            }
+
+        return Array(counts.keys)
+    }
+
+    private func refreshSceneSuggestions() {
+        let availableNames = availableSceneNames
+        guard !availableNames.isEmpty else {
+            displayedSceneSuggestions = []
+            return
+        }
+
+        var suggestions = Array(availableNames.shuffled().prefix(4))
+
+        // With more than four choices, avoid showing the exact same batch again.
+        if availableNames.count > 4,
+           Set(suggestions) == Set(displayedSceneSuggestions),
+           let replacement = availableNames.first(where: { !displayedSceneSuggestions.contains($0) }) {
+            suggestions = Array(displayedSceneSuggestions.dropLast()) + [replacement]
+        }
+
+        displayedSceneSuggestions = suggestions
     }
 
     private func userStudySceneCard(_ scene: UserStudySceneSummary) -> some View {
@@ -180,6 +215,7 @@ struct StudyView: View {
                 return
             }
             newSceneName = ""
+            refreshSceneSuggestions()
             isShowingCreateScene = true
         } label: {
             Label(
@@ -257,7 +293,9 @@ struct StudyView: View {
 
 private struct CreateStudySceneSheet: View {
     @Binding var sceneName: String
+    let suggestedSceneNames: [String]
     let isCreating: Bool
+    let onRefreshSuggestions: () -> Void
     let onCreate: () async -> Void
 
     var body: some View {
@@ -269,6 +307,52 @@ private struct CreateStudySceneSheet: View {
             Text(L10n.string("study.scene.create_hint", "例如：海边度假、和朋友聚会、雨天通勤"))
                 .font(.system(size: AppFontSize.body))
                 .foregroundStyle(AppTextColor.secondary)
+
+            if !suggestedSceneNames.isEmpty {
+                VStack(alignment: .leading, spacing: AppSpacing.small) {
+                    HStack(spacing: AppSpacing.small) {
+                        Text(L10n.string("study.scene.suggestions_title", "根据你的句子推荐"))
+                            .font(.system(size: AppFontSize.metadata, weight: .medium))
+                            .foregroundStyle(AppTextColor.secondary)
+
+                        Spacer(minLength: AppSpacing.small)
+
+                        Button(action: onRefreshSuggestions) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: AppIconSize.compact, weight: .semibold))
+                                .foregroundStyle(AppTextColor.secondary)
+                                .frame(width: 32, height: 28)
+                                .background(AppSurfaceColor.secondaryFill, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.string("study.scene.refresh_suggestions", "换一批推荐"))
+                    }
+
+                    StudyFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
+                        ForEach(suggestedSceneNames, id: \.self) { topicName in
+                            Button {
+                                sceneName = topicName
+                            } label: {
+                                Text(topicName)
+                                    .font(.system(size: AppFontSize.metadata, weight: .medium))
+                                    .foregroundStyle(sceneName == topicName ? Color.orange : AppTextColor.primary)
+                                    .padding(.horizontal, AppSpacing.medium)
+                                    .frame(height: 32)
+                                    .background(
+                                        sceneName == topicName ? Color.orange.opacity(0.14) : AppSurfaceColor.secondaryFill,
+                                        in: Capsule()
+                                    )
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(sceneName == topicName ? Color.orange.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint(L10n.string("study.scene.suggestion_fill_hint", "填入学习主题"))
+                        }
+                    }
+                }
+            }
 
             TextField(
                 L10n.string("study.scene.name_placeholder", "输入你想学习的主题"),

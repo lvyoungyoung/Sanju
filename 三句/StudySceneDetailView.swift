@@ -14,6 +14,8 @@ struct StudySceneDetailView: View {
     @State private var isLoadingExpressions = false
     @State private var didLoadExpressions = false
 
+    private let minimumSentenceCountForExpressions = 10
+
     private var title: String { route.title }
 
     private enum DetailSection: String, CaseIterable, Identifiable {
@@ -204,7 +206,15 @@ struct StudySceneDetailView: View {
 
     @ViewBuilder
     private var expressionContent: some View {
-        if isLoadingExpressions {
+        if items.count < minimumSentenceCountForExpressions {
+            EmptyStateView(
+                title: L10n.string("study.scene.detail.expressions_insufficient_title", "这个主题下句子还不多"),
+                subtitle: L10n.string("study.scene.detail.expressions_insufficient_subtitle", "再去创建一些吧。"),
+                systemImage: "text.badge.plus"
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 70)
+        } else if isLoadingExpressions {
             SyncLoadingState(
                 title: L10n.string("study.scene.detail.expressions_loading_title", "正在整理常用表达"),
                 subtitle: L10n.string("study.scene.detail.expressions_loading_subtitle", "从你的句子里挑出值得记住的内容")
@@ -313,7 +323,7 @@ struct StudySceneDetailView: View {
     private func loadExpressionsIfNeeded() async {
         guard !didLoadExpressions, !isLoadingExpressions else { return }
         didLoadExpressions = true
-        guard !items.isEmpty else { return }
+        guard items.count >= minimumSentenceCountForExpressions else { return }
 
         isLoadingExpressions = true
         defer { isLoadingExpressions = false }

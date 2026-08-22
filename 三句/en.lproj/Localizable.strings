@@ -307,6 +307,9 @@
 "study.scene.empty.action_hint" = "There are no sentences in this topic yet. Upload a related photo to add some.";
 "study.scene.my_scenes" = "My Study Topics";
 "study.scene.name_placeholder" = "Name a topic you want to learn";
+"study.scene.suggestions_title" = "Suggested from your sentences";
+"study.scene.suggestion_fill_hint" = "Fill in this study topic";
+"study.scene.refresh_suggestions" = "Refresh suggestions";
 "study.scene.detail.all_sentences" = "All Sentences";
 "study.scene.detail.empty_subtitle" = "Related sentences from future memories will appear here automatically.";
 "study.scene.detail.empty_title" = "No matching sentences yet";
@@ -321,6 +324,8 @@
 "study.scene.detail.expressions_loading_subtitle" = "Picking out words and phrases worth remembering";
 "study.scene.detail.expressions_empty_title" = "Add a few more sentences and this will grow";
 "study.scene.detail.expressions_empty_subtitle" = "Useful words and phrases are distilled from this topic's sentences.";
+"study.scene.detail.expressions_insufficient_title" = "This topic needs a few more sentences";
+"study.scene.detail.expressions_insufficient_subtitle" = "Create a few more and come back.";
 "study.scene.detail.expression_count" = "%d example(s)";
 "study.scene.detail.play_pronunciation" = "Play pronunciation";
 "study.scene.detail.view_examples" = "View examples";
