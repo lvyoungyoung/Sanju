@@ -309,6 +309,8 @@ extension AppModel {
         clearPendingGeneratedMemoryImage()
 
         guard !session.isAnonymous else { return }
+        // A newly generated sentence can match any custom study topic.
+        invalidateUserStudySceneDetailSentenceCache()
         enqueuePendingMemoryImageUploadIfNeeded(
             memoryID: memory.id,
             remoteImagePath: memory.remoteImagePath,
@@ -425,6 +427,7 @@ extension AppModel {
         let removedFavoriteCount = deletedMemory?.sentences.filter(\.isFavorite).count ?? 0
         removePendingMemoryImageUpload(memoryID: memoryID)
         memories.removeAll { $0.id == memoryID }
+        invalidateUserStudySceneDetailSentenceCache()
         recordedMemoriesCount = memories.count
         favoriteSentencesCount = max(0, favoriteSentencesCount - removedFavoriteCount)
         if let deletedMemory, deletedMemory.syncedToAccount {
@@ -1462,6 +1465,18 @@ extension AppModel {
         }
     }
 
+    func cachedUserStudySceneDetailSentences(for sceneID: UUID) -> [SentenceStudyQueueItem]? {
+        userStudySceneDetailSentenceCache[sceneID]
+    }
+
+    func invalidateUserStudySceneDetailSentenceCache(for sceneID: UUID? = nil) {
+        if let sceneID {
+            userStudySceneDetailSentenceCache.removeValue(forKey: sceneID)
+        } else {
+            userStudySceneDetailSentenceCache.removeAll()
+        }
+    }
+
     func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
         guard isSignedIn else {
             isShowingSignInSheet = true
@@ -1479,6 +1494,7 @@ extension AppModel {
         } else {
             userStudySceneSummaries.insert(scene, at: 0)
         }
+        invalidateUserStudySceneDetailSentenceCache(for: scene.id)
         return scene
     }
 
@@ -1499,6 +1515,7 @@ extension AppModel {
 
         try await supabaseService.deleteUserStudyScene(session: session, sceneID: scene.id)
         userStudySceneSummaries.removeAll { $0.id == scene.id }
+        invalidateUserStudySceneDetailSentenceCache(for: scene.id)
         await refreshSentenceStudyDueCount()
     }
 
@@ -1582,7 +1599,7 @@ extension AppModel {
         return SentenceStudyTopicSession(topic: scene.studyTopic, queue: reviewQueue, startsInReviewMode: true)
     }
 
-    func loadUserStudySceneDetailSentences(
+    func refreshUserStudySceneDetailSentences(
         for scene: UserStudySceneSummary
     ) async throws -> [SentenceStudyQueueItem] {
         guard isNetworkAvailable else {
@@ -1594,11 +1611,13 @@ extension AppModel {
             throw SentenceStudyTopicLoadingError.signInRequired
         }
 
-        return try await supabaseService.fetchUserStudySceneDetailSentences(
+        let sentences = try await supabaseService.fetchUserStudySceneDetailSentences(
             session: session,
             sceneID: scene.id,
             limit: 1000
         )
+        userStudySceneDetailSentenceCache[scene.id] = sentences
+        return sentences
     }
 
     func extractStudyTopicExpressions(

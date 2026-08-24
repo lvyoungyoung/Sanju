@@ -13,6 +13,11 @@ struct StudySceneDetailView: View {
 
     private var title: String { route.title }
 
+    private var cachedSceneItems: [SentenceStudyQueueItem]? {
+        guard case let .userScene(scene) = route else { return nil }
+        return appModel.cachedUserStudySceneDetailSentences(for: scene.id)
+    }
+
     private var items: [StudySceneDetailSentence] {
         switch route {
         case .favorites:
@@ -30,7 +35,7 @@ struct StudySceneDetailView: View {
                     }
                 }
         case .userScene:
-            return sceneItems.map {
+            return (sceneItems.isEmpty ? cachedSceneItems ?? [] : sceneItems).map {
                 StudySceneDetailSentence(
                     id: $0.sentenceID,
                     english: $0.english,
@@ -70,7 +75,7 @@ struct StudySceneDetailView: View {
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoading && cachedSceneItems == nil {
                 loadingState
             } else {
                 detailContent
@@ -84,7 +89,7 @@ struct StudySceneDetailView: View {
             await loadDetail()
         }
         .refreshable {
-            await loadDetail()
+            await loadDetail(forceRefresh: true)
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -103,7 +108,7 @@ struct StudySceneDetailView: View {
                     studySession = nil
                     Task {
                         await appModel.refreshSentenceStudyDueCount()
-                        await loadDetail()
+                        await loadDetail(forceRefresh: true)
                     }
                 }
             )
@@ -246,24 +251,30 @@ struct StudySceneDetailView: View {
     }
 
     @MainActor
-    private func loadDetail() async {
-        isLoading = true
+    private func loadDetail(forceRefresh: Bool = false) async {
+        let hasCachedItems = cachedSceneItems != nil
+        isLoading = !hasCachedItems
         defer { isLoading = false }
 
         switch route {
         case .favorites:
             await appModel.refreshSentenceStudyDueCount()
         case let .userScene(scene):
+            if let cachedSceneItems, !forceRefresh {
+                sceneItems = cachedSceneItems
+            }
             do {
-                sceneItems = try await appModel.loadUserStudySceneDetailSentences(for: scene)
+                sceneItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
                 await appModel.refreshUserStudySceneSummaries()
                 refreshedSceneSummary = appModel.userStudySceneSummaries
                     .first(where: { $0.id == scene.id })?
                     .summary
             } catch {
-                errorMessage = error.localizedDescription.isEmpty
-                    ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
-                : error.localizedDescription
+                if !hasCachedItems || forceRefresh {
+                    errorMessage = error.localizedDescription.isEmpty
+                        ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
+                        : error.localizedDescription
+                }
             }
         }
 
