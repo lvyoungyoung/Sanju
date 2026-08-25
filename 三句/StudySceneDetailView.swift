@@ -180,7 +180,7 @@ struct StudySceneDetailView: View {
                     .frame(width: 1, height: 34)
 
                 StudyTopicMetricView(
-                    value: "\(studySummary.studiedCount)",
+                    value: "\(studySummary.reviewableTodayCount)",
                     label: L10n.string("study.metric.studied_today", "今日已学")
                 )
             }
