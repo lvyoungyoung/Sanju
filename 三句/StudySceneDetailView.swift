@@ -18,6 +18,11 @@ struct StudySceneDetailView: View {
         return appModel.cachedUserStudySceneDetailSentences(for: scene.id)
     }
 
+    private var shouldShowInitialLoading: Bool {
+        guard case .userScene = route else { return false }
+        return isLoading && cachedSceneItems == nil
+    }
+
     private var items: [StudySceneDetailSentence] {
         switch route {
         case .favorites:
@@ -75,7 +80,7 @@ struct StudySceneDetailView: View {
 
     var body: some View {
         Group {
-            if isLoading && cachedSceneItems == nil {
+            if shouldShowInitialLoading {
                 loadingState
             } else {
                 detailContent
