@@ -110,7 +110,6 @@ struct MemoryDetailSentencePanel: View {
 struct MemoryDetailSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
     let sentence: SentenceRecord
-    @State private var directStudyItem: SentenceStudyQueueItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
@@ -143,35 +142,9 @@ struct MemoryDetailSentenceRow: View {
                 ) {
                     appModel.toggleFavorite(sentenceID: sentence.id)
                 }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    Task {
-                        directStudyItem = await appModel.prepareSentenceForDirectStudy(sentenceID: sentence.id)
-                    }
-                } label: {
-                    Label(L10n.string("new.result.start_study", "去学习"), systemImage: "graduationcap.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 13)
-                        .frame(height: 36)
-                        .background(Color(red: 0.93, green: 0.50, blue: 0.08), in: Capsule())
-                }
-                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, 8)
-        .fullScreenCover(item: $directStudyItem) { item in
-            SentenceStudySessionView(
-                queue: [item],
-                usesSingleSentenceCompletion: true,
-                onDismiss: {
-                    directStudyItem = nil
-                }
-            )
-            .environmentObject(appModel)
-        }
     }
 
     private func sentenceActionButton(
