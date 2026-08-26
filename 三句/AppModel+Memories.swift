@@ -264,6 +264,7 @@ extension AppModel {
                     english: sentence.english,
                     chinese: sentence.chinese,
                     sceneHint: sentence.sceneHint,
+                    presentationGroup: sentence.presentationGroup,
                     isFavorite: sentence.isFavorite
                 )
             }
@@ -585,6 +586,7 @@ extension AppModel {
                             english: sentence.english,
                             chinese: sentence.chinese,
                             sceneHint: sentence.sceneHint ?? "",
+                            presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                             isFavorite: sentence.isFavorite
                         )
                     }

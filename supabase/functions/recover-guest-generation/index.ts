@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 
 interface RequestBody {
   guestJobID?: string
+  generationFormat?: string
 }
 
 Deno.serve(async (req) => {
@@ -26,6 +27,7 @@ Deno.serve(async (req) => {
     const accessToken = authHeader.replace("Bearer ", "").trim()
     const body = (await req.json()) as RequestBody
     const guestJobID = body.guestJobID?.trim()
+    const usesDualTabFormat = body.generationFormat === "dual_tabs_v1"
 
     if (!guestJobID) {
       return jsonResponse({ error: "guestJobID is required" }, 400)
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
     }
 
     const sentences = Array.isArray(job.sentences) ? job.sentences : []
-    if (sentences.length !== 3) {
+    if (usesDualTabFormat ? sentences.length !== 3 && sentences.length !== 6 : sentences.length < 3) {
       return jsonResponse({ recovered: false })
     }
 
@@ -104,13 +106,20 @@ Deno.serve(async (req) => {
         imagePath: "",
         createdAt: job.created_at,
         tags: Array.isArray(job.tags) ? job.tags : [],
-        sentences: sentences.map((sentence: any) => ({
+        sentences: (usesDualTabFormat ? sentences : sentences.slice(0, 3)).map((sentence: any) => ({
           // Completed guest jobs already contain server-issued sentence IDs. Preserve
           // them so a recovered local memory keeps its staged semantic embedding.
           id: isUUID(sentence?.id) ? sentence.id : crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
           scene_hint: String(sentence?.scene_hint ?? "").trim(),
+          ...(usesDualTabFormat
+            ? {
+                presentation_group: sentence?.presentation_group === "what_i_say"
+                  ? "what_i_say"
+                  : "what_i_see",
+              }
+            : {}),
           is_favorite: false,
         })),
       },

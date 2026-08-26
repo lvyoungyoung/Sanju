@@ -8,11 +8,26 @@
 import Combine
 import Foundation
 
+enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
+    case whatISee = "what_i_see"
+    case whatIDSay = "what_i_say"
+
+    var localizedTabTitle: String {
+        switch self {
+        case .whatISee:
+            L10n.string("new.result.tab.what_i_see", "我看到的")
+        case .whatIDSay:
+            L10n.string("new.result.tab.what_i_say", "我想说的")
+        }
+    }
+}
+
 struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
     let english: String
     let chinese: String
     let sceneHint: String
+    let presentationGroup: SentencePresentationGroup
     var isFavorite: Bool
 
     init(
@@ -20,12 +35,14 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         english: String,
         chinese: String,
         sceneHint: String = "",
+        presentationGroup: SentencePresentationGroup = .whatISee,
         isFavorite: Bool = false
     ) {
         self.id = id
         self.english = english
         self.chinese = chinese
         self.sceneHint = sceneHint
+        self.presentationGroup = presentationGroup
         self.isFavorite = isFavorite
     }
 
@@ -34,6 +51,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case english
         case chinese
         case sceneHint
+        case presentationGroup
         case isFavorite
     }
 
@@ -43,6 +61,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         english = try container.decode(String.self, forKey: .english)
         chinese = try container.decode(String.self, forKey: .chinese)
         sceneHint = try container.decodeIfPresent(String.self, forKey: .sceneHint) ?? ""
+        presentationGroup = try container.decodeIfPresent(SentencePresentationGroup.self, forKey: .presentationGroup) ?? .whatISee
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 }

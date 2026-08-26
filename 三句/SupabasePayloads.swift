@@ -194,6 +194,7 @@ struct SupabaseGenerateMemoryRequest: Encodable {
     let languageStyle: String
     let guestJobID: String?
     let clientRequestID: String?
+    let generationFormat: String?
 
     enum CodingKeys: String, CodingKey {
         case imageBase64
@@ -201,6 +202,7 @@ struct SupabaseGenerateMemoryRequest: Encodable {
         case languageStyle
         case guestJobID
         case clientRequestID
+        case generationFormat
     }
 }
 
@@ -234,9 +236,11 @@ struct SupabaseRecoverGuestGenerationResponse: Decodable {
 
 struct SupabaseRecoverGuestGenerationRequest: Encodable {
     let guestJobID: String
+    let generationFormat: String?
 
     enum CodingKeys: String, CodingKey {
         case guestJobID
+        case generationFormat
     }
 }
 
@@ -401,6 +405,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let english: String
     let chinese: String
     let sceneHint: String
+    let presentationGroup: String
     let isFavorite: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -410,6 +415,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case english
         case chinese
         case sceneHint = "scene_hint"
+        case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }
 }

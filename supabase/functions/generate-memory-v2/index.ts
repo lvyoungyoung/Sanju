@@ -4,7 +4,11 @@ interface Sentence {
   english: string
   chinese: string
   scene_hint: string
+  presentation_group?: SentencePresentationGroup
 }
+
+type SentencePresentationGroup = "what_i_see" | "what_i_say"
+type GenerationFormat = "legacy_v1" | "dual_tabs_v1"
 
 type FinalizedSentence = Sentence & {
   id: string
@@ -34,7 +38,8 @@ const MEMORY_TAGS = [
 
 function buildPromptText(
   englishLevel: "简单" | "中等" | "高级",
-  languageStyle: "平铺直叙" | "抒情优美"
+  languageStyle: "平铺直叙" | "抒情优美",
+  generationFormat: GenerationFormat
 ): string {
   const englishLevelPrompt =
     englishLevel === "简单"
@@ -47,6 +52,31 @@ function buildPromptText(
     languageStyle === "抒情优美"
       ? "整体风格请明显更细腻、更有画面感、更有情绪和节奏。可以适度使用温柔、优美、富有氛围感的词语，让句子读起来更柔和、更有美感，但仍然要自然、准确、易懂。允许轻微的抒情和意境表达，但不要写成诗歌，不要过度夸张，不要脱离图片内容。"
       : "整体风格请生动、活泼、自然，像人看到眼前画面时会脱口而出的日常英语。优先使用具体而有动作感的动词、自然的口语化搭配和有节奏感的表达。允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞，让句子更有记忆点，但幽默必须来自画面中真实可见的对比、动作或细节。不要写段子、网络梗、夸张笑话或生硬的拟人化；不要虚构图片中没有的动作、对话、情绪或细节。"
+
+  if (generationFormat === "dual_tabs_v1") {
+    return `
+请根据这张图片，为语言学习生成两组英文句子，并为每句提供对应的中文翻译。
+${englishLevelPrompt}
+${languageStylePrompt}
+
+第一组 image_descriptions 必须是三句客观的画面描述：只说图片中直接可见的人、物、动作、环境或文字，不推测人物关系、事件背景和内心感受。
+第二组 scene_and_feelings 必须是三句用户面对这张照片时最可能想说的自然英语：大胆根据画面推测最可能发生的场景、人物关系或感受，并优先写第一人称、可脱口而出的日常表达，例如 "I had such a lovely time with my friends."。不需要反复说明这是推测，也不要写成客观的物体清单。即使推测偶尔不完全准确，也要让表达具体、自然、有生活感。
+如果图片是手机截图、应用界面、图表、股票页面、数据面板、网页、文档或任何带有大量文字/数字的信息界面，第二组也应围绕用户看到、记录或分享这个信息时可能说的话，不做数据分析或涨跌解读。
+
+你必须严格遵守以下输出规则：
+1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
+2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
+3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
+4. 每一项必须且只能包含 english、chinese 和 scene_hint 三个字符串字段
+5. 每句中文控制在 8 到 30 个汉字之间
+6. scene_hint 必须是 2 到 12 个汉字的简短场景提示，例如“雨天通勤”“朋友聚会”“厨房烹饪”；不要使用具体人名、地点名、情绪词或一次性细节
+7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
+8. 不要输出任何多余字段或 JSON 前后的任何字符
+
+严格按照下面的格式返回：
+{"image_descriptions":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"tags":["人物","生活场景"]}
+`.trim()
+  }
 
   return `
 请根据这张图片，生成三句适合英语学习的英文描述，并为每句提供对应的中文翻译。
@@ -175,7 +205,29 @@ function parseSentences(content: string): Sentence[] | null {
   return extractSentencesByPattern(content) ?? extractLooseSentencePairs(content)
 }
 
-function parseGeneratedContent(content: string): GeneratedContent | null {
+function parseGeneratedContent(
+  content: string,
+  generationFormat: GenerationFormat
+): GeneratedContent | null {
+  if (generationFormat === "dual_tabs_v1") {
+    const payload = parseJSONObject(content)
+    if (!payload) {
+      return null
+    }
+
+    const descriptions = normalizeSentenceArray(payload.image_descriptions, "what_i_see")
+    const sceneAndFeelings = normalizeSentenceArray(payload.scene_and_feelings, "what_i_say")
+
+    if (descriptions.length !== 3 || sceneAndFeelings.length !== 3) {
+      return null
+    }
+
+    return {
+      sentences: [...descriptions, ...sceneAndFeelings],
+      tags: parseMemoryTagsFromPayload(payload),
+    }
+  }
+
   const sentences = parseSentences(content)
   if (!sentences) {
     return null
@@ -188,14 +240,11 @@ function parseGeneratedContent(content: string): GeneratedContent | null {
 }
 
 function parseMemoryTags(content: string): string[] {
-  const normalized = normalizeJSONPayload(content)
-  let parsed = tryParseJSON(normalized) ?? tryParseJSON(extractJSONObject(normalized) ?? "")
+  return parseMemoryTagsFromPayload(parseJSONObject(content))
+}
 
-  for (let attempt = 0; attempt < 2 && typeof parsed === "string"; attempt += 1) {
-    parsed = tryParseJSON(parsed)
-  }
-
-  const rawTags = Array.isArray(parsed?.tags) ? parsed.tags : []
+function parseMemoryTagsFromPayload(payload: any): string[] {
+  const rawTags = Array.isArray(payload?.tags) ? payload.tags : []
   const validTags = new Set<string>(MEMORY_TAGS)
   const tags: string[] = []
 
@@ -210,6 +259,17 @@ function parseMemoryTags(content: string): string[] {
   }
 
   return tags
+}
+
+function parseJSONObject(content: string): any | null {
+  const normalized = normalizeJSONPayload(content)
+  let parsed = tryParseJSON(normalized) ?? tryParseJSON(extractJSONObject(normalized) ?? "")
+
+  for (let attempt = 0; attempt < 2 && typeof parsed === "string"; attempt += 1) {
+    parsed = tryParseJSON(parsed)
+  }
+
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null
 }
 
 function extractSentencePayload(content: string): any | null {
@@ -276,7 +336,10 @@ function normalizeParsedPayload(parsed: any): any | null {
   return null
 }
 
-function normalizeSentenceArray(value: any): Sentence[] {
+function normalizeSentenceArray(
+  value: any,
+  presentationGroup?: SentencePresentationGroup
+): Sentence[] {
   if (!Array.isArray(value)) {
     return []
   }
@@ -286,6 +349,7 @@ function normalizeSentenceArray(value: any): Sentence[] {
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
       scene_hint: normalizeSceneHint(item?.scene_hint),
+      ...(presentationGroup ? { presentation_group: presentationGroup } : {}),
     }))
     .filter((item: Sentence) => item.english && item.chinese)
 }
@@ -442,6 +506,7 @@ interface RequestBody {
   languageStyle?: "平铺直叙" | "抒情优美"
   guestJobID?: string
   clientRequestID?: string
+  generationFormat?: string
 }
 
 const MIMO_TIMEOUT_MS = 20000
@@ -531,6 +596,9 @@ Deno.serve(async (req) => {
     const imageBytes = decodeBase64(imageBase64)
     const englishLevel = body.englishLevel ?? "中等"
     const languageStyle = body.languageStyle ?? "平铺直叙"
+    const generationFormat: GenerationFormat = body.generationFormat === "dual_tabs_v1"
+      ? "dual_tabs_v1"
+      : "legacy_v1"
     const isAnonymous = user.is_anonymous === true
     const guestJobID = isAnonymous ? body.guestJobID?.trim() : undefined
     authenticatedClientRequestID = isAnonymous
@@ -551,6 +619,7 @@ Deno.serve(async (req) => {
           clientRequestID: authenticatedClientRequestID,
           userID: user.id,
           fallbackRemainingCredits: profile.available_generations,
+          generationFormat,
         }
       )
 
@@ -590,6 +659,7 @@ Deno.serve(async (req) => {
             userID: user.id,
             fallbackCreatedAt: createdAt,
             fallbackRemainingCredits: profile.available_generations,
+            generationFormat,
           }
         )
 
@@ -781,7 +851,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const promptText = buildPromptText(englishLevel, languageStyle)
+    const promptText = buildPromptText(englishLevel, languageStyle, generationFormat)
 
     const completionResult = await requestWithFallback({
       imageBase64,
@@ -790,6 +860,7 @@ Deno.serve(async (req) => {
       mimoApiKey,
       kimiBaseURL,
       kimiApiKey,
+      generationFormat,
     })
 
     if (!completionResult.ok) {
@@ -842,6 +913,7 @@ Deno.serve(async (req) => {
       english: sentence.english,
       chinese: sentence.chinese,
       scene_hint: sentence.scene_hint,
+      presentation_group: sentence.presentation_group ?? "what_i_see",
       is_favorite: false,
     }))
 
@@ -898,7 +970,7 @@ Deno.serve(async (req) => {
           createdAt,
           provider,
           tags,
-          sentences: finalizedSentences,
+          sentences: toClientSentences(finalizedSentences, generationFormat),
         },
         remainingCredits: finalizeResult.remainingCredits,
         guestJobID,
@@ -996,7 +1068,7 @@ Deno.serve(async (req) => {
         createdAt,
         provider,
         tags,
-        sentences: finalizedSentences,
+        sentences: toClientSentences(finalizedSentences, generationFormat),
       },
       remainingCredits: finalizeResult.remainingCredits,
       clientRequestID: authenticatedClientRequestID,
@@ -1049,6 +1121,7 @@ Deno.serve(async (req) => {
 async function requestWithFallback(args: {
   imageBase64: string
   promptText: string
+  generationFormat: GenerationFormat
   mimoBaseURL: string
   mimoApiKey: string
   kimiBaseURL: string
@@ -1103,7 +1176,8 @@ async function requestWithFallback(args: {
   const mimoResult = await requestMimoOnce(
     args.mimoBaseURL,
     args.mimoApiKey,
-    mimoRequestBody
+    mimoRequestBody,
+    args.generationFormat
   )
 
   if (mimoResult.ok) {
@@ -1168,7 +1242,8 @@ async function requestWithFallback(args: {
   const kimiResult = await requestKimiOnce(
     args.kimiBaseURL,
     args.kimiApiKey,
-    kimiRequestBody
+    kimiRequestBody,
+    args.generationFormat
   )
 
   if (kimiResult.ok) {
@@ -1202,7 +1277,8 @@ async function requestWithFallback(args: {
 async function requestMimoOnce(
   mimoBaseURL: string,
   mimoApiKey: string,
-  requestBody: unknown
+  requestBody: unknown,
+  generationFormat: GenerationFormat
 ): Promise<
   | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
@@ -1310,7 +1386,7 @@ async function requestMimoOnce(
     }
   }
 
-  const generatedContent = parseGeneratedContent(content)
+  const generatedContent = parseGeneratedContent(content, generationFormat)
   if (!generatedContent) {
     return {
       ok: false,
@@ -1338,7 +1414,8 @@ async function requestMimoOnce(
 async function requestKimiOnce(
   kimiBaseURL: string,
   kimiApiKey: string,
-  requestBody: unknown
+  requestBody: unknown,
+  generationFormat: GenerationFormat
 ): Promise<
   | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
@@ -1433,7 +1510,7 @@ async function requestKimiOnce(
     }
   }
 
-  const generatedContent = parseGeneratedContent(content)
+  const generatedContent = parseGeneratedContent(content, generationFormat)
   if (!generatedContent) {
     return {
       ok: false,
@@ -1758,6 +1835,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     clientRequestID: string
     userID: string
     fallbackRemainingCredits: number
+    generationFormat: GenerationFormat
   }
 ): Promise<Response | null> {
   const { data: job, error: jobError } = await adminClient
@@ -1785,6 +1863,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         english,
         chinese,
         scene_hint,
+        presentation_group,
         is_favorite,
         sort_order
       )
@@ -1804,7 +1883,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
       )
     : []
 
-  if (sentences.length !== 3) {
+  if (!hasSupportedStoredSentenceCount(sentences.length, args.generationFormat)) {
     return null
   }
 
@@ -1815,13 +1894,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
       createdAt: memory.created_at,
       provider: memory.provider ?? null,
       tags: Array.isArray(memory.tags) ? memory.tags : [],
-      sentences: sentences.map((sentence: any) => ({
-        id: sentence.id,
-        english: String(sentence.english ?? "").trim(),
-        chinese: String(sentence.chinese ?? "").trim(),
-        scene_hint: normalizeSceneHint(sentence.scene_hint),
-        is_favorite: sentence.is_favorite === true,
-      })),
+      sentences: toClientSentences(sentences, args.generationFormat),
     },
     remainingCredits: job.remaining_credits ?? args.fallbackRemainingCredits,
     clientRequestID: args.clientRequestID,
@@ -1835,6 +1908,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
     userID: string
     fallbackCreatedAt: string
     fallbackRemainingCredits: number
+    generationFormat: GenerationFormat
   }
 ): Promise<Response | null> {
   const { data: completedJob, error: completedJobError } = await adminClient
@@ -1855,7 +1929,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
   }
 
   const sentences = Array.isArray(completedJob?.sentences) ? completedJob.sentences : []
-  if (sentences.length !== 3) {
+  if (!hasSupportedStoredSentenceCount(sentences.length, args.generationFormat)) {
     return null
   }
 
@@ -1866,16 +1940,46 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
       createdAt: completedJob?.created_at ?? args.fallbackCreatedAt,
       provider: completedJob?.provider ?? null,
       tags: Array.isArray(completedJob?.tags) ? completedJob.tags : [],
-      sentences: sentences.map((sentence: any) => ({
-        id: crypto.randomUUID(),
-        english: String(sentence?.english ?? "").trim(),
-        chinese: String(sentence?.chinese ?? "").trim(),
-        scene_hint: normalizeSceneHint(sentence?.scene_hint),
-        is_favorite: false,
-      })),
+      sentences: toClientSentences(sentences, args.generationFormat, true),
     },
     remainingCredits: completedJob?.remaining_credits ?? args.fallbackRemainingCredits,
     guestJobID: args.guestJobID,
+  })
+}
+
+function hasSupportedStoredSentenceCount(count: number, generationFormat: GenerationFormat): boolean {
+  return generationFormat === "legacy_v1" ? count >= 3 : count === 3 || count === 6
+}
+
+function isUUID(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function toClientSentences(
+  sentences: any[],
+  generationFormat: GenerationFormat,
+  replacesMissingIDs = false
+): any[] {
+  const visibleSentences = generationFormat === "legacy_v1" ? sentences.slice(0, 3) : sentences
+
+  return visibleSentences.map((sentence: any) => {
+    const normalized = {
+      id: replacesMissingIDs || !isUUID(sentence?.id) ? crypto.randomUUID() : sentence.id,
+      english: String(sentence?.english ?? "").trim(),
+      chinese: String(sentence?.chinese ?? "").trim(),
+      scene_hint: normalizeSceneHint(sentence?.scene_hint),
+      is_favorite: sentence?.is_favorite === true,
+    }
+
+    return generationFormat === "dual_tabs_v1"
+      ? {
+          ...normalized,
+          presentation_group: sentence?.presentation_group === "what_i_say"
+            ? "what_i_say"
+            : "what_i_see",
+        }
+      : normalized
   })
 }
 

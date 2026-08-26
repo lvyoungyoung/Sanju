@@ -493,12 +493,13 @@ struct SupabaseService: SupabaseServicing {
                 englishLevel: englishLevel.rawValue,
                 languageStyle: languageStyle.rawValue,
                 guestJobID: guestJobID,
-                clientRequestID: clientRequestID
+                clientRequestID: clientRequestID,
+                generationFormat: "dual_tabs_v1"
             )
         )
 
         let response: SupabaseGenerateMemoryResponse = try await perform(request)
-        guard response.memory.sentences.count == 3,
+        guard isSupportedGeneratedSentenceCount(response.memory.sentences.count),
               let memoryID = UUID(uuidString: response.memory.id) else {
             throw SupabaseServiceError.invalidResponse
         }
@@ -513,11 +514,12 @@ struct SupabaseService: SupabaseServicing {
                 english: english,
                 chinese: chinese,
                 sceneHint: sentence.sceneHint ?? "",
+                presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                 isFavorite: sentence.isFavorite ?? false
             )
         }
 
-        guard sentences.count == 3 else {
+        guard isSupportedGeneratedSentenceCount(sentences.count) else {
             throw SupabaseServiceError.invalidResponse
         }
 
@@ -563,14 +565,17 @@ struct SupabaseService: SupabaseServicing {
             path: "/functions/v1/recover-guest-generation",
             method: "POST",
             bearerToken: session.accessToken,
-            body: SupabaseRecoverGuestGenerationRequest(guestJobID: guestJobID)
+            body: SupabaseRecoverGuestGenerationRequest(
+                guestJobID: guestJobID,
+                generationFormat: "dual_tabs_v1"
+            )
         )
 
         let response: SupabaseRecoverGuestGenerationResponse = try await perform(request)
         guard response.recovered else { return nil }
         guard let guestJobID = response.guestJobID,
               let memory = response.memory,
-              memory.sentences.count == 3,
+              isSupportedGeneratedSentenceCount(memory.sentences.count),
               let memoryID = UUID(uuidString: memory.id) else {
             throw SupabaseServiceError.invalidResponse
         }
@@ -585,11 +590,12 @@ struct SupabaseService: SupabaseServicing {
                 english: english,
                 chinese: chinese,
                 sceneHint: sentence.sceneHint ?? "",
+                presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                 isFavorite: sentence.isFavorite ?? false
             )
         }
 
-        guard sentences.count == 3, let remainingCredits = response.remainingCredits else {
+        guard isSupportedGeneratedSentenceCount(sentences.count), let remainingCredits = response.remainingCredits else {
             throw SupabaseServiceError.invalidResponse
         }
 
@@ -677,7 +683,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,scene_hint,is_favorite)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,scene_hint,presentation_group,is_favorite)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -745,6 +751,7 @@ struct SupabaseService: SupabaseServicing {
                 english: sentence.english,
                 chinese: sentence.chinese,
                 sceneHint: sentence.sceneHint,
+                presentationGroup: sentence.presentationGroup.rawValue,
                 isFavorite: sentence.isFavorite
             )
         }
@@ -767,6 +774,7 @@ struct SupabaseService: SupabaseServicing {
                 english: sentence.english,
                 chinese: sentence.chinese,
                 sceneHint: sentence.sceneHint,
+                presentationGroup: sentence.presentationGroup,
                 isFavorite: sentence.isFavorite
             )
         }
@@ -780,6 +788,10 @@ struct SupabaseService: SupabaseServicing {
             tags: memory.tags,
             sentences: migratedSentences
         )
+    }
+
+    private func isSupportedGeneratedSentenceCount(_ count: Int) -> Bool {
+        count == 3 || count == 6
     }
 
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int {

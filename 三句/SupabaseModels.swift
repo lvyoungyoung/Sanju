@@ -62,6 +62,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let english: String
     let chinese: String
     let sceneHint: String?
+    let presentationGroup: String?
     let isFavorite: Bool
 
     enum CodingKeys: String, CodingKey {
@@ -70,6 +71,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case english
         case chinese
         case sceneHint = "scene_hint"
+        case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }
 }
@@ -213,6 +215,7 @@ struct SupabaseGeneratedSentence: Decodable {
     let english: String
     let chinese: String
     let sceneHint: String?
+    let presentationGroup: String?
     let isFavorite: Bool?
 
     enum CodingKeys: String, CodingKey {
@@ -220,6 +223,7 @@ struct SupabaseGeneratedSentence: Decodable {
         case english
         case chinese
         case sceneHint = "scene_hint"
+        case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }
 }
