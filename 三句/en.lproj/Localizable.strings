@@ -167,6 +167,7 @@
 "memory_detail.missing.title" = "Content Unavailable";
 "memory_detail.save_to_photos" = "Save to Photos";
 "memory_detail.title" = "Details";
+"memory_detail.group.empty.title" = "No content";
 "new.agreement.markdown" = "By using this app, you agree to the [Terms of Service](%@) and [Privacy Policy](%@).";
 "new.agreement.plain" = "By using this app, you agree to the Terms of Service and Privacy Policy.";
 "new.credits.remaining" = "Credits left: %d";

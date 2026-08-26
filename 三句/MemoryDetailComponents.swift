@@ -70,38 +70,39 @@ struct MemoryDetailSentencePanel: View {
     let memory: MemoryEntry
     @State private var selectedGroup: SentencePresentationGroup = .whatISee
 
-    private var availableGroups: [SentencePresentationGroup] {
-        SentencePresentationGroup.allCases.filter { group in
-            memory.sentences.contains { $0.presentationGroup == group }
-        }
-    }
-
     private var displayedSentences: [SentenceRecord] {
         memory.sentences.filter { sentence in
-            availableGroups.count == 1 || sentence.presentationGroup == selectedGroup
+            sentence.presentationGroup == selectedGroup
         }
     }
 
     var body: some View {
         VStack(spacing: 10) {
-            if availableGroups.count > 1 {
-                Picker("", selection: $selectedGroup) {
-                    ForEach(availableGroups, id: \.self) { group in
-                        Text(group.localizedTabTitle).tag(group)
-                    }
+            Picker("", selection: $selectedGroup) {
+                ForEach(SentencePresentationGroup.allCases, id: \.self) { group in
+                    Text(group.localizedTabTitle).tag(group)
                 }
-                .pickerStyle(.segmented)
-                .onAppear {
-                    if !availableGroups.contains(selectedGroup) {
-                        selectedGroup = availableGroups.first ?? .whatISee
-                    }
+            }
+            .pickerStyle(.segmented)
+            .onAppear {
+                if !memory.sentences.contains(where: { $0.presentationGroup == selectedGroup }) {
+                    selectedGroup = memory.sentences.first?.presentationGroup ?? .whatISee
                 }
             }
 
-            ForEach(displayedSentences) { sentence in
-                MemoryDetailSentenceRow(sentence: sentence)
-                    .padding(16)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+            if displayedSentences.isEmpty {
+                ContentUnavailableView(
+                    L10n.string("memory_detail.group.empty.title", "没有内容"),
+                    systemImage: "text.badge.xmark"
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppSpacing.xLarge)
+            } else {
+                ForEach(displayedSentences) { sentence in
+                    MemoryDetailSentenceRow(sentence: sentence)
+                        .padding(16)
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                }
             }
         }
     }

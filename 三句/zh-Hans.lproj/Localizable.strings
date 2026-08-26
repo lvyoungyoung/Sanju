@@ -167,6 +167,7 @@
 "memory_detail.missing.title" = "内容不存在";
 "memory_detail.save_to_photos" = "保存到本地";
 "memory_detail.title" = "详情";
+"memory_detail.group.empty.title" = "没有内容";
 "new.agreement.markdown" = "使用本应用即表示你同意《[用户服务协议](%@)》和《[隐私政策](%@)》";
 "new.agreement.plain" = "使用本应用即表示你同意《用户服务协议》和《隐私政策》";
 "new.credits.remaining" = "剩余可用次数：%d";
