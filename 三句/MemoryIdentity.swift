@@ -12,7 +12,7 @@ enum MemoryIdentity {
     }
 
     static func isContentComplete(_ memory: MemoryEntry) -> Bool {
-        guard memory.sentences.count == 3 else { return false }
+        guard memory.sentences.count == 3 || memory.sentences.count == 6 else { return false }
 
         return memory.sentences.allSatisfy {
             !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&

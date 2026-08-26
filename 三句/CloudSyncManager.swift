@@ -60,11 +60,12 @@ struct CloudSyncManager {
                         english: sentence.english,
                         chinese: sentence.chinese,
                         sceneHint: sentence.sceneHint ?? "",
+                        presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                         isFavorite: sentence.isFavorite
                     )
                 }
 
-            guard sentences.count == 3 else { return nil }
+            guard sentences.count == 3 || sentences.count == 6 else { return nil }
 
             return MemoryEntry(
                 id: memoryID,
