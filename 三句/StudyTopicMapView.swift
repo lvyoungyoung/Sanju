@@ -248,7 +248,7 @@ private enum StudyTopicPowerDiagram {
             return StudyTopicMapRegion(
                 id: cell.id,
                 cell: cell,
-                points: inset(polygon, toward: labelPoint, amount: 0.965),
+                points: inset(polygon, toward: labelPoint, amount: 0.93),
                 labelPoint: labelPoint,
                 labelWidth: labelWidth
             )
@@ -433,7 +433,7 @@ private struct RoundedPowerPolygonShape: Shape {
             let previous = points[(index - 1 + points.count) % points.count]
             let vertex = points[index]
             let next = points[(index + 1) % points.count]
-            let radius = min(14, min(distance(previous, vertex), distance(vertex, next)) * 0.16)
+            let radius = min(28, min(distance(previous, vertex), distance(vertex, next)) * 0.24)
             return (
                 point(from: vertex, toward: previous, distance: radius),
                 vertex,
