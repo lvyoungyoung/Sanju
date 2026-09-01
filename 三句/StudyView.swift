@@ -477,14 +477,6 @@ private struct CreateStudySceneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
-            Text(L10n.string("study.scene.create_title", "创建我的学习主题"))
-                .font(.system(size: AppFontSize.field, weight: .bold))
-                .foregroundStyle(AppTextColor.title)
-
-            Text(L10n.string("study.scene.create_hint", "例如：海边度假、和朋友聚会、雨天通勤"))
-                .font(.system(size: AppFontSize.body))
-                .foregroundStyle(AppTextColor.secondary)
-
             if !suggestedSceneNames.isEmpty {
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
                     HStack(spacing: AppSpacing.small) {
