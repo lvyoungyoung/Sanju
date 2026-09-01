@@ -61,7 +61,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let sortOrder: Int
     let english: String
     let chinese: String
-    let sceneHint: String?
+    let learningTopicIDs: [String]?
     let presentationGroup: String?
     let isFavorite: Bool
 
@@ -70,7 +70,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case sortOrder = "sort_order"
         case english
         case chinese
-        case sceneHint = "scene_hint"
+        case learningTopicIDs = "learning_topic_ids"
         case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }
@@ -214,7 +214,7 @@ struct SupabaseGeneratedSentence: Decodable {
     let id: String?
     let english: String
     let chinese: String
-    let sceneHint: String?
+    let learningTopicIDs: [String]?
     let presentationGroup: String?
     let isFavorite: Bool?
 
@@ -222,7 +222,7 @@ struct SupabaseGeneratedSentence: Decodable {
         case id
         case english
         case chinese
-        case sceneHint = "scene_hint"
+        case learningTopicIDs = "learning_topic_ids"
         case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }

@@ -6,7 +6,8 @@ struct StudyView: View {
     @State private var errorMessage: String?
     @State private var isShowingCreateScene = false
     @State private var newSceneName = ""
-    @State private var displayedSceneSuggestions: [String] = []
+    @State private var selectedSuggestedTopicID: String?
+    @State private var displayedSceneSuggestions: [LearningTopic] = []
     @State private var isCreatingScene = false
     @State private var scenePendingDeletion: UserStudySceneSummary?
     @State private var isDeletingScene = false
@@ -79,6 +80,7 @@ struct StudyView: View {
         .sheet(isPresented: $isShowingCreateScene) {
             CreateStudySceneSheet(
                 sceneName: $newSceneName,
+                selectedSuggestedTopicID: $selectedSuggestedTopicID,
                 suggestedSceneNames: $displayedSceneSuggestions,
                 isCreating: isCreatingScene,
                 onRefreshSuggestions: refreshSceneSuggestions,
@@ -179,54 +181,28 @@ struct StudyView: View {
         .buttonStyle(.plain)
     }
 
-    private var availableSceneNames: [String] {
-        let memoryTags = Set(appModel.memories.flatMap(\.tags))
-        var topics: [String] = []
-
-        if memoryTags.contains("人物") {
-            topics.append(L10n.string("study.scene.suggestion.people_social", "人与社交"))
-        }
-        if memoryTags.contains("风景") || memoryTags.contains("植物") {
-            topics.append(L10n.string("study.scene.suggestion.nature", "自然与风景"))
-        }
-        if memoryTags.contains("旅行") {
-            topics.append(L10n.string("study.scene.suggestion.travel", "旅行与出行"))
-        }
-        if memoryTags.contains("美食") {
-            topics.append(L10n.string("study.scene.suggestion.food", "美食与烹饪"))
-        }
-        if memoryTags.contains("生活场景") || memoryTags.contains("物品") {
-            topics.append(L10n.string("study.scene.suggestion.daily_life", "日常生活"))
-        }
-        if memoryTags.contains("动物") {
-            topics.append(L10n.string("study.scene.suggestion.animals", "动物与宠物"))
-        }
-        if memoryTags.contains("建筑") {
-            topics.append(L10n.string("study.scene.suggestion.city", "城市与建筑"))
-        }
-        if memoryTags.contains("活动") {
-            topics.append(L10n.string("study.scene.suggestion.activities", "活动与庆祝"))
-        }
-        if memoryTags.contains("截图/信息") {
-            topics.append(L10n.string("study.scene.suggestion.digital_life", "数字生活"))
-        }
-
-        return topics
+    private var availableSceneTopics: [LearningTopic] {
+        let assignedTopicIDs = Set(
+            appModel.memories
+                .flatMap(\.sentences)
+                .flatMap(\.learningTopicIDs)
+        )
+        return LearningTopic.all.filter { assignedTopicIDs.contains($0.id) }
     }
 
     private func refreshSceneSuggestions() {
-        let availableNames = availableSceneNames
-        guard !availableNames.isEmpty else {
+        let availableTopics = availableSceneTopics
+        guard !availableTopics.isEmpty else {
             displayedSceneSuggestions = []
             return
         }
 
-        var suggestions = Array(availableNames.shuffled().prefix(4))
+        var suggestions = Array(availableTopics.shuffled().prefix(4))
 
         // With more than four choices, avoid showing the exact same batch again.
-        if availableNames.count > 4,
+        if availableTopics.count > 4,
            Set(suggestions) == Set(displayedSceneSuggestions),
-           let replacement = availableNames.first(where: { !displayedSceneSuggestions.contains($0) }) {
+           let replacement = availableTopics.first(where: { !displayedSceneSuggestions.contains($0) }) {
             suggestions = Array(displayedSceneSuggestions.dropLast()) + [replacement]
         }
 
@@ -390,6 +366,7 @@ struct StudyView: View {
                 return
             }
             newSceneName = ""
+            selectedSuggestedTopicID = nil
             refreshSceneSuggestions()
             isShowingCreateScene = true
         } label: {
@@ -450,9 +427,14 @@ struct StudyView: View {
         defer { isCreatingScene = false }
 
         do {
-            let scene = try await appModel.createUserStudyScene(named: name)
+            let suggestedTopic = LearningTopic.topic(for: selectedSuggestedTopicID)
+            let scene = try await appModel.createUserStudyScene(
+                named: name,
+                learningTopicID: suggestedTopic?.title == name ? suggestedTopic?.id : nil
+            )
             isShowingCreateScene = false
             newSceneName = ""
+            selectedSuggestedTopicID = nil
             appModel.studyNavigationPath.append(.userScene(scene))
         } catch {
             errorMessage = error.localizedDescription.isEmpty
@@ -492,7 +474,8 @@ private struct StudyPageTitleMinYPreferenceKey: PreferenceKey {
 private struct CreateStudySceneSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var sceneName: String
-    @Binding var suggestedSceneNames: [String]
+    @Binding var selectedSuggestedTopicID: String?
+    @Binding var suggestedSceneNames: [LearningTopic]
     let isCreating: Bool
     let onRefreshSuggestions: () -> Void
     let onCreate: () async -> Void
@@ -520,22 +503,23 @@ private struct CreateStudySceneSheet: View {
                     }
 
                     StudyFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
-                        ForEach(suggestedSceneNames, id: \.self) { topicName in
+                        ForEach(suggestedSceneNames) { topic in
                             Button {
-                                sceneName = topicName
+                                sceneName = topic.title
+                                selectedSuggestedTopicID = topic.id
                             } label: {
-                                Text(topicName)
+                                Text(topic.title)
                                     .font(.system(size: AppFontSize.metadata, weight: .medium))
-                                    .foregroundStyle(sceneName == topicName ? Color.orange : AppTextColor.primary)
+                                    .foregroundStyle(selectedSuggestedTopicID == topic.id ? Color.orange : AppTextColor.primary)
                                     .padding(.horizontal, AppSpacing.medium)
                                     .frame(height: 32)
                                     .background(
-                                        sceneName == topicName ? Color.orange.opacity(0.14) : AppSurfaceColor.secondaryFill,
+                                        selectedSuggestedTopicID == topic.id ? Color.orange.opacity(0.14) : AppSurfaceColor.secondaryFill,
                                         in: Capsule()
                                     )
                                     .overlay {
                                         Capsule()
-                                            .stroke(sceneName == topicName ? Color.orange.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
+                                            .stroke(selectedSuggestedTopicID == topic.id ? Color.orange.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
                                     }
                             }
                             .buttonStyle(.plain)
@@ -554,6 +538,11 @@ private struct CreateStudySceneSheet: View {
             .padding(.horizontal, AppSpacing.large)
             .frame(height: 50)
             .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+            .onChange(of: sceneName) { name in
+                guard let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID),
+                      name != selectedTopic.title else { return }
+                selectedSuggestedTopicID = nil
+            }
 
             Button {
                 Task { await onCreate() }
@@ -584,19 +573,17 @@ private struct CreateStudySceneSheet: View {
                 onRefreshSuggestions()
             }
         }
-        .onChange(of: sceneHintSignature) { _ in
+        .onChange(of: learningTopicSignature) { _ in
             // The sheet can appear before the first remote-memory sync finishes.
             guard suggestedSceneNames.isEmpty else { return }
             onRefreshSuggestions()
         }
     }
 
-    private var sceneHintSignature: [String] {
+    private var learningTopicSignature: [String] {
         appModel.memories
             .flatMap(\.sentences)
-            .map(\.sceneHint)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+            .flatMap(\.learningTopicIDs)
             .sorted()
     }
 }

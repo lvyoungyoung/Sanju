@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
           id: isUUID(sentence?.id) ? sentence.id : crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
-          scene_hint: String(sentence?.scene_hint ?? "").trim(),
+          learning_topic_ids: normalizeLearningTopicIDs(sentence?.learning_topic_ids),
           ...(usesDualTabFormat
             ? {
                 presentation_group: sentence?.presentation_group === "what_i_say"
@@ -149,4 +149,18 @@ function jsonResponse(data: unknown, status = 200) {
 function isUUID(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function normalizeLearningTopicIDs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 2)
 }

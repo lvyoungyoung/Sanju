@@ -94,7 +94,8 @@ protocol SupabaseServicing {
     ) async throws -> [UserStudySceneSummary]
     func createUserStudyScene(
         session: SupabaseSession,
-        name: String
+        name: String,
+        learningTopicID: String?
     ) async throws -> UserStudySceneSummary
     func deleteUserStudyScene(
         session: SupabaseSession,
@@ -513,7 +514,7 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
-                sceneHint: sentence.sceneHint ?? "",
+                learningTopicIDs: sentence.learningTopicIDs ?? [],
                 presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                 isFavorite: sentence.isFavorite ?? false
             )
@@ -589,7 +590,7 @@ struct SupabaseService: SupabaseServicing {
                 id: sentenceID,
                 english: english,
                 chinese: chinese,
-                sceneHint: sentence.sceneHint ?? "",
+                learningTopicIDs: sentence.learningTopicIDs ?? [],
                 presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                 isFavorite: sentence.isFavorite ?? false
             )
@@ -683,7 +684,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,scene_hint,presentation_group,is_favorite)"
+        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,learning_topic_ids,presentation_group,is_favorite)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
         let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
         var allRecords: [SupabaseMemoryRecord] = []
@@ -750,7 +751,7 @@ struct SupabaseService: SupabaseServicing {
                 sortOrder: index + 1,
                 english: sentence.english,
                 chinese: sentence.chinese,
-                sceneHint: sentence.sceneHint,
+                learningTopicIDs: sentence.learningTopicIDs,
                 presentationGroup: sentence.presentationGroup.rawValue,
                 isFavorite: sentence.isFavorite
             )
@@ -773,7 +774,7 @@ struct SupabaseService: SupabaseServicing {
                 id: UUID(uuidString: sentencePayloads[index].id) ?? sentence.id,
                 english: sentence.english,
                 chinese: sentence.chinese,
-                sceneHint: sentence.sceneHint,
+                learningTopicIDs: sentence.learningTopicIDs,
                 presentationGroup: sentence.presentationGroup,
                 isFavorite: sentence.isFavorite
             )
@@ -882,13 +883,14 @@ struct SupabaseService: SupabaseServicing {
 
     func createUserStudyScene(
         session: SupabaseSession,
-        name: String
+        name: String,
+        learningTopicID: String?
     ) async throws -> UserStudySceneSummary {
         let request = try makeRequest(
             path: "/functions/v1/create-study-scene",
             method: "POST",
             bearerToken: session.accessToken,
-            body: SupabaseCreateStudySceneRequest(name: name)
+            body: SupabaseCreateStudySceneRequest(name: name, learningTopicID: learningTopicID)
         )
         let response: SupabaseCreateUserStudySceneResponse = try await perform(request)
         guard let scene = Self.makeUserStudySceneSummary(from: response.scene) else {

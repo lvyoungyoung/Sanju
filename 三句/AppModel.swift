@@ -26,7 +26,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
     let english: String
     let chinese: String
-    let sceneHint: String
+    let learningTopicIDs: [String]
     let presentationGroup: SentencePresentationGroup
     var isFavorite: Bool
 
@@ -34,14 +34,14 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         id: UUID = UUID(),
         english: String,
         chinese: String,
-        sceneHint: String = "",
+        learningTopicIDs: [String] = [],
         presentationGroup: SentencePresentationGroup = .whatISee,
         isFavorite: Bool = false
     ) {
         self.id = id
         self.english = english
         self.chinese = chinese
-        self.sceneHint = sceneHint
+        self.learningTopicIDs = learningTopicIDs
         self.presentationGroup = presentationGroup
         self.isFavorite = isFavorite
     }
@@ -50,7 +50,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case id
         case english
         case chinese
-        case sceneHint
+        case learningTopicIDs
         case presentationGroup
         case isFavorite
     }
@@ -60,7 +60,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         id = try container.decode(UUID.self, forKey: .id)
         english = try container.decode(String.self, forKey: .english)
         chinese = try container.decode(String.self, forKey: .chinese)
-        sceneHint = try container.decodeIfPresent(String.self, forKey: .sceneHint) ?? ""
+        learningTopicIDs = try container.decodeIfPresent([String].self, forKey: .learningTopicIDs) ?? []
         presentationGroup = try container.decodeIfPresent(SentencePresentationGroup.self, forKey: .presentationGroup) ?? .whatISee
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }

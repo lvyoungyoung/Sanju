@@ -263,7 +263,7 @@ extension AppModel {
                     id: sentence.id,
                     english: sentence.english,
                     chinese: sentence.chinese,
-                    sceneHint: sentence.sceneHint,
+                    learningTopicIDs: sentence.learningTopicIDs,
                     presentationGroup: sentence.presentationGroup,
                     isFavorite: sentence.isFavorite
                 )
@@ -585,7 +585,7 @@ extension AppModel {
                             id: id,
                             english: sentence.english,
                             chinese: sentence.chinese,
-                            sceneHint: sentence.sceneHint ?? "",
+                            learningTopicIDs: sentence.learningTopicIDs ?? [],
                             presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                             isFavorite: sentence.isFavorite
                         )
@@ -1479,7 +1479,10 @@ extension AppModel {
         }
     }
 
-    func createUserStudyScene(named name: String) async throws -> UserStudySceneSummary {
+    func createUserStudyScene(
+        named name: String,
+        learningTopicID: String? = nil
+    ) async throws -> UserStudySceneSummary {
         guard isSignedIn else {
             isShowingSignInSheet = true
             throw SentenceStudyTopicLoadingError.signInRequired
@@ -1490,7 +1493,11 @@ extension AppModel {
         }
 
         let session = try await ensureValidSession()
-        let scene = try await supabaseService.createUserStudyScene(session: session, name: name)
+        let scene = try await supabaseService.createUserStudyScene(
+            session: session,
+            name: name,
+            learningTopicID: learningTopicID
+        )
         if let existingIndex = userStudySceneSummaries.firstIndex(where: { $0.id == scene.id }) {
             userStudySceneSummaries[existingIndex] = scene
         } else {

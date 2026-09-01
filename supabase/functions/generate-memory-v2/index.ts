@@ -3,7 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 interface Sentence {
   english: string
   chinese: string
-  scene_hint: string
+  learning_topic_ids: string[]
   presentation_group?: SentencePresentationGroup
 }
 
@@ -35,6 +35,40 @@ const MEMORY_TAGS = [
   "物品",
   "截图/信息",
 ] as const
+
+const LEARNING_TOPICS = [
+  ["daily_life", "日常生活"],
+  ["home_and_family", "家庭与居住"],
+  ["clothing_and_shopping", "衣着与购物"],
+  ["health_and_wellbeing", "身体与健康"],
+  ["feelings_and_emotions", "情绪与感受"],
+  ["hobbies_and_leisure", "兴趣与休闲"],
+  ["sports_and_fitness", "运动与健身"],
+  ["social_relationships", "人际与社交"],
+  ["school_and_learning", "学校与学习"],
+  ["work_and_career", "工作与职场"],
+  ["food_and_cooking", "美食与烹饪"],
+  ["eating_out", "餐厅与咖啡馆"],
+  ["services_and_consumer_life", "服务与消费"],
+  ["celebrations_and_events", "节日与庆祝"],
+  ["culture_and_arts", "文化与艺术"],
+  ["media_and_entertainment", "影视、音乐与阅读"],
+  ["technology_and_online_life", "科技与网络"],
+  ["news_and_public_information", "新闻与公共信息"],
+  ["transportation", "出行与交通"],
+  ["travel_and_holidays", "旅行与度假"],
+  ["cities_and_architecture", "城市与建筑"],
+  ["community_and_public_places", "社区与公共场所"],
+  ["weather_and_seasons", "天气与季节"],
+  ["nature_and_landscapes", "自然风景"],
+  ["animals_and_pets", "动物与宠物"],
+  ["plants_and_gardens", "植物与花园"],
+  ["environment_and_sustainability", "环境与保护"],
+  ["people_and_activities", "人物与日常活动"],
+] as const
+
+const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
+const LEARNING_TOPIC_PROMPT = LEARNING_TOPICS.map(([id, title]) => `${id}（${title}）`).join("、")
 
 function buildPromptText(
   englishLevel: "简单" | "中等" | "高级",
@@ -76,14 +110,14 @@ ${languageStylePrompt}
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
 2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
-4. 每一项必须且只能包含 english、chinese 和 scene_hint 三个字符串字段
+4. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段
 5. 每句中文控制在 8 到 30 个汉字之间
-6. scene_hint 必须是 2 到 12 个汉字的简短场景提示，例如“雨天通勤”“朋友聚会”“厨房烹饪”；不要使用具体人名、地点名、情绪词或一次性细节
+6. learning_topic_ids 必须是包含 1 到 2 个字符串的数组，只能从以下稳定主题 ID 中选择：${LEARNING_TOPIC_PROMPT}。按这句话真正适合学习的内容分类；不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类
 7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 8. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"tags":["人物","生活场景"]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["people_and_activities"]},{"english":"...","chinese":"...","learning_topic_ids":["nature_and_landscapes"]},{"english":"...","chinese":"...","learning_topic_ids":["daily_life"]}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["social_relationships"]},{"english":"...","chinese":"...","learning_topic_ids":["feelings_and_emotions"]},{"english":"...","chinese":"...","learning_topic_ids":["celebrations_and_events"]}],"tags":["人物","生活场景"]}
 `.trim()
   }
 
@@ -102,19 +136,19 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english、chinese 和 scene_hint 三个字段，必须显式写出 chinese 字段名，不能只写中文字符串
-9. english、chinese 和 scene_hint 都必须是字符串
+8. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+9. english、chinese 必须是字符串；learning_topic_ids 必须是数组
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
 12. 不要输出任何多余字段
 13. 不要转义整个 JSON 对象
 14. 不要在 JSON 前后添加任何字符
-15. scene_hint 必须是 2 到 12 个汉字的简短场景提示，例如“雨天通勤”“朋友聚会”“厨房烹饪”。它用于匹配用户自建学习场景，必须概括这句话所描述的场景；不要使用具体人名、地点名、情绪词或一次性细节。
+15. learning_topic_ids 必须包含 1 到 2 个主题 ID，只能从以下列表中选择：${LEARNING_TOPIC_PROMPT}。按句子内容分类，不要自创 ID。
 16. 每句中文控制在 8 到 30 个汉字之间
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."},{"english":"...","chinese":"...","scene_hint":"..."}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["animals_and_pets"]},{"english":"...","chinese":"...","learning_topic_ids":["daily_life"]},{"english":"...","chinese":"...","learning_topic_ids":["nature_and_landscapes"]}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -357,17 +391,27 @@ function normalizeSentenceArray(
     .map((item: any) => ({
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
-      scene_hint: normalizeSceneHint(item?.scene_hint),
+      learning_topic_ids: normalizeLearningTopicIDs(item?.learning_topic_ids),
       ...(presentationGroup ? { presentation_group: presentationGroup } : {}),
     }))
-    .filter((item: Sentence) => item.english && item.chinese)
+    .filter(
+      (item: Sentence) =>
+        item.english && item.chinese && item.learning_topic_ids.length > 0
+    )
 }
 
-function normalizeSceneHint(value: unknown): string {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 24)
+function normalizeLearningTopicIDs(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => String(item ?? "").trim())
+        .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
+    )
+  ).slice(0, 2)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
@@ -382,7 +426,7 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
     const chinese = decodeJSONStringFragment(match[2]).trim()
 
     if (english && chinese) {
-      matches.push({ english, chinese, scene_hint: "" })
+      matches.push({ english, chinese, learning_topic_ids: [] })
     }
   }
 
@@ -402,7 +446,7 @@ function extractLooseSentencePairs(content: string): Sentence[] | null {
     const chinese = extractLooseChineseValue(tail)
 
     if (english && chinese) {
-      matches.push({ english, chinese, scene_hint: "" })
+      matches.push({ english, chinese, learning_topic_ids: [] })
     }
   }
 
@@ -921,7 +965,7 @@ Deno.serve(async (req) => {
       id: crypto.randomUUID(),
       english: sentence.english,
       chinese: sentence.chinese,
-      scene_hint: sentence.scene_hint,
+      learning_topic_ids: sentence.learning_topic_ids,
       presentation_group: sentence.presentation_group ?? "what_i_see",
       is_favorite: false,
     }))
@@ -1723,13 +1767,10 @@ async function fetchSentenceEmbeddings(sentences: FinalizedSentence[]): Promise<
         input: {
           texts: sentences.map(
             (sentence) => {
-              const sceneHint = normalizeSceneHint(sentence.scene_hint)
               return [
                 `English: ${sentence.english}`,
                 `Chinese: ${sentence.chinese}`,
-                sceneHint ? `Scene: ${sceneHint}` : null,
               ]
-                .filter((value): value is string => Boolean(value))
                 .join("\n")
             }
           ),
@@ -1871,7 +1912,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         id,
         english,
         chinese,
-        scene_hint,
+        learning_topic_ids,
         presentation_group,
         is_favorite,
         sort_order
@@ -1977,7 +2018,7 @@ function toClientSentences(
       id: replacesMissingIDs || !isUUID(sentence?.id) ? crypto.randomUUID() : sentence.id,
       english: String(sentence?.english ?? "").trim(),
       chinese: String(sentence?.chinese ?? "").trim(),
-      scene_hint: normalizeSceneHint(sentence?.scene_hint),
+      learning_topic_ids: normalizeLearningTopicIDs(sentence?.learning_topic_ids),
       is_favorite: sentence?.is_favorite === true,
     }
 

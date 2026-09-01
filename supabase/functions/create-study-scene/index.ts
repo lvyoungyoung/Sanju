@@ -6,7 +6,20 @@ const EMBEDDING_TIMEOUT_MS = 20_000
 
 interface CreateStudySceneRequest {
   name?: string
+  learning_topic_id?: string
 }
+
+const LEARNING_TOPIC_IDS = new Set([
+  "daily_life", "home_and_family", "clothing_and_shopping", "health_and_wellbeing",
+  "feelings_and_emotions", "hobbies_and_leisure", "sports_and_fitness", "social_relationships",
+  "school_and_learning", "work_and_career", "food_and_cooking", "eating_out",
+  "services_and_consumer_life", "celebrations_and_events", "culture_and_arts",
+  "media_and_entertainment", "technology_and_online_life", "news_and_public_information",
+  "transportation", "travel_and_holidays", "cities_and_architecture",
+  "community_and_public_places", "weather_and_seasons", "nature_and_landscapes",
+  "animals_and_pets", "plants_and_gardens", "environment_and_sustainability",
+  "people_and_activities",
+])
 
 Deno.serve(async (req) => {
   try {
@@ -20,7 +33,7 @@ Deno.serve(async (req) => {
     const embeddingAPIKey = Deno.env.get("DASHSCOPE_API_KEY")
     const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
 
-    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey || !embeddingAPIKey || !embeddingURL) {
+    if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
       return jsonResponse({ error: "Missing server configuration" }, 500)
     }
 
@@ -31,8 +44,12 @@ Deno.serve(async (req) => {
 
     const body = (await req.json()) as CreateStudySceneRequest
     const name = body.name?.trim() ?? ""
+    const learningTopicID = body.learning_topic_id?.trim() || null
     if (name.length < 2 || name.length > 24) {
       return jsonResponse({ error: "Study scene name must be between 2 and 24 characters" }, 400)
+    }
+    if (learningTopicID && !LEARNING_TOPIC_IDS.has(learningTopicID)) {
+      return jsonResponse({ error: "Invalid learning topic" }, 400)
     }
 
     const accessToken = authHeader.replace("Bearer ", "").trim()
@@ -53,13 +70,32 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
     }
 
-    const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
-    const { data, error } = await adminClient.rpc("create_study_scene_with_embedding", {
-      p_user_id: user.id,
-      p_name: name,
-      p_embedding: sceneEmbedding[0],
-      p_model: EMBEDDING_MODEL,
-    })
+    let data: unknown
+    let error: { code?: string; message: string; details?: string; hint?: string } | null
+
+    if (learningTopicID) {
+      const response = await adminClient.rpc("create_learning_topic_study_scene", {
+        p_user_id: user.id,
+        p_name: name,
+        p_learning_topic_id: learningTopicID,
+      })
+      data = response.data
+      error = response.error
+    } else {
+      if (!embeddingAPIKey || !embeddingURL) {
+        return jsonResponse({ error: "Missing semantic matching configuration" }, 500)
+      }
+
+      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
+      const response = await adminClient.rpc("create_study_scene_with_embedding", {
+        p_user_id: user.id,
+        p_name: name,
+        p_embedding: sceneEmbedding[0],
+        p_model: EMBEDDING_MODEL,
+      })
+      data = response.data
+      error = response.error
+    }
 
     if (error) {
       const diagnostic = {

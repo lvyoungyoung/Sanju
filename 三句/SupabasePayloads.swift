@@ -272,6 +272,12 @@ struct SupabaseSentenceStudyQueueRequest: Encodable {
 
 struct SupabaseCreateStudySceneRequest: Encodable {
     let name: String
+    let learningTopicID: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case learningTopicID = "learning_topic_id"
+    }
 }
 
 struct SupabaseDeleteStudySceneRequest: Encodable {
@@ -404,7 +410,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let sortOrder: Int
     let english: String
     let chinese: String
-    let sceneHint: String
+    let learningTopicIDs: [String]
     let presentationGroup: String
     let isFavorite: Bool
 
@@ -414,7 +420,7 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case sortOrder = "sort_order"
         case english
         case chinese
-        case sceneHint = "scene_hint"
+        case learningTopicIDs = "learning_topic_ids"
         case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }

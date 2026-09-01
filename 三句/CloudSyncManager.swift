@@ -59,7 +59,7 @@ struct CloudSyncManager {
                         id: sentenceID,
                         english: sentence.english,
                         chinese: sentence.chinese,
-                        sceneHint: sentence.sceneHint ?? "",
+                        learningTopicIDs: sentence.learningTopicIDs ?? [],
                         presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
                         isFavorite: sentence.isFavorite
                     )
