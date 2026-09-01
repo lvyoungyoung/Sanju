@@ -140,13 +140,15 @@ Deno.serve(async (req) => {
         .filter((value): value is string => typeof value === "string" && value.length > 0)
 
       if (memoryIDs.length > 0) {
-        const { error: deleteSentencesError } = await adminClient
-          .from("memory_sentences")
-          .delete()
-          .in("memory_id", memoryIDs)
+        for (const memoryIDBatch of chunked(memoryIDs, 25)) {
+          const { error: deleteSentencesError } = await adminClient
+            .from("memory_sentences")
+            .delete()
+            .in("memory_id", memoryIDBatch)
 
-        if (deleteSentencesError) {
-          throw new Error(`Failed to delete memory sentences: ${deleteSentencesError.message}`)
+          if (deleteSentencesError) {
+            throw new Error(`Failed to delete memory sentences: ${deleteSentencesError.message}`)
+          }
         }
       }
 
@@ -213,12 +215,15 @@ Deno.serve(async (req) => {
       }
 
       if (imagePaths.length > 0) {
-        const { error: removeImagesError } = await adminClient.storage
-          .from("memories")
-          .remove(imagePaths)
+        for (const imagePathBatch of chunked(imagePaths, 100)) {
+          const { error: removeImagesError } = await adminClient.storage
+            .from("memories")
+            .remove(imagePathBatch)
 
-        if (removeImagesError) {
-          warnings.push("Some storage objects could not be removed.")
+          if (removeImagesError) {
+            warnings.push("Some storage objects could not be removed.")
+            break
+          }
         }
       }
 
@@ -296,4 +301,14 @@ function jsonResponse(data: unknown, status = 200) {
       "Content-Type": "application/json; charset=utf-8",
     },
   })
+}
+
+function chunked<Value>(values: Value[], size: number): Value[][] {
+  const batches: Value[][] = []
+
+  for (let start = 0; start < values.length; start += size) {
+    batches.push(values.slice(start, start + size))
+  }
+
+  return batches
 }
