@@ -124,59 +124,18 @@ struct StudyView: View {
             masteryScore: cachedSummary.masteryScore
         )
         let tint = SentenceStudyTopic.favorites.tintColor
+        let coverImage = appModel.memories
+            .sorted { $0.createdAt > $1.createdAt }
+            .first { memory in memory.sentences.contains { $0.isFavorite } }
+            .flatMap { UIImage(data: $0.imageData) }
 
         return NavigationLink(value: StudySceneDetailRoute.favorites) {
-            ZStack {
-                topicPhotoBackground(image: nil, fallbackTint: tint)
-
-                HStack(alignment: .top, spacing: AppSpacing.large) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 48, height: 48)
-                        .background(
-                            Color.white.opacity(0.72),
-                            in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        )
-
-                    VStack(alignment: .leading, spacing: AppSpacing.small) {
-                        Text(SentenceStudyTopic.favorites.title)
-                            .font(.system(size: AppFontSize.panelTitle, weight: .bold))
-                            .foregroundStyle(AppTextColor.primary)
-
-                        Text(
-                            L10n.string(
-                                "study.scene.detail.sentence_count",
-                                "共 %d 句",
-                                summary.totalCount
-                            )
-                        )
-                        .font(.system(size: AppFontSize.metadata, weight: .medium))
-                        .foregroundStyle(AppTextColor.secondary)
-
-                        masteryProgress(
-                            summary: summary,
-                            textColor: AppTextColor.secondary
-                        )
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: AppIconSize.regular, weight: .semibold))
-                        .foregroundStyle(AppTextColor.tertiary)
-                        .padding(.top, AppSpacing.xSmall)
-                }
-                .padding(AppSpacing.xLarge)
-            }
-            .frame(maxWidth: .infinity, minHeight: 142, maxHeight: 142)
-            .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(tint.opacity(0.18), lineWidth: 1)
-            }
-            .appAccentShadow(tint, opacity: 0.08)
+            topicListCardContent(
+                title: SentenceStudyTopic.favorites.title,
+                summary: summary,
+                coverImage: coverImage,
+                tint: tint
+            )
         }
         .buttonStyle(.plain)
     }
@@ -235,12 +194,26 @@ struct StudyView: View {
     ) -> some View {
         let coverImage = scene.coverMemoryID.flatMap(memoryImage(for:))
 
+        return topicListCardContent(
+            title: scene.name,
+            summary: scene.summary,
+            coverImage: coverImage,
+            tint: tint
+        )
+    }
+
+    private func topicListCardContent(
+        title: String,
+        summary: SentenceStudyTopicSummary,
+        coverImage: UIImage?,
+        tint: Color
+    ) -> some View {
         return HStack(spacing: AppSpacing.medium) {
             sceneCover(image: coverImage, tint: tint)
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                    Text(scene.name)
+                    Text(title)
                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         .foregroundStyle(AppTextColor.primary)
                         .lineLimit(1)
@@ -256,7 +229,7 @@ struct StudyView: View {
                     L10n.string(
                         "study.scene.detail.sentence_count",
                         "共 %d 句",
-                        scene.summary.totalCount
+                        summary.totalCount
                     )
                 )
                 .font(.system(size: AppFontSize.metadata, weight: .medium))
@@ -265,7 +238,7 @@ struct StudyView: View {
                 Spacer(minLength: AppSpacing.xSmall)
 
                 masteryProgress(
-                    summary: scene.summary,
+                    summary: summary,
                     textColor: AppTextColor.secondary
                 )
             }
@@ -337,26 +310,6 @@ struct StudyView: View {
             return nil
         }
         return UIImage(data: imageData)
-    }
-
-    @ViewBuilder
-    private func topicPhotoBackground(image: UIImage?, fallbackTint: Color) -> some View {
-        GeometryReader { proxy in
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-                    .clipped()
-                    .blur(radius: 0.5)
-                    .scaleEffect(1.14)
-                    .overlay(Color.black.opacity(0.24))
-            } else {
-                fallbackTint.opacity(0.13)
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-            }
-        }
-        .allowsHitTesting(false)
     }
 
     private var createSceneTile: some View {
