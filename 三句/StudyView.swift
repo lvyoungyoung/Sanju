@@ -86,7 +86,7 @@ struct StudyView: View {
                 onRefreshSuggestions: refreshSceneSuggestions,
                 onCreate: createScene
             )
-            .presentationDetents([.height(380)])
+            .presentationDetents([.height(320)])
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
