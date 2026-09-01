@@ -484,47 +484,37 @@ private struct CreateStudySceneSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
-            if let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID) {
-                HStack(spacing: AppSpacing.small) {
-                    Text(selectedTopic.title)
-                        .font(.system(size: AppFontSize.body, weight: .medium))
-                        .foregroundStyle(Color.orange)
-                        .padding(.leading, AppSpacing.medium)
+            HStack(spacing: AppSpacing.small) {
+                if let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID) {
+                    HStack(spacing: AppSpacing.xSmall) {
+                        Text(selectedTopic.title)
+                            .font(.system(size: AppFontSize.body, weight: .medium))
+                            .foregroundStyle(Color.orange)
+
+                        Button {
+                            selectedSuggestedTopicID = nil
+                            sceneName = ""
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: AppIconSize.compact, weight: .bold))
+                                .foregroundStyle(Color.orange.opacity(0.78))
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            L10n.string(
+                                "study.scene.remove_selected_suggestion",
+                                "移除已选主题"
+                            )
+                        )
+                    }
+                    .padding(.leading, AppSpacing.medium)
+                    .padding(.trailing, AppSpacing.xSmall)
+                    .frame(height: 34)
+                    .background(Color.orange.opacity(0.14), in: Capsule())
 
                     Spacer(minLength: 0)
-
-                    Button {
-                        selectedSuggestedTopicID = nil
-                        sceneName = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: AppIconSize.compact, weight: .medium))
-                            .foregroundStyle(AppTextColor.secondary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        L10n.string(
-                            "study.scene.remove_selected_suggestion",
-                            "移除已选主题"
-                        )
-                    )
-                }
-                .frame(height: 50)
-                .background(
-                    Color.orange.opacity(0.10),
-                    in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .stroke(Color.orange.opacity(0.30), lineWidth: 1)
-                }
-            } else {
-                HStack(spacing: AppSpacing.small) {
-                    Image(systemName: "text.cursor")
-                        .font(.system(size: AppIconSize.compact, weight: .semibold))
-                        .foregroundStyle(isSceneNameFocused ? Color.orange : AppTextColor.tertiary)
-
+                } else {
                     TextField(
                         L10n.string("study.scene.name_placeholder", "输入你想学习的主题"),
                         text: $sceneName
@@ -533,19 +523,19 @@ private struct CreateStudySceneSheet: View {
                     .autocorrectionDisabled()
                     .focused($isSceneNameFocused)
                 }
-                .padding(.horizontal, AppSpacing.medium)
-                .frame(height: 50)
-                .background(
-                    AppSurfaceColor.elevated,
-                    in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .stroke(
-                            isSceneNameFocused ? Color.orange.opacity(0.72) : AppStroke.soft,
-                            lineWidth: isSceneNameFocused ? 1.5 : 1
-                        )
-                }
+            }
+            .padding(.horizontal, AppSpacing.medium)
+            .frame(height: 50)
+            .background(
+                AppSurfaceColor.elevated,
+                in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                    .stroke(
+                        selectedSuggestedTopicID != nil || isSceneNameFocused ? Color.orange.opacity(0.72) : AppStroke.soft,
+                        lineWidth: selectedSuggestedTopicID != nil || isSceneNameFocused ? 1.5 : 1
+                    )
             }
 
             if !suggestedSceneNames.isEmpty {
@@ -573,6 +563,7 @@ private struct CreateStudySceneSheet: View {
                             Button {
                                 sceneName = topic.title
                                 selectedSuggestedTopicID = topic.id
+                                isSceneNameFocused = false
                             } label: {
                                 Text(topic.title)
                                     .font(.system(size: AppFontSize.metadata, weight: .medium))
