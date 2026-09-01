@@ -21,11 +21,6 @@ struct MemoriesView: View {
     var body: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
-                pageHeader
-                    .padding(.horizontal, AppSpacing.xLarge)
-                    .padding(.top, AppSpacing.xLarge)
-                    .padding(.bottom, AppSpacing.medium)
-
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.large) {
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
@@ -92,7 +87,7 @@ struct MemoriesView: View {
                     }
                     }
                     .padding(.horizontal, AppSpacing.xLarge)
-                    .padding(.top, AppSpacing.medium)
+                    .padding(.top, AppSpacing.xLarge)
                     .padding(.bottom, AppSpacing.xxxLarge)
                 }
                 .coordinateSpace(name: MemoryScrollMetrics.coordinateSpaceName)
@@ -102,7 +97,10 @@ struct MemoriesView: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle(L10n.string("memories.page_title", "回忆"))
+            .navigationBarTitleDisplayMode(.large)
+            .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .task {
                 rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
                 await performInitialLoadIfNeeded()
@@ -132,13 +130,6 @@ struct MemoriesView: View {
                 Text(L10n.string("memory.delete.alert_message", "删除后，这张图片和对应的三句话都会被移除。"))
             }
         }
-    }
-
-    private var pageHeader: some View {
-        Text(L10n.string("memories.page_title", "回忆"))
-            .font(.system(size: AppFontSize.pageTitle, weight: .bold))
-            .foregroundStyle(AppTextColor.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var memoryDeleteAlertBinding: Binding<Bool> {
