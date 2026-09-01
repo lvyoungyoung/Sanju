@@ -297,6 +297,10 @@
 "study.topic.mastery" = "%d%% Mastery";
 "study.topic.page_subtitle" = "Practice by topic, so describing what you see feels more natural.";
 "study.topic.page_title" = "Study";
+"study.topic.map.entry" = "Topic Map";
+"study.topic.map.title" = "My Language Map";
+"study.topic.map.subtitle" = "%d topics, lighting up one by one";
+"study.topic.map.mastery" = "%d%% Mastery";
 "study.scene.create" = "Create My Study Topic";
 "study.scene.create_failed" = "Unable to create this study topic right now. Please try again later.";
 "study.scene.create_hint" = "For example: beach trips, meeting friends, rainy-day commutes";

@@ -297,6 +297,10 @@
 "study.topic.mastery" = "掌握度 %d%%";
 "study.topic.page_subtitle" = "按主题练习，让你更自然地说出眼前的画面。";
 "study.topic.page_title" = "学习";
+"study.topic.map.entry" = "主题地图";
+"study.topic.map.title" = "我的语言地图";
+"study.topic.map.subtitle" = "%d 个主题，慢慢点亮";
+"study.topic.map.mastery" = "掌握 %d%%";
 "study.scene.create" = "创建我的学习主题";
 "study.scene.create_failed" = "暂时无法创建学习主题，请稍后再试。";
 "study.scene.create_hint" = "例如：海边度假、和朋友聚会、雨天通勤";

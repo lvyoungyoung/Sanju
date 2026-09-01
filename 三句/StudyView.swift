@@ -21,10 +21,25 @@ struct StudyView: View {
 
                 favoriteTopicCard
 
-                Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
-                    .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
+                        .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                        .foregroundStyle(AppTextColor.secondary)
+
+                    Spacer(minLength: AppSpacing.small)
+
+                    NavigationLink {
+                        StudyTopicMapView()
+                    } label: {
+                        HStack(spacing: AppSpacing.xSmall) {
+                            Text(L10n.string("study.topic.map.entry", "主题地图"))
+                            Image(systemName: "map")
+                        }
+                        .font(.system(size: AppFontSize.metadata, weight: .semibold))
+                        .foregroundStyle(Color.orange)
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 LazyVStack(spacing: AppSpacing.medium) {
                     ForEach(appModel.userStudySceneSummaries) { scene in
