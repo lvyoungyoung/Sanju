@@ -202,8 +202,8 @@
 "new.result.play" = "播放";
 "new.result.start_study" = "去学习";
 "new.result.start_study_hint" = "开始这句话的填空练习。";
-"new.result.tab.what_i_see" = "我看到的";
-"new.result.tab.what_i_say" = "我想说的";
+"new.result.tab.what_i_see" = "画面描述";
+"new.result.tab.what_i_say" = "生活表达";
 "new.upload.action" = "点击上传照片";
 "new.upload.safety_hint" = "图片会被发送给AI分析，请谨慎上传包含敏感信息的图片";
 "profile.about.entry" = "关于我们";

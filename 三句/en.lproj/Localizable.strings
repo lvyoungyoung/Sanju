@@ -202,8 +202,8 @@
 "new.result.play" = "Play";
 "new.result.start_study" = "Study";
 "new.result.start_study_hint" = "Start a fill-in-the-blank practice for this sentence.";
-"new.result.tab.what_i_see" = "What I See";
-"new.result.tab.what_i_say" = "What I'd Say";
+"new.result.tab.what_i_see" = "Scene Description";
+"new.result.tab.what_i_say" = "Everyday Expression";
 "new.upload.action" = "Tap to upload a photo";
 "new.upload.safety_hint" = "Your photo will be sent to AI services for analysis. Please avoid uploading sensitive information.";
 "profile.about.entry" = "About";
