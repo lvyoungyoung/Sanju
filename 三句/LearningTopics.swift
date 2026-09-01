@@ -49,4 +49,21 @@ struct LearningTopic: Identifiable, Hashable {
         guard let id else { return nil }
         return all.first { $0.id == id }
     }
+
+    static func topic(matchingName name: String) -> LearningTopic? {
+        let normalizedName = normalizedTopicName(name)
+        guard !normalizedName.isEmpty else { return nil }
+
+        return all.first {
+            normalizedTopicName($0.title) == normalizedName ||
+            normalizedTopicName($0.fallbackTitle) == normalizedName
+        }
+    }
+
+    private static func normalizedTopicName(_ name: String) -> String {
+        name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .lowercased()
+    }
 }

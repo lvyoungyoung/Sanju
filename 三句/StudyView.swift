@@ -427,10 +427,11 @@ struct StudyView: View {
         defer { isCreatingScene = false }
 
         do {
-            let suggestedTopic = LearningTopic.topic(for: selectedSuggestedTopicID)
+            let learningTopicID =
+                selectedSuggestedTopicID ?? LearningTopic.topic(matchingName: name)?.id
             let scene = try await appModel.createUserStudyScene(
                 named: name,
-                learningTopicID: suggestedTopic?.id
+                learningTopicID: learningTopicID
             )
             isShowingCreateScene = false
             newSceneName = ""
