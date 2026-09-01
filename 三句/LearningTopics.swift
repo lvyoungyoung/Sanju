@@ -26,12 +26,12 @@ struct LearningTopic: Identifiable, Hashable {
         .init(id: "school_and_learning", localizationKey: "learning_topic.school_and_learning", fallbackTitle: "学校与学习"),
         .init(id: "work_and_career", localizationKey: "learning_topic.work_and_career", fallbackTitle: "工作与职场"),
         .init(id: "food_and_cooking", localizationKey: "learning_topic.food_and_cooking", fallbackTitle: "美食与烹饪"),
-        .init(id: "eating_out", localizationKey: "learning_topic.eating_out", fallbackTitle: "餐厅与咖啡馆"),
+        .init(id: "eating_out", localizationKey: "learning_topic.eating_out", fallbackTitle: "外出就餐"),
         .init(id: "services_and_consumer_life", localizationKey: "learning_topic.services_and_consumer_life", fallbackTitle: "服务与消费"),
-        .init(id: "celebrations_and_events", localizationKey: "learning_topic.celebrations_and_events", fallbackTitle: "节日与庆祝"),
+        .init(id: "celebrations_and_events", localizationKey: "learning_topic.celebrations_and_events", fallbackTitle: "庆祝与活动"),
         .init(id: "culture_and_arts", localizationKey: "learning_topic.culture_and_arts", fallbackTitle: "文化与艺术"),
-        .init(id: "media_and_entertainment", localizationKey: "learning_topic.media_and_entertainment", fallbackTitle: "影视、音乐与阅读"),
-        .init(id: "technology_and_online_life", localizationKey: "learning_topic.technology_and_online_life", fallbackTitle: "科技与网络"),
+        .init(id: "media_and_entertainment", localizationKey: "learning_topic.media_and_entertainment", fallbackTitle: "媒体与娱乐"),
+        .init(id: "technology_and_online_life", localizationKey: "learning_topic.technology_and_online_life", fallbackTitle: "科技与线上生活"),
         .init(id: "news_and_public_information", localizationKey: "learning_topic.news_and_public_information", fallbackTitle: "新闻与公共信息"),
         .init(id: "transportation", localizationKey: "learning_topic.transportation", fallbackTitle: "出行与交通"),
         .init(id: "travel_and_holidays", localizationKey: "learning_topic.travel_and_holidays", fallbackTitle: "旅行与度假"),
@@ -41,7 +41,7 @@ struct LearningTopic: Identifiable, Hashable {
         .init(id: "nature_and_landscapes", localizationKey: "learning_topic.nature_and_landscapes", fallbackTitle: "自然风景"),
         .init(id: "animals_and_pets", localizationKey: "learning_topic.animals_and_pets", fallbackTitle: "动物与宠物"),
         .init(id: "plants_and_gardens", localizationKey: "learning_topic.plants_and_gardens", fallbackTitle: "植物与花园"),
-        .init(id: "environment_and_sustainability", localizationKey: "learning_topic.environment_and_sustainability", fallbackTitle: "环境与保护"),
+        .init(id: "environment_and_sustainability", localizationKey: "learning_topic.environment_and_sustainability", fallbackTitle: "环境与可持续生活"),
         .init(id: "people_and_activities", localizationKey: "learning_topic.people_and_activities", fallbackTitle: "人物与日常活动")
     ]
 

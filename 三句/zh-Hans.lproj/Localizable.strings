@@ -334,12 +334,12 @@
 "learning_topic.school_and_learning" = "学校与学习";
 "learning_topic.work_and_career" = "工作与职场";
 "learning_topic.food_and_cooking" = "美食与烹饪";
-"learning_topic.eating_out" = "餐厅与咖啡馆";
+"learning_topic.eating_out" = "外出就餐";
 "learning_topic.services_and_consumer_life" = "服务与消费";
-"learning_topic.celebrations_and_events" = "节日与庆祝";
+"learning_topic.celebrations_and_events" = "庆祝与活动";
 "learning_topic.culture_and_arts" = "文化与艺术";
-"learning_topic.media_and_entertainment" = "影视、音乐与阅读";
-"learning_topic.technology_and_online_life" = "科技与网络";
+"learning_topic.media_and_entertainment" = "媒体与娱乐";
+"learning_topic.technology_and_online_life" = "科技与线上生活";
 "learning_topic.news_and_public_information" = "新闻与公共信息";
 "learning_topic.transportation" = "出行与交通";
 "learning_topic.travel_and_holidays" = "旅行与度假";
@@ -349,7 +349,7 @@
 "learning_topic.nature_and_landscapes" = "自然风景";
 "learning_topic.animals_and_pets" = "动物与宠物";
 "learning_topic.plants_and_gardens" = "植物与花园";
-"learning_topic.environment_and_sustainability" = "环境与保护";
+"learning_topic.environment_and_sustainability" = "环境与可持续生活";
 "learning_topic.people_and_activities" = "人物与日常活动";
 "study.scene.refresh_suggestions" = "换一批推荐";
 "study.scene.detail.all_sentences" = "全部句子";
