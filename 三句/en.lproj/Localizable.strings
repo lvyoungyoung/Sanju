@@ -311,7 +311,7 @@
 "study.scene.empty.action_hint" = "There are no sentences in this topic yet. Upload a related photo to add some.";
 "study.scene.my_scenes" = "My Study Topics";
 "study.scene.name_placeholder" = "Name a topic you want to learn";
-"study.scene.suggestions_title" = "Suggested from your sentences";
+"study.scene.suggestions_title" = "Try these";
 "study.scene.suggestion_fill_hint" = "Fill in this study topic";
 "study.scene.remove_selected_suggestion" = "Remove selected topic";
 "study.scene.suggestion.people_social" = "People & Social Life";

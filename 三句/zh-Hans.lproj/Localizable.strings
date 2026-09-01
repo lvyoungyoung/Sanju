@@ -311,7 +311,7 @@
 "study.scene.empty.action_hint" = "这个主题还没有可学习的句子，去上传相关照片吧。";
 "study.scene.my_scenes" = "我的学习主题";
 "study.scene.name_placeholder" = "输入你想学习的主题";
-"study.scene.suggestions_title" = "根据你的句子推荐";
+"study.scene.suggestions_title" = "试试这些";
 "study.scene.suggestion_fill_hint" = "填入学习主题";
 "study.scene.remove_selected_suggestion" = "移除已选主题";
 "study.scene.suggestion.people_social" = "人与社交";
