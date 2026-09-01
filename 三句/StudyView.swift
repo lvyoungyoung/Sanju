@@ -10,10 +10,14 @@ struct StudyView: View {
     @State private var isCreatingScene = false
     @State private var scenePendingDeletion: UserStudySceneSummary?
     @State private var isDeletingScene = false
+    @State private var pageTitleOriginY: CGFloat?
+    @State private var pageTitleMinY: CGFloat = 0
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.section) {
+                pageHeader
+
                 favoriteTopicCard
 
                 Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
@@ -33,12 +37,15 @@ struct StudyView: View {
             .padding(.top, AppSpacing.xLarge)
             .padding(.bottom, 120)
         }
+        .coordinateSpace(name: StudyPageScrollMetrics.coordinateSpaceName)
         .background(AppSurfaceColor.page)
-        .navigationTitle(L10n.string("study.topic.page_title", "学习"))
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbarBackground(AppSurfaceColor.page, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(.hidden, for: .navigationBar)
+        .onPreferenceChange(StudyPageTitleMinYPreferenceKey.self) { minY in
+            if pageTitleOriginY == nil {
+                pageTitleOriginY = minY
+            }
+            pageTitleMinY = minY
+        }
         .task {
             await appModel.refreshUserStudySceneSummaries()
         }
@@ -81,6 +88,28 @@ struct StudyView: View {
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
+    }
+
+    private var pageHeader: some View {
+        Text(L10n.string("study.topic.page_title", "学习"))
+            .font(.system(size: 34, weight: .bold))
+            .foregroundStyle(AppTextColor.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(pageTitleOpacity)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: StudyPageTitleMinYPreferenceKey.self,
+                        value: proxy.frame(in: .named(StudyPageScrollMetrics.coordinateSpaceName)).minY
+                    )
+                }
+            }
+    }
+
+    private var pageTitleOpacity: Double {
+        guard let pageTitleOriginY else { return 1 }
+        let fadeDistance: CGFloat = 64
+        return min(1, max(0, Double((pageTitleMinY - pageTitleOriginY + fadeDistance) / fadeDistance)))
     }
 
     private var favoriteTopicCard: some View {
@@ -423,6 +452,18 @@ struct StudyView: View {
                 ? L10n.string("study.scene.delete_failed", "暂时无法删除学习主题，请稍后再试。")
                 : error.localizedDescription
         }
+    }
+}
+
+private enum StudyPageScrollMetrics {
+    static let coordinateSpaceName = "study-page-scroll"
+}
+
+private struct StudyPageTitleMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

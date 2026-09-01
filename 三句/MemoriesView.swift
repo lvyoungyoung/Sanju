@@ -10,6 +10,8 @@ struct MemoriesView: View {
     @State private var visibleMemoryCount = 20
     @State private var isLoadingMoreMemories = false
     @State private var memorySections: [MemorySection] = []
+    @State private var pageTitleOriginY: CGFloat?
+    @State private var pageTitleMinY: CGFloat = 0
 
     private let columns = [
         GridItem(.flexible(), spacing: AppSpacing.xLarge),
@@ -23,6 +25,8 @@ struct MemoriesView: View {
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.large) {
+                    pageHeader
+
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
                         PendingCloudSyncProgressCard(
                             completedCount: appModel.pendingCloudSyncCompletedCount,
@@ -97,11 +101,7 @@ struct MemoriesView: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle(L10n.string("memories.page_title", "回忆"))
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
                 await performInitialLoadIfNeeded()
@@ -117,6 +117,12 @@ struct MemoriesView: View {
                     await loadMoreMemoriesIfNeeded()
                 }
             }
+            .onPreferenceChange(MemoryPageTitleMinYPreferenceKey.self) { minY in
+                if pageTitleOriginY == nil {
+                    pageTitleOriginY = minY
+                }
+                pageTitleMinY = minY
+            }
             .alert(L10n.string("memory.delete.alert_title", "删除这条回忆？"), isPresented: memoryDeleteAlertBinding) {
                 Button(L10n.string("common.delete", "删除"), role: .destructive) {
                     if let memoryID = memoryPendingDeletion?.id {
@@ -131,6 +137,28 @@ struct MemoriesView: View {
                 Text(L10n.string("memory.delete.alert_message", "删除后，这张图片和对应的三句话都会被移除。"))
             }
         }
+    }
+
+    private var pageHeader: some View {
+        Text(L10n.string("memories.page_title", "回忆"))
+            .font(.system(size: 34, weight: .bold))
+            .foregroundStyle(AppTextColor.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(pageTitleOpacity)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: MemoryPageTitleMinYPreferenceKey.self,
+                        value: proxy.frame(in: .named(MemoryScrollMetrics.coordinateSpaceName)).minY
+                    )
+                }
+            }
+    }
+
+    private var pageTitleOpacity: Double {
+        guard let pageTitleOriginY else { return 1 }
+        let fadeDistance: CGFloat = 64
+        return min(1, max(0, Double((pageTitleMinY - pageTitleOriginY + fadeDistance) / fadeDistance)))
     }
 
     private var memoryDeleteAlertBinding: Binding<Bool> {
@@ -291,6 +319,14 @@ private enum MemoryScrollMetrics {
 
 private struct MemoryFooterMinYPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = .greatestFiniteMagnitude
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct MemoryPageTitleMinYPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
