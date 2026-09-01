@@ -313,6 +313,15 @@
 "study.scene.name_placeholder" = "Name a topic you want to learn";
 "study.scene.suggestions_title" = "Suggested from your sentences";
 "study.scene.suggestion_fill_hint" = "Fill in this study topic";
+"study.scene.suggestion.people_social" = "People & Social Life";
+"study.scene.suggestion.nature" = "Nature & Scenery";
+"study.scene.suggestion.travel" = "Travel & Getting Around";
+"study.scene.suggestion.food" = "Food & Cooking";
+"study.scene.suggestion.daily_life" = "Everyday Life";
+"study.scene.suggestion.animals" = "Animals & Pets";
+"study.scene.suggestion.city" = "City & Architecture";
+"study.scene.suggestion.activities" = "Activities & Celebrations";
+"study.scene.suggestion.digital_life" = "Digital Life";
 "study.scene.refresh_suggestions" = "Refresh suggestions";
 "study.scene.detail.all_sentences" = "All Sentences";
 "study.scene.detail.empty_subtitle" = "Related sentences from future memories will appear here automatically.";

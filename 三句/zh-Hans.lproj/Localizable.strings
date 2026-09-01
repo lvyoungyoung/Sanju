@@ -313,6 +313,15 @@
 "study.scene.name_placeholder" = "输入你想学习的主题";
 "study.scene.suggestions_title" = "根据你的句子推荐";
 "study.scene.suggestion_fill_hint" = "填入学习主题";
+"study.scene.suggestion.people_social" = "人与社交";
+"study.scene.suggestion.nature" = "自然与风景";
+"study.scene.suggestion.travel" = "旅行与出行";
+"study.scene.suggestion.food" = "美食与烹饪";
+"study.scene.suggestion.daily_life" = "日常生活";
+"study.scene.suggestion.animals" = "动物与宠物";
+"study.scene.suggestion.city" = "城市与建筑";
+"study.scene.suggestion.activities" = "活动与庆祝";
+"study.scene.suggestion.digital_life" = "数字生活";
 "study.scene.refresh_suggestions" = "换一批推荐";
 "study.scene.detail.all_sentences" = "全部句子";
 "study.scene.detail.empty_subtitle" = "以后生成相关画面时，它们会自动出现在这里。";

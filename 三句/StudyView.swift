@@ -180,16 +180,38 @@ struct StudyView: View {
     }
 
     private var availableSceneNames: [String] {
-        let counts = appModel.memories
-            .flatMap(\.sentences)
-            .map(\.sceneHint)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .reduce(into: [String: Int]()) { counts, hint in
-                counts[hint, default: 0] += 1
-            }
+        let memoryTags = Set(appModel.memories.flatMap(\.tags))
+        var topics: [String] = []
 
-        return Array(counts.keys)
+        if memoryTags.contains("人物") {
+            topics.append(L10n.string("study.scene.suggestion.people_social", "人与社交"))
+        }
+        if memoryTags.contains("风景") || memoryTags.contains("植物") {
+            topics.append(L10n.string("study.scene.suggestion.nature", "自然与风景"))
+        }
+        if memoryTags.contains("旅行") {
+            topics.append(L10n.string("study.scene.suggestion.travel", "旅行与出行"))
+        }
+        if memoryTags.contains("美食") {
+            topics.append(L10n.string("study.scene.suggestion.food", "美食与烹饪"))
+        }
+        if memoryTags.contains("生活场景") || memoryTags.contains("物品") {
+            topics.append(L10n.string("study.scene.suggestion.daily_life", "日常生活"))
+        }
+        if memoryTags.contains("动物") {
+            topics.append(L10n.string("study.scene.suggestion.animals", "动物与宠物"))
+        }
+        if memoryTags.contains("建筑") {
+            topics.append(L10n.string("study.scene.suggestion.city", "城市与建筑"))
+        }
+        if memoryTags.contains("活动") {
+            topics.append(L10n.string("study.scene.suggestion.activities", "活动与庆祝"))
+        }
+        if memoryTags.contains("截图/信息") {
+            topics.append(L10n.string("study.scene.suggestion.digital_life", "数字生活"))
+        }
+
+        return topics
     }
 
     private func refreshSceneSuggestions() {
