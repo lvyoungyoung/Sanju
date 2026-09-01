@@ -12,26 +12,33 @@ struct StudyView: View {
     @State private var isDeletingScene = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: AppSpacing.section) {
-                favoriteTopicCard
+        VStack(spacing: 0) {
+            pageHeader
+                .padding(.horizontal, AppSpacing.xLarge)
+                .padding(.top, AppSpacing.xLarge)
+                .padding(.bottom, AppSpacing.medium)
 
-                Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
-                    .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: AppSpacing.section) {
+                    favoriteTopicCard
 
-                LazyVStack(spacing: AppSpacing.medium) {
-                    ForEach(appModel.userStudySceneSummaries) { scene in
-                        userStudySceneCard(scene)
+                    Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
+                        .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                        .foregroundStyle(AppTextColor.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    LazyVStack(spacing: AppSpacing.medium) {
+                        ForEach(appModel.userStudySceneSummaries) { scene in
+                            userStudySceneCard(scene)
+                        }
+
+                        createSceneTile
                     }
-
-                    createSceneTile
                 }
+                .padding(.horizontal, AppSpacing.xLarge)
+                .padding(.top, AppSpacing.medium)
+                .padding(.bottom, 120)
             }
-            .padding(.horizontal, AppSpacing.xLarge)
-            .padding(.top, AppSpacing.xLarge)
-            .padding(.bottom, 120)
         }
         .background(AppSurfaceColor.page)
         .toolbar(.hidden, for: .navigationBar)
@@ -77,6 +84,13 @@ struct StudyView: View {
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
+    }
+
+    private var pageHeader: some View {
+        Text(L10n.string("study.topic.page_title", "学习"))
+            .font(.system(size: AppFontSize.pageTitle, weight: .bold))
+            .foregroundStyle(AppTextColor.primary)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var favoriteTopicCard: some View {

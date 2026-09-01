@@ -142,6 +142,7 @@
 "favorites.syncing.title" = "Syncing favorites...";
 "memories.empty.subtitle" = "Upload your first photo in New and generate your first set of three sentences.";
 "memories.empty.title" = "No Memories Yet";
+"memories.page_title" = "Memories";
 "memories.hero.count_label" = "Saved";
 "memories.tags.all" = "All";
 "memories.tags.accessibility_label" = "Memory category filter";

@@ -142,6 +142,7 @@
 "favorites.syncing.title" = "正在同步收藏...";
 "memories.empty.subtitle" = "在“新的”里上传第一张照片，生成你的第一组三句话。";
 "memories.empty.title" = "还没有回忆";
+"memories.page_title" = "回忆";
 "memories.hero.count_label" = "已记录";
 "memories.tags.all" = "全部";
 "memories.tags.accessibility_label" = "回忆分类筛选";
