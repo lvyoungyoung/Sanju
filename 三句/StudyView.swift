@@ -36,6 +36,7 @@ struct StudyView: View {
         .background(AppSurfaceColor.page)
         .navigationTitle(L10n.string("study.topic.page_title", "学习"))
         .navigationBarTitleDisplayMode(.large)
+        .toolbar(.visible, for: .navigationBar)
         .toolbarBackground(AppSurfaceColor.page, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .task {

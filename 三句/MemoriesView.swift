@@ -99,6 +99,7 @@ struct MemoriesView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle(L10n.string("memories.page_title", "回忆"))
             .navigationBarTitleDisplayMode(.large)
+            .toolbar(.visible, for: .navigationBar)
             .toolbarBackground(Color(.systemGroupedBackground), for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .task {
