@@ -112,7 +112,7 @@ ${languageStylePrompt}
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
 4. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段
 5. 每句中文控制在 8 到 30 个汉字之间
-6. learning_topic_ids 必须是包含 1 到 2 个字符串的数组，只能从以下稳定主题 ID 中选择：${LEARNING_TOPIC_PROMPT}。按这句话真正适合学习的内容分类；不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类
+6. learning_topic_ids 必须是恰好包含 1 个字符串的数组，只能从以下稳定主题 ID 中选择：${LEARNING_TOPIC_PROMPT}。为每句选择最匹配的一个主学习主题；不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类
 7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 8. 不要输出任何多余字段或 JSON 前后的任何字符
 
@@ -143,7 +143,7 @@ ${languageStylePrompt}
 12. 不要输出任何多余字段
 13. 不要转义整个 JSON 对象
 14. 不要在 JSON 前后添加任何字符
-15. learning_topic_ids 必须包含 1 到 2 个主题 ID，只能从以下列表中选择：${LEARNING_TOPIC_PROMPT}。按句子内容分类，不要自创 ID。
+15. learning_topic_ids 必须恰好包含 1 个主题 ID，只能从以下列表中选择：${LEARNING_TOPIC_PROMPT}。按句子内容选择最匹配的一个主分类，不要自创 ID。
 16. 每句中文控制在 8 到 30 个汉字之间
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
@@ -411,7 +411,7 @@ function normalizeLearningTopicIDs(value: unknown): string[] {
         .map((item) => String(item ?? "").trim())
         .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
     )
-  ).slice(0, 2)
+  ).slice(0, 1)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
