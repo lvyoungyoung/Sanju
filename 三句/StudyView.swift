@@ -197,10 +197,10 @@ struct StudyView: View {
             return
         }
 
-        var suggestions = Array(availableTopics.shuffled().prefix(4))
+        var suggestions = Array(availableTopics.shuffled().prefix(3))
 
-        // With more than four choices, avoid showing the exact same batch again.
-        if availableTopics.count > 4,
+        // With more than three choices, avoid showing the exact same batch again.
+        if availableTopics.count > 3,
            Set(suggestions) == Set(displayedSceneSuggestions),
            let replacement = availableTopics.first(where: { !displayedSceneSuggestions.contains($0) }) {
             suggestions = Array(displayedSceneSuggestions.dropLast()) + [replacement]
