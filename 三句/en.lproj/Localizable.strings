@@ -313,6 +313,7 @@
 "study.scene.name_placeholder" = "Name a topic you want to learn";
 "study.scene.suggestions_title" = "Suggested from your sentences";
 "study.scene.suggestion_fill_hint" = "Fill in this study topic";
+"study.scene.remove_selected_suggestion" = "Remove selected topic";
 "study.scene.suggestion.people_social" = "People & Social Life";
 "study.scene.suggestion.nature" = "Nature & Scenery";
 "study.scene.suggestion.travel" = "Travel & Getting Around";

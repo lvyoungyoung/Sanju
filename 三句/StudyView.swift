@@ -430,7 +430,7 @@ struct StudyView: View {
             let suggestedTopic = LearningTopic.topic(for: selectedSuggestedTopicID)
             let scene = try await appModel.createUserStudyScene(
                 named: name,
-                learningTopicID: suggestedTopic?.title == name ? suggestedTopic?.id : nil
+                learningTopicID: suggestedTopic?.id
             )
             isShowingCreateScene = false
             newSceneName = ""
@@ -529,19 +529,51 @@ private struct CreateStudySceneSheet: View {
                 }
             }
 
-            TextField(
-                L10n.string("study.scene.name_placeholder", "输入你想学习的主题"),
-                text: $sceneName
-            )
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .padding(.horizontal, AppSpacing.large)
-            .frame(height: 50)
-            .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
-            .onChange(of: sceneName) { name in
-                guard let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID),
-                      name != selectedTopic.title else { return }
-                selectedSuggestedTopicID = nil
+            if let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID) {
+                HStack(spacing: AppSpacing.small) {
+                    Text(selectedTopic.title)
+                        .font(.system(size: AppFontSize.body, weight: .medium))
+                        .foregroundStyle(Color.orange)
+                        .padding(.leading, AppSpacing.medium)
+
+                    Spacer(minLength: 0)
+
+                    Button {
+                        selectedSuggestedTopicID = nil
+                        sceneName = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: AppIconSize.compact, weight: .medium))
+                            .foregroundStyle(AppTextColor.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        L10n.string(
+                            "study.scene.remove_selected_suggestion",
+                            "移除已选主题"
+                        )
+                    )
+                }
+                .frame(height: 50)
+                .background(
+                    Color.orange.opacity(0.10),
+                    in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                        .stroke(Color.orange.opacity(0.30), lineWidth: 1)
+                }
+            } else {
+                TextField(
+                    L10n.string("study.scene.name_placeholder", "输入你想学习的主题"),
+                    text: $sceneName
+                )
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(.horizontal, AppSpacing.large)
+                .frame(height: 50)
+                .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
             }
 
             Button {

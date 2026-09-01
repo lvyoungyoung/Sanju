@@ -313,6 +313,7 @@
 "study.scene.name_placeholder" = "输入你想学习的主题";
 "study.scene.suggestions_title" = "根据你的句子推荐";
 "study.scene.suggestion_fill_hint" = "填入学习主题";
+"study.scene.remove_selected_suggestion" = "移除已选主题";
 "study.scene.suggestion.people_social" = "人与社交";
 "study.scene.suggestion.nature" = "自然与风景";
 "study.scene.suggestion.travel" = "旅行与出行";
