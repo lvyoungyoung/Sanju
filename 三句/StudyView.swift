@@ -328,15 +328,22 @@ struct StudyView: View {
 
     private func favoriteStudyOverview(summary: SentenceStudyTopicSummary) -> some View {
         HStack(spacing: AppSpacing.large) {
-            StudyTopicOverviewMetric(
-                value: summary.dueCount,
-                label: L10n.string("study.metric.due_today", "今日待学")
-            )
+            HStack(spacing: AppSpacing.medium) {
+                StudyTopicOverviewMetric(
+                    value: summary.dueCount,
+                    label: L10n.string("study.metric.due_today", "今日待学")
+                )
 
-            StudyTopicOverviewMetric(
-                value: summary.reviewableTodayCount,
-                label: L10n.string("study.metric.studied_today", "今日已学")
-            )
+                Rectangle()
+                    .fill(AppStroke.subtle)
+                    .frame(width: 1, height: 34)
+
+                StudyTopicOverviewMetric(
+                    value: summary.reviewableTodayCount,
+                    label: L10n.string("study.metric.studied_today", "今日已学")
+                )
+            }
+            .padding(.leading, AppSpacing.xSmall)
 
             Spacer(minLength: 0)
 
@@ -351,20 +358,51 @@ struct StudyView: View {
                     }
 
                     Text(favoriteStudyButtonTitle)
-                        .font(.system(size: AppFontSize.metadata, weight: .semibold))
+                        .font(.system(size: AppFontSize.body, weight: .semibold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, AppSpacing.medium)
-                .frame(height: 36)
-                .background(Color.orange, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                .padding(.horizontal, AppControlPadding.prominent)
+                .frame(height: AppControlHeight.regular)
+                .background(
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: canStartFavoriteStudy ? [
+                                    Color(red: 0.98, green: 0.67, blue: 0.18),
+                                    Color(red: 0.91, green: 0.52, blue: 0.17)
+                                ] : [
+                                    Color(red: 0.86, green: 0.79, blue: 0.72),
+                                    Color(red: 0.82, green: 0.75, blue: 0.68)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
             }
             .buttonStyle(.plain)
             .disabled(!canStartFavoriteStudy || isStartingFavoriteStudy)
-            .opacity(canStartFavoriteStudy ? 1 : 0.5)
         }
         .padding(.horizontal, AppSpacing.xLarge)
-        .frame(height: 72)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        .padding(.vertical, AppSpacing.medium)
+        .background(
+            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppSurfaceColor.card,
+                            AppSurfaceColor.elevated
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                .stroke(AppStroke.highlight, lineWidth: 1)
+        }
+        .appCardShadow()
     }
 
     private var canStartFavoriteStudy: Bool {
@@ -503,15 +541,15 @@ private struct StudyTopicOverviewMetric: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
             Text(value, format: .number)
-                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                .foregroundStyle(AppTextColor.primary)
-                .monospacedDigit()
+            .font(.system(size: AppFontSize.stat, weight: .bold))
+            .foregroundStyle(AppTextColor.title)
+            .monospacedDigit()
 
             Text(label)
-                .font(.system(size: AppFontSize.caption, weight: .regular))
+                .font(.system(size: AppFontSize.caption, weight: .medium))
                 .foregroundStyle(AppTextColor.tertiary)
         }
-        .frame(minWidth: 72, alignment: .leading)
+        .frame(minWidth: 54, alignment: .leading)
     }
 }
 
