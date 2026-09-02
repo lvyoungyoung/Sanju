@@ -5,6 +5,14 @@ interface RequestBody {
   generationFormat?: string
 }
 
+const LEARNING_TOPIC_IDS = new Set([
+  "people_and_relationships", "clothes_and_appearance", "house_and_home", "daily_routines",
+  "food_and_cooking", "shopping_and_consumption", "health_and_body", "hobbies_and_culture",
+  "sports_and_fitness", "social_occasions", "travel_and_transport", "places_and_public_services",
+  "education_and_learning", "work_and_career", "nature_weather_and_environment",
+  "digital_life_and_communication",
+])
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") {
@@ -160,7 +168,7 @@ function normalizeLearningTopicIDs(value: unknown): string[] {
     new Set(
       value
         .map((item) => String(item ?? "").trim())
-        .filter(Boolean)
+        .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
     )
-  ).slice(0, 2)
+  ).slice(0, 1)
 }

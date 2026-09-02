@@ -10,15 +10,11 @@ interface CreateStudySceneRequest {
 }
 
 const LEARNING_TOPIC_IDS = new Set([
-  "daily_life", "home_and_family", "clothing_and_shopping", "health_and_wellbeing",
-  "feelings_and_emotions", "hobbies_and_leisure", "sports_and_fitness", "social_relationships",
-  "school_and_learning", "work_and_career", "food_and_cooking", "eating_out",
-  "services_and_consumer_life", "celebrations_and_events", "culture_and_arts",
-  "media_and_entertainment", "technology_and_online_life", "news_and_public_information",
-  "transportation", "travel_and_holidays", "cities_and_architecture",
-  "community_and_public_places", "weather_and_seasons", "nature_and_landscapes",
-  "animals_and_pets", "plants_and_gardens", "environment_and_sustainability",
-  "people_and_activities",
+  "people_and_relationships", "clothes_and_appearance", "house_and_home", "daily_routines",
+  "food_and_cooking", "shopping_and_consumption", "health_and_body", "hobbies_and_culture",
+  "sports_and_fitness", "social_occasions", "travel_and_transport", "places_and_public_services",
+  "education_and_learning", "work_and_career", "nature_weather_and_environment",
+  "digital_life_and_communication",
 ])
 
 Deno.serve(async (req) => {
