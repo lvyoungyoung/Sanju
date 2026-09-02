@@ -11,6 +11,8 @@ struct StudyView: View {
     @State private var isCreatingScene = false
     @State private var scenePendingDeletion: UserStudySceneSummary?
     @State private var isDeletingScene = false
+    @State private var isStartingFavoriteStudy = false
+    @State private var favoriteStudySession: SentenceStudyTopicSession?
     @State private var pageTitleOriginY: CGFloat?
     @State private var pageTitleMinY: CGFloat = 0
 
@@ -19,34 +21,14 @@ struct StudyView: View {
             VStack(alignment: .leading, spacing: AppSpacing.section) {
                 pageHeader
 
-                favoriteTopicCard
+                favoriteStudySection
 
-                HStack(alignment: .firstTextBaseline) {
-                    Text(L10n.string("study.scene.my_scenes", "我的学习主题"))
-                        .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                        .foregroundStyle(AppTextColor.secondary)
+                topicSectionHeader
 
-                    Spacer(minLength: AppSpacing.small)
-
-                    NavigationLink {
-                        StudyTopicMapView()
-                    } label: {
-                        HStack(spacing: AppSpacing.xSmall) {
-                            Text(L10n.string("study.topic.map.entry", "主题地图"))
-                            Image(systemName: "map")
-                        }
-                        .font(.system(size: AppFontSize.metadata, weight: .semibold))
-                        .foregroundStyle(Color.orange)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                LazyVStack(spacing: AppSpacing.medium) {
+                LazyVStack(spacing: AppSpacing.xLarge) {
                     ForEach(appModel.userStudySceneSummaries) { scene in
                         userStudySceneCard(scene)
                     }
-
-                    createSceneTile
                 }
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -63,10 +45,10 @@ struct StudyView: View {
             pageTitleMinY = minY
         }
         .task {
-            await appModel.refreshUserStudySceneSummaries()
+            await appModel.refreshSentenceStudyDueCount()
         }
         .refreshable {
-            await appModel.refreshUserStudySceneSummaries()
+            await appModel.refreshSentenceStudyDueCount()
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -105,6 +87,22 @@ struct StudyView: View {
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
         }
+        .fullScreenCover(item: $favoriteStudySession) { session in
+            SentenceStudySessionView(
+                queue: session.queue,
+                studyTopic: session.topic,
+                startsInReviewMode: session.startsInReviewMode,
+                repeatsActiveQueueOnCompletion: true,
+                onDismiss: {
+                    favoriteStudySession = nil
+                    Task {
+                        await appModel.refreshSentenceStudyDueCount()
+                        await appModel.refreshUserStudySceneSummaries()
+                    }
+                }
+            )
+            .environmentObject(appModel)
+        }
     }
 
     private var pageHeader: some View {
@@ -129,30 +127,75 @@ struct StudyView: View {
         return min(1, max(0, Double((pageTitleMinY - pageTitleOriginY + fadeDistance) / fadeDistance)))
     }
 
-    private var favoriteTopicCard: some View {
+    private var favoriteSummary: SentenceStudyTopicSummary {
         let cachedSummary = appModel.sentenceStudyTopicSummaries[.favorites] ?? .empty
-        let summary = SentenceStudyTopicSummary(
+        return SentenceStudyTopicSummary(
             totalCount: appModel.favorites.count,
             dueCount: cachedSummary.dueCount,
             studiedCount: cachedSummary.studiedCount,
             reviewableTodayCount: cachedSummary.reviewableTodayCount,
             masteryScore: cachedSummary.masteryScore
         )
-        let tint = SentenceStudyTopic.favorites.tintColor
-        let coverImage = appModel.memories
-            .sorted { $0.createdAt > $1.createdAt }
-            .first { memory in memory.sentences.contains { $0.isFavorite } }
-            .flatMap { UIImage(data: $0.imageData) }
+    }
 
-        return NavigationLink(value: StudySceneDetailRoute.favorites) {
-            topicListCardContent(
-                title: SentenceStudyTopic.favorites.title,
-                summary: summary,
-                coverImage: coverImage,
-                tint: tint
-            )
+    private var favoriteStudySection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(
+                    L10n.string(
+                        "study.topic.favorites_count",
+                        "收藏（%d）",
+                        appModel.favorites.count
+                    )
+                )
+                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+
+                Spacer(minLength: AppSpacing.small)
+
+                NavigationLink(value: StudySceneDetailRoute.favorites) {
+                    Text(L10n.string("study.topic.view_all", "查看全部"))
+                        .font(.system(size: AppFontSize.body, weight: .medium))
+                        .foregroundStyle(Color.orange)
+                }
+                .buttonStyle(.plain)
+            }
+
+            favoriteStudyOverview(summary: favoriteSummary)
         }
-        .buttonStyle(.plain)
+    }
+
+    private var topicSectionHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+            Text(L10n.string("study.topic.section_title", "按主题学习"))
+                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+
+            Spacer(minLength: AppSpacing.small)
+
+            NavigationLink {
+                StudyTopicMapView()
+            } label: {
+                Text(L10n.string("study.topic.map.entry", "主题地图"))
+                    .font(.system(size: AppFontSize.metadata, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: showCreateScene) {
+                Text(L10n.string("study.topic.create_short", "+ 创建"))
+                    .font(.system(size: AppFontSize.metadata, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, AppSpacing.medium)
+                    .frame(height: 32)
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
+                            .stroke(Color.orange, lineWidth: 1)
+                    }
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var availableSceneTopics: [LearningTopic] {
@@ -223,22 +266,14 @@ struct StudyView: View {
         coverImage: UIImage?,
         tint: Color
     ) -> some View {
-        return HStack(spacing: AppSpacing.medium) {
+        HStack(spacing: AppSpacing.xLarge) {
             sceneCover(image: coverImage, tint: tint)
 
             VStack(alignment: .leading, spacing: AppSpacing.small) {
-                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-                    Text(title)
-                        .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                        .foregroundStyle(AppTextColor.primary)
-                        .lineLimit(1)
-
-                    Spacer(minLength: 0)
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: AppIconSize.compact, weight: .semibold))
-                        .foregroundStyle(AppTextColor.tertiary)
-                }
+                Text(title)
+                    .font(.system(size: AppFontSize.bodyProminent, weight: .regular))
+                    .foregroundStyle(AppTextColor.primary)
+                    .lineLimit(1)
 
                 Text(
                     L10n.string(
@@ -250,25 +285,25 @@ struct StudyView: View {
                 .font(.system(size: AppFontSize.metadata, weight: .medium))
                 .foregroundStyle(AppTextColor.secondary)
 
-                Spacer(minLength: AppSpacing.xSmall)
+                Spacer(minLength: 0)
 
-                masteryProgress(
-                    summary: summary,
-                    textColor: AppTextColor.secondary
-                )
+                ProgressView(value: Double(summary.masteryScore), total: 100)
+                    .tint(Color.orange)
+                    .frame(maxWidth: 110)
+                    .accessibilityLabel(
+                        L10n.string(
+                            "study.topic.mastery",
+                            "掌握度 %d%%",
+                            summary.masteryScore
+                        )
+                    )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(AppSpacing.medium)
-        .frame(maxWidth: .infinity, minHeight: 128, maxHeight: 128, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(AppStroke.subtle, lineWidth: 1)
-        }
-        .appCardShadow()
+        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
     }
 
     @ViewBuilder
@@ -286,24 +321,67 @@ struct StudyView: View {
                     .background(tint.opacity(0.14))
             }
         }
-        .frame(width: 96, height: 104)
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+        .frame(width: 120, height: 80)
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
         .allowsHitTesting(false)
     }
 
-    private func masteryProgress(
-        summary: SentenceStudyTopicSummary,
-        textColor: Color
-    ) -> some View {
-        Text(
-            L10n.string(
-                "study.topic.mastery",
-                "掌握度 %d%%",
-                summary.masteryScore
+    private func favoriteStudyOverview(summary: SentenceStudyTopicSummary) -> some View {
+        HStack(spacing: AppSpacing.large) {
+            StudyTopicOverviewMetric(
+                value: summary.dueCount,
+                label: L10n.string("study.metric.due_today", "今日待学")
             )
-        )
-        .font(.system(size: AppFontSize.caption, weight: .medium))
-        .foregroundStyle(textColor)
+
+            StudyTopicOverviewMetric(
+                value: summary.reviewableTodayCount,
+                label: L10n.string("study.metric.studied_today", "今日已学")
+            )
+
+            Spacer(minLength: 0)
+
+            Button {
+                Task { await startFavoriteStudy() }
+            } label: {
+                HStack(spacing: AppSpacing.small) {
+                    if isStartingFavoriteStudy {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.white)
+                    }
+
+                    Text(favoriteStudyButtonTitle)
+                        .font(.system(size: AppFontSize.metadata, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, AppSpacing.medium)
+                .frame(height: 36)
+                .background(Color.orange, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canStartFavoriteStudy || isStartingFavoriteStudy)
+            .opacity(canStartFavoriteStudy ? 1 : 0.5)
+        }
+        .padding(.horizontal, AppSpacing.xLarge)
+        .frame(height: 72)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+    }
+
+    private var canStartFavoriteStudy: Bool {
+        favoriteSummary.dueCount > 0 || favoriteSummary.reviewableTodayCount > 0
+    }
+
+    private var favoriteStudyButtonTitle: String {
+        if isStartingFavoriteStudy {
+            return L10n.string("study.button.preparing", "正在准备学习内容...")
+        }
+        if favoriteSummary.dueCount > 0 {
+            return L10n.string("study.button.start", "开始学习")
+        }
+        if favoriteSummary.reviewableTodayCount > 0 {
+            return L10n.string("study.button.review_again", "再学一遍")
+        }
+        return L10n.string("study.button.done_today", "今天学完了")
     }
 
     private func sceneTint(for scene: UserStudySceneSummary) -> Color {
@@ -327,43 +405,15 @@ struct StudyView: View {
         return UIImage(data: imageData)
     }
 
-    private var createSceneTile: some View {
-        Button {
-            guard appModel.isSignedIn else {
-                appModel.isShowingSignInSheet = true
-                return
-            }
-            newSceneName = ""
-            selectedSuggestedTopicID = nil
-            refreshSceneSuggestions()
-            isShowingCreateScene = true
-        } label: {
-            HStack(spacing: AppSpacing.medium) {
-                Image(systemName: "plus")
-                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-                    .frame(width: 42, height: 42)
-                    .background(AppSurfaceColor.secondaryFill, in: Circle())
-
-                Text(L10n.string("study.scene.create", "创建我的学习主题"))
-                    .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                    .foregroundStyle(AppTextColor.primary)
-
-                Spacer(minLength: 0)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: AppIconSize.compact, weight: .semibold))
-                    .foregroundStyle(AppTextColor.tertiary)
-            }
-            .padding(AppSpacing.medium)
-            .frame(maxWidth: .infinity, minHeight: 104)
-            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(AppStroke.soft, style: StrokeStyle(lineWidth: 1, dash: [6, 5]))
-            }
+    private func showCreateScene() {
+        guard appModel.isSignedIn else {
+            appModel.isShowingSignInSheet = true
+            return
         }
-        .buttonStyle(.plain)
+        newSceneName = ""
+        selectedSuggestedTopicID = nil
+        refreshSceneSuggestions()
+        isShowingCreateScene = true
     }
 
     private var errorAlertBinding: Binding<Bool> {
@@ -425,6 +475,43 @@ struct StudyView: View {
                 ? L10n.string("study.scene.delete_failed", "暂时无法删除学习主题，请稍后再试。")
                 : error.localizedDescription
         }
+    }
+
+    @MainActor
+    private func startFavoriteStudy() async {
+        isStartingFavoriteStudy = true
+        defer { isStartingFavoriteStudy = false }
+
+        do {
+            guard let session = try await appModel.loadSentenceStudyTopicSession(for: .favorites) else {
+                errorMessage = L10n.string("study.topic.empty.action_hint", "这个主题暂时没有可学习的句子。")
+                return
+            }
+            favoriteStudySession = session
+        } catch {
+            errorMessage = error.localizedDescription.isEmpty
+                ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
+                : error.localizedDescription
+        }
+    }
+}
+
+private struct StudyTopicOverviewMetric: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
+            Text(value, format: .number)
+                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+                .monospacedDigit()
+
+            Text(label)
+                .font(.system(size: AppFontSize.caption, weight: .regular))
+                .foregroundStyle(AppTextColor.tertiary)
+        }
+        .frame(minWidth: 72, alignment: .leading)
     }
 }
 
@@ -583,7 +670,7 @@ private struct CreateStudySceneSheet: View {
                 onRefreshSuggestions()
             }
         }
-        .onChange(of: learningTopicSignature) { _ in
+        .onChange(of: learningTopicSignature) { _, _ in
             // The sheet can appear before the first remote-memory sync finishes.
             guard suggestedSceneNames.isEmpty else { return }
             onRefreshSuggestions()

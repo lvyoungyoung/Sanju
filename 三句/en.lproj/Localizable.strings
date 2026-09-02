@@ -294,6 +294,10 @@
 "study.topic.empty.subtitle" = "After you generate a memory, AI will sort its sentences into useful study topics.";
 "study.topic.empty.title" = "No Topic Content Yet";
 "study.topic.favorites" = "Favorites";
+"study.topic.favorites_count" = "Favorites (%d)";
+"study.topic.view_all" = "View All";
+"study.topic.section_title" = "Learn by Topic";
+"study.topic.create_short" = "+ Create";
 "study.topic.mastery" = "%d%% Mastery";
 "study.topic.page_subtitle" = "Practice by topic, so describing what you see feels more natural.";
 "study.topic.page_title" = "Study";

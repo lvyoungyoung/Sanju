@@ -294,6 +294,10 @@
 "study.topic.empty.subtitle" = "完成一次生成后，AI 会自动把句子归入适合学习的主题。";
 "study.topic.empty.title" = "还没有主题内容";
 "study.topic.favorites" = "收藏";
+"study.topic.favorites_count" = "收藏（%d）";
+"study.topic.view_all" = "查看全部";
+"study.topic.section_title" = "按主题学习";
+"study.topic.create_short" = "+ 创建";
 "study.topic.mastery" = "掌握度 %d%%";
 "study.topic.page_subtitle" = "按主题练习，让你更自然地说出眼前的画面。";
 "study.topic.page_title" = "学习";
