@@ -298,7 +298,7 @@ struct StudyView: View {
                     }
                 }
                     .frame(width: 110, height: 8)
-                    .offset(y: -3)
+                    .offset(y: -6)
                     .accessibilityLabel(
                         L10n.string(
                             "study.topic.mastery",
