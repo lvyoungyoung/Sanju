@@ -302,8 +302,8 @@ struct StudyView: View {
         }
         .padding(AppSpacing.medium)
         .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
     }
 
     @ViewBuilder
@@ -322,7 +322,7 @@ struct StudyView: View {
             }
         }
         .frame(width: 120, height: 80)
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .allowsHitTesting(false)
     }
 
