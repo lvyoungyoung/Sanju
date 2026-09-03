@@ -290,6 +290,7 @@ struct StudyView: View {
                 ProgressView(value: Double(summary.masteryScore), total: 100)
                     .tint(Color.orange)
                     .frame(maxWidth: 110)
+                    .scaleEffect(x: 1, y: 2, anchor: .center)
                     .accessibilityLabel(
                         L10n.string(
                             "study.topic.mastery",
