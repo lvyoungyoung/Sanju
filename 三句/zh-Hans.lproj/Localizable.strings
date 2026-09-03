@@ -398,3 +398,4 @@
 "profile.statistics.sentences" = "句子";
 "profile.statistics.mastered" = "已掌握";
 "profile.statistics.topic_map" = "主题地图";
+"study.topic.loading" = "正在加载学习主题...";

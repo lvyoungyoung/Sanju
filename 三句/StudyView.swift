@@ -15,6 +15,7 @@ struct StudyView: View {
     @State private var favoriteStudySession: SentenceStudyTopicSession?
     @State private var pageTitleOriginY: CGFloat?
     @State private var pageTitleMinY: CGFloat = 0
+    @State private var isLoadingStudyTopics = true
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -26,11 +27,15 @@ struct StudyView: View {
                 topicSectionHeader
 
                 LazyVStack(spacing: AppSpacing.xLarge) {
-                    ForEach(appModel.userStudySceneSummaries) { scene in
-                        userStudySceneCard(scene)
-                    }
+                    if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
+                        topicListLoadingState
+                    } else {
+                        ForEach(appModel.userStudySceneSummaries) { scene in
+                            userStudySceneCard(scene)
+                        }
 
-                    createSceneButton
+                        createSceneButton
+                    }
                 }
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -47,10 +52,10 @@ struct StudyView: View {
             pageTitleMinY = minY
         }
         .task {
-            await appModel.refreshSentenceStudyDueCount()
+            await refreshStudyOverview()
         }
         .refreshable {
-            await appModel.refreshSentenceStudyDueCount()
+            await refreshStudyOverview()
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -175,6 +180,23 @@ struct StudyView: View {
 
             Spacer(minLength: AppSpacing.small)
         }
+    }
+
+    private var topicListLoadingState: some View {
+        VStack(spacing: AppSpacing.small) {
+            ProgressView()
+                .tint(Color.orange)
+
+            Text(L10n.string("study.topic.loading", "正在加载学习主题..."))
+                .font(.system(size: AppFontSize.metadata, weight: .medium))
+                .foregroundStyle(AppTextColor.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 100)
+        .background(
+            AppSurfaceColor.card,
+            in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+        )
     }
 
     private var createSceneButton: some View {
@@ -462,6 +484,12 @@ struct StudyView: View {
         selectedSuggestedTopicID = nil
         refreshSceneSuggestions()
         isShowingCreateScene = true
+    }
+
+    private func refreshStudyOverview() async {
+        isLoadingStudyTopics = true
+        defer { isLoadingStudyTopics = false }
+        await appModel.refreshSentenceStudyDueCount()
     }
 
     private var errorAlertBinding: Binding<Bool> {

@@ -398,3 +398,4 @@
 "profile.statistics.sentences" = "Sentences";
 "profile.statistics.mastered" = "Mastered";
 "profile.statistics.topic_map" = "Topic Map";
+"study.topic.loading" = "Loading learning topics...";
