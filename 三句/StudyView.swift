@@ -287,10 +287,18 @@ struct StudyView: View {
 
                 Spacer(minLength: 0)
 
-                ProgressView(value: Double(summary.masteryScore), total: 100)
-                    .tint(Color.orange)
-                    .frame(maxWidth: 110)
-                    .scaleEffect(x: 1, y: 2, anchor: .center)
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(AppStroke.soft)
+
+                        Capsule()
+                            .fill(Color.orange)
+                            .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
+                    }
+                }
+                    .frame(width: 110, height: 8)
+                    .offset(y: -3)
                     .accessibilityLabel(
                         L10n.string(
                             "study.topic.mastery",
