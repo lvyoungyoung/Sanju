@@ -393,3 +393,8 @@
 "study.progress.review" = "再练句子 %d/%d";
 "study.reminder.disabled_hint" = "你可以在设置中开启定时提醒，每天提醒你学习。";
 "study.reminder.enabled_hint" = "你已开启定时提醒，将在每天%@提醒你学习";
+"profile.section.learning_statistics" = "学习统计";
+"profile.statistics.photos" = "照片";
+"profile.statistics.sentences" = "句子";
+"profile.statistics.mastered" = "已掌握";
+"profile.statistics.topic_map" = "主题地图";

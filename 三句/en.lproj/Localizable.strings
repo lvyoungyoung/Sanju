@@ -393,3 +393,8 @@
 "study.progress.review" = "Review %d/%d";
 "study.reminder.disabled_hint" = "You can turn on daily reminders in Settings to keep practicing every day.";
 "study.reminder.enabled_hint" = "Daily reminders are on. We'll remind you at %@ every day.";
+"profile.section.learning_statistics" = "Learning Stats";
+"profile.statistics.photos" = "Photos";
+"profile.statistics.sentences" = "Sentences";
+"profile.statistics.mastered" = "Mastered";
+"profile.statistics.topic_map" = "Topic Map";

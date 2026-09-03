@@ -1415,6 +1415,8 @@ extension AppModel {
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
+            memorySentenceCount = memories.reduce(0) { $0 + $1.sentences.count }
+            masteredSentenceCount = localMasteredSentenceCount()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
@@ -1427,6 +1429,8 @@ extension AppModel {
                 sentenceStudyDueCount = 0
                 sentenceStudyTodayCount = 0
                 sentenceStudyReviewableTodayCount = 0
+                memorySentenceCount = 0
+                masteredSentenceCount = 0
                 sentenceStudyTopicSummaries = [:]
                 userStudySceneSummaries = []
                 isRepeatingSentenceStudyQueue = false
@@ -1435,6 +1439,9 @@ extension AppModel {
             sentenceStudyDueCount = try await supabaseService.fetchSentenceStudyDueCount(session: session)
             sentenceStudyTodayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? 0
             sentenceStudyReviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? 0
+            memorySentenceCount = (try? await supabaseService.fetchMemorySentencesCount(session: session))
+                ?? memories.reduce(0) { $0 + $1.sentences.count }
+            masteredSentenceCount = (try? await supabaseService.fetchMasteredSentenceCount(session: session)) ?? 0
             await refreshFavoriteSentenceStudyCounts()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
@@ -1442,6 +1449,8 @@ extension AppModel {
             sentenceStudyDueCount = 0
             sentenceStudyTodayCount = 0
             sentenceStudyReviewableTodayCount = 0
+            memorySentenceCount = 0
+            masteredSentenceCount = 0
             sentenceStudyTopicSummaries = [:]
             userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
@@ -1968,6 +1977,8 @@ extension AppModel {
         }
         persistLocalSentenceStudyProgress()
         refreshLocalSentenceStudyCounts()
+        memorySentenceCount = memories.reduce(0) { $0 + $1.sentences.count }
+        masteredSentenceCount = localMasteredSentenceCount()
         sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
         return makeSentenceStudyProgress(from: progress)
     }
@@ -2134,6 +2145,14 @@ extension AppModel {
         favoriteSentenceStudyCounts = favoriteSentenceIDs.reduce(into: [:]) { partialResult, sentenceID in
             partialResult[sentenceID] = localProgress(for: sentenceID, topic: .favorites)?.correctCount ?? 0
         }
+    }
+
+    private func localMasteredSentenceCount() -> Int {
+        Set(
+            localSentenceStudyProgress.values.compactMap { progress in
+                progress.correctCount >= 5 ? progress.sentenceID : nil
+            }
+        ).count
     }
 
     private func localStudiedTodayCount(today: Date) -> Int {

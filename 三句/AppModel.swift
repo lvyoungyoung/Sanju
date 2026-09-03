@@ -462,8 +462,10 @@ final class AppModel: ObservableObject {
     @Published var pendingCloudSyncCompletedCount = 0
     @Published var pendingCloudSyncTotalCount = 0
     @Published var recordedMemoriesCount = 0
+    @Published var memorySentenceCount = 0
     @Published var favoriteSentencesCount = 0
     @Published var favoriteSentenceStudyCounts: [UUID: Int] = [:]
+    @Published var masteredSentenceCount = 0
     @Published var sentenceStudyDueCount = 0
     @Published var sentenceStudyTodayCount = 0
     @Published var sentenceStudyReviewableTodayCount = 0

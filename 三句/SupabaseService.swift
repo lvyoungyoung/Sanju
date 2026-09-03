@@ -77,7 +77,9 @@ protocol SupabaseServicing {
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord]
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
+    func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
+    func fetchMasteredSentenceCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyTodayCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyReviewableTodayCount(session: SupabaseSession) async throws -> Int
@@ -803,6 +805,17 @@ struct SupabaseService: SupabaseServicing {
         return try await performCount(request)
     }
 
+    func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int {
+        let select = "id,memories!inner(id)"
+        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
+        let path = "/rest/v1/memory_sentences?select=\(encodedSelect)&memories.user_id=eq.\(session.userID)"
+        let request = try makeCountRequest(
+            path: path,
+            bearerToken: session.accessToken
+        )
+        return try await performCount(request)
+    }
+
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int {
         let select = "id,memories!inner(id)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
@@ -812,6 +825,15 @@ struct SupabaseService: SupabaseServicing {
             bearerToken: session.accessToken
         )
         return try await performCount(request)
+    }
+
+    func fetchMasteredSentenceCount(session: SupabaseSession) async throws -> Int {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/count_mastered_sentences",
+            method: "POST",
+            bearerToken: session.accessToken
+        )
+        return try await perform(request)
     }
 
     func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int {

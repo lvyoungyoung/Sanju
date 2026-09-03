@@ -29,6 +29,8 @@ struct StudyView: View {
                     ForEach(appModel.userStudySceneSummaries) { scene in
                         userStudySceneCard(scene)
                     }
+
+                    createSceneButton
                 }
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -172,30 +174,29 @@ struct StudyView: View {
                 .foregroundStyle(AppTextColor.primary)
 
             Spacer(minLength: AppSpacing.small)
-
-            NavigationLink {
-                StudyTopicMapView()
-            } label: {
-                Text(L10n.string("study.topic.map.entry", "主题地图"))
-                    .font(.system(size: AppFontSize.metadata, weight: .semibold))
-                    .foregroundStyle(Color.orange)
-            }
-            .buttonStyle(.plain)
-
-            Button(action: showCreateScene) {
-                Text(L10n.string("study.topic.create_short", "+ 创建"))
-                    .font(.system(size: AppFontSize.metadata, weight: .semibold))
-                    .foregroundStyle(Color.orange)
-                    .padding(.horizontal, AppSpacing.medium)
-                    .frame(height: 32)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                            .stroke(Color.orange, lineWidth: 1)
-                    }
-            }
-            .buttonStyle(.plain)
         }
+    }
+
+    private var createSceneButton: some View {
+        Button(action: showCreateScene) {
+            Label(
+                L10n.string("study.scene.create", "创建我的学习主题"),
+                systemImage: "plus"
+            )
+            .font(.system(size: AppFontSize.body, weight: .semibold))
+            .foregroundStyle(Color.orange)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background(
+                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    .fill(AppSurfaceColor.card)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    .stroke(Color.orange.opacity(0.7), lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var availableSceneTopics: [LearningTopic] {

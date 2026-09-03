@@ -61,6 +61,8 @@ struct ProfileView: View {
                     )
                 }
 
+                learningStatisticsSection
+
                 VStack(alignment: .leading, spacing: 14) {
                     Text(L10n.string("profile.section.preferences", "生成偏好"))
                         .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
@@ -118,6 +120,9 @@ struct ProfileView: View {
         .animation(.easeInOut(duration: 0.22), value: transientHintMessage != nil)
         .refreshable {
             await appModel.refreshRemoteContent()
+        }
+        .task {
+            await appModel.refreshSentenceStudyDueCount()
         }
         .sheet(isPresented: $isShowingPurchaseSheet) {
             PurchaseSheet()
@@ -254,6 +259,58 @@ struct ProfileView: View {
                 }
             }
         )
+    }
+
+    private var learningStatisticsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            Text(L10n.string("profile.section.learning_statistics", "学习统计"))
+                .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
+                .foregroundStyle(AppTextColor.secondary)
+
+            NavigationLink {
+                StudyTopicMapView()
+            } label: {
+                VStack(spacing: AppSpacing.medium) {
+                    HStack(spacing: 0) {
+                        ProfileLearningStatistic(
+                            value: appModel.recordedMemoriesCount,
+                            title: L10n.string("profile.statistics.photos", "照片")
+                        )
+
+                        ProfileLearningStatistic(
+                            value: appModel.memorySentenceCount,
+                            title: L10n.string("profile.statistics.sentences", "句子")
+                        )
+
+                        ProfileLearningStatistic(
+                            value: appModel.masteredSentenceCount,
+                            title: L10n.string("profile.statistics.mastered", "已掌握")
+                        )
+                    }
+
+                    Divider()
+
+                    HStack(spacing: AppSpacing.small) {
+                        Text(L10n.string("profile.statistics.topic_map", "主题地图"))
+                            .font(.system(size: AppFontSize.body, weight: .semibold))
+                        Spacer(minLength: AppSpacing.small)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: AppIconSize.compact, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.orange)
+                }
+                .padding(AppSpacing.large)
+                .background(
+                    AppSurfaceColor.card,
+                    in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                        .stroke(AppStroke.highlight, lineWidth: 1)
+                }
+            }
+            .buttonStyle(.plain)
+        }
     }
 
     private var accountSection: some View {
@@ -1220,6 +1277,24 @@ private struct ProfileCreditCardSkeleton: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .appCardShadow()
+    }
+}
+
+private struct ProfileLearningStatistic: View {
+    let value: Int
+    let title: String
+
+    var body: some View {
+        VStack(spacing: AppSpacing.xSmall) {
+            Text("\(value)")
+                .font(.system(size: AppFontSize.cardTitle, weight: .bold))
+                .foregroundStyle(AppTextColor.title)
+
+            Text(title)
+                .font(.system(size: AppFontSize.metadata, weight: .medium))
+                .foregroundStyle(AppTextColor.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 

@@ -451,8 +451,10 @@ extension AppModel {
         pendingCloudSyncCompletedCount = 0
         pendingCloudSyncTotalCount = 0
         recordedMemoriesCount = 0
+        memorySentenceCount = 0
         favoriteSentencesCount = 0
         favoriteSentenceStudyCounts = [:]
+        masteredSentenceCount = 0
         sentenceStudyDueCount = 0
         sentenceStudyTodayCount = 0
         sentenceStudyReviewableTodayCount = 0

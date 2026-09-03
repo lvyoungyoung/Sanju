@@ -168,7 +168,12 @@ private struct StudyTopicMapRegionView: View {
         .contentShape(shape)
         .onTapGesture {
             guard let route = region.cell.route else { return }
-            appModel.studyNavigationPath.append(route)
+            if appModel.selectedTab == .study {
+                appModel.studyNavigationPath.append(route)
+            } else {
+                appModel.selectedTab = .study
+                appModel.studyNavigationPath = [route]
+            }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(region.cell.route == nil ? [] : .isButton)
