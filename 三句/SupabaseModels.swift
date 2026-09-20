@@ -162,6 +162,16 @@ struct SupabaseCreateUserStudySceneResponse: Decodable {
     let scene: SupabaseUserStudySceneSummaryRecord
 }
 
+struct SupabaseStudySceneReviewStatus: Decodable {
+    let reviewedCount: Int
+    let pendingCount: Int
+    let retryAfterSeconds: Int
+
+    var shouldContinueAutomatically: Bool {
+        pendingCount > 0 && (0...3).contains(retryAfterSeconds)
+    }
+}
+
 struct SupabaseSentenceStudyProgressRecord: Decodable {
     let id: String
     let sentenceID: String

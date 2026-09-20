@@ -399,3 +399,7 @@
 "profile.statistics.mastered" = "Mastered";
 "profile.statistics.topic_map" = "Topic Map";
 "study.topic.loading" = "Loading learning topics...";
+"study.scene.review.in_progress" = "Finding sentences that fit this topic...";
+"study.scene.review.pending" = "Some sentences are still awaiting review. Please try again later.";
+"study.scene.review.retry" = "Continue reviewing";
+"study.scene.review.waiting" = "Review pending";

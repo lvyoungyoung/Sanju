@@ -7,6 +7,7 @@ on:
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
+      - "scripts/tests/study-scene-review-ai.test.ts"
       - ".github/workflows/backend-functions.yml"
   push:
     branches:
@@ -16,6 +17,7 @@ on:
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
+      - "scripts/tests/study-scene-review-ai.test.ts"
       - ".github/workflows/backend-functions.yml"
   workflow_dispatch:
     inputs:
@@ -43,6 +45,7 @@ on:
           - migrate-guest-credits
           - moderate-image-v1
           - recover-guest-generation
+          - review-study-scene
           - update-profile-avatar
 
 jobs:
@@ -60,6 +63,9 @@ jobs:
 
       - name: Check functions
         run: bash scripts/check-edge-functions.sh
+
+      - name: Test AI review validation
+        run: deno test --no-lock scripts/tests/study-scene-review-ai.test.ts
 
   deploy:
     name: Deploy Edge Functions

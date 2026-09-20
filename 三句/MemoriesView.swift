@@ -396,6 +396,7 @@ private struct MemorySectionItem: Identifiable {
 
 private struct MemoryThumbnailTile: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let memory: MemoryEntry
     let animationDelay: Double
     @State private var hasAppeared = false
@@ -427,7 +428,7 @@ private struct MemoryThumbnailTile: View {
                 loadImageIfNeeded()
                 loadRemoteImageIfNeeded()
                 guard !hasAppeared else { return }
-                withAnimation(.easeOut(duration: 0.28).delay(animationDelay)) {
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.28).delay(animationDelay)) {
                     hasAppeared = true
                 }
             }

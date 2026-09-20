@@ -317,7 +317,7 @@ struct StudyView: View {
 
                         Capsule()
                             .fill(Color.orange)
-                            .frame(width: proxy.size.width * CGFloat(summary.masteryScore) / 100)
+                            .frame(width: proxy.size.width * CGFloat(min(max(summary.masteryScore, 0), 100)) / 100)
                     }
                 }
                     .frame(width: 110, height: 8)

@@ -61,8 +61,6 @@ struct ProfileView: View {
                     )
                 }
 
-                learningStatisticsSection
-
                 VStack(alignment: .leading, spacing: 14) {
                     Text(L10n.string("profile.section.preferences", "生成偏好"))
                         .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))

@@ -1108,6 +1108,10 @@ Deno.serve(async (req) => {
     // transaction has already persisted the memory and deducted one credit.
     await indexGeneratedSentencesForStudyScenes(adminClient, user.id, finalizedSentences)
 
+    // The database only queues candidates. Review is best-effort background work,
+    // never part of the memory/credit transaction or generation response deadline.
+    startStudySceneReviewInBackground(supabaseUrl, supabaseAnonKey, accessToken)
+
     if (authenticatedClientRequestID) {
       await markAuthenticatedGenerationJobCompleted(adminClient, {
         clientRequestID: authenticatedClientRequestID,
@@ -1668,6 +1672,40 @@ async function finalizeGuestGeneration(
   return {
     ok: true,
     remainingCredits: normalizeRPCInteger(data),
+  }
+}
+
+function startStudySceneReviewInBackground(url: string, anonKey: string, accessToken: string): void {
+  const runtime = (globalThis as typeof globalThis & { EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void } }).EdgeRuntime
+  if (!runtime?.waitUntil) return // The client drains pending work on theme entry.
+  const task = (async () => {
+    try {
+      // Bound this worker; any remainder stays persisted for a later theme visit.
+      for (let batch = 0; batch < 3; batch += 1) {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 25_000)
+        try {
+          const response = await fetch(`${url.replace(/\/$/, "")}/functions/v1/review-study-scene`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: anonKey, Authorization: `Bearer ${accessToken}` },
+            body: "{}",
+            signal: controller.signal,
+          })
+          if (!response.ok) throw new Error(`Review HTTP ${response.status}`)
+          const status = await response.json()
+          if (!status.pendingCount || !status.reviewedCount || status.retryAfterSeconds > 3) break
+        } finally {
+          clearTimeout(timeout)
+        }
+      }
+    } catch (error) {
+      console.error("[generate-memory-v2] topic review deferred", error instanceof Error ? error.message : "Unknown error")
+    }
+  })()
+  try {
+    runtime.waitUntil(task)
+  } catch {
+    console.error("[generate-memory-v2] background review unavailable; candidates remain pending")
   }
 }
 

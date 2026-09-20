@@ -10,6 +10,9 @@ struct StudySceneDetailView: View {
     @State private var studySession: SentenceStudyTopicSession?
     @State private var errorMessage: String?
     @State private var refreshedSceneSummary: SentenceStudyTopicSummary?
+    @State private var isReviewing = false
+    @State private var hasPendingReview = false
+    @State private var detailLoadID = UUID()
 
     private var title: String { route.title }
 
@@ -69,6 +72,9 @@ struct StudySceneDetailView: View {
         if isStartingStudy {
             return L10n.string("study.button.preparing", "正在准备学习内容...")
         }
+        if !canStartStudy && (hasPendingReview || isReviewing) {
+            return L10n.string("study.scene.review.waiting", "等待筛选")
+        }
         if studySummary.dueCount > 0 {
             return L10n.string("study.button.start", "开始学习")
         }
@@ -96,6 +102,7 @@ struct StudySceneDetailView: View {
         .refreshable {
             await loadDetail(forceRefresh: true)
         }
+        .onDisappear { detailLoadID = UUID() }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
                 errorMessage = nil
@@ -135,6 +142,9 @@ struct StudySceneDetailView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 studyOverviewBar
+                if hasPendingReview || isReviewing {
+                    reviewStatusView
+                }
                 sentenceContent
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -145,7 +155,9 @@ struct StudySceneDetailView: View {
 
     @ViewBuilder
     private var sentenceContent: some View {
-        if items.isEmpty {
+        if items.isEmpty && (hasPendingReview || isReviewing) {
+            Color.clear.frame(height: 1)
+        } else if items.isEmpty {
             EmptyStateView(
                 title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
                 subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
@@ -165,6 +177,30 @@ struct StudySceneDetailView: View {
                     .padding(.top, AppSpacing.small)
             }
         }
+    }
+
+    private var reviewStatusView: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.small) {
+            HStack(spacing: AppSpacing.small) {
+                if isReviewing { ProgressView().controlSize(.small) }
+                Text(isReviewing
+                    ? L10n.string("study.scene.review.in_progress", "正在筛选更贴合主题的句子...")
+                    : L10n.string("study.scene.review.pending", "部分句子尚未完成筛选，请稍后重试。"))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
+            }
+            if !isReviewing {
+                Button(L10n.string("study.scene.review.retry", "继续筛选")) {
+                    Task { await loadDetail(forceRefresh: true) }
+                }
+                .font(.subheadline)
+                .tint(.orange)
+                .frame(minHeight: 44)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.large)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
     }
 
     private var studyOverviewBar: some View {
@@ -257,9 +293,16 @@ struct StudySceneDetailView: View {
 
     @MainActor
     private func loadDetail(forceRefresh: Bool = false) async {
+        let loadID = UUID()
+        detailLoadID = loadID
         let hasCachedItems = cachedSceneItems != nil
         isLoading = !hasCachedItems
-        defer { isLoading = false }
+        defer {
+            if detailLoadID == loadID {
+                isLoading = false
+                isReviewing = false
+            }
+        }
 
         switch route {
         case .favorites:
@@ -269,12 +312,30 @@ struct StudySceneDetailView: View {
                 sceneItems = cachedSceneItems
             }
             do {
-                sceneItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
-                await appModel.refreshUserStudySceneSummaries()
-                refreshedSceneSummary = appModel.userStudySceneSummaries
-                    .first(where: { $0.id == scene.id })?
-                    .summary
+                repeat {
+                    isReviewing = true
+                    var review: SupabaseStudySceneReviewStatus?
+                    do {
+                        review = try await appModel.reviewUserStudyScene(scene)
+                    } catch {
+                        if Task.isCancelled || error is CancellationError { return }
+                        // A review outage must not hide previously approved sentences.
+                    }
+                    guard detailLoadID == loadID, !Task.isCancelled else { return }
+                    hasPendingReview = review == nil || (review?.pendingCount ?? 0) > 0
+                    let refreshedItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
+                    guard detailLoadID == loadID, !Task.isCancelled else { return }
+                    sceneItems = refreshedItems
+                    isLoading = false
+                    await appModel.refreshUserStudySceneSummaries()
+                    guard detailLoadID == loadID, !Task.isCancelled else { return }
+                    refreshedSceneSummary = appModel.userStudySceneSummaries
+                        .first(where: { $0.id == scene.id })?.summary
+                    guard let review, review.shouldContinueAutomatically else { break }
+                    try await Task.sleep(for: .seconds(max(1, review.retryAfterSeconds)))
+                } while detailLoadID == loadID && !Task.isCancelled
             } catch {
+                guard detailLoadID == loadID, !Task.isCancelled, !(error is CancellationError) else { return }
                 if !hasCachedItems || forceRefresh {
                     errorMessage = error.localizedDescription.isEmpty
                         ? L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
@@ -372,6 +433,7 @@ private struct StudySceneDetailSentenceCard: View {
                         .background(AppSurfaceColor.elevated, in: Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("new.result.play", "播放"))
             }
 
             Text(item.chinese)

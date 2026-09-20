@@ -399,3 +399,7 @@
 "profile.statistics.mastered" = "已掌握";
 "profile.statistics.topic_map" = "主题地图";
 "study.topic.loading" = "正在加载学习主题...";
+"study.scene.review.in_progress" = "正在筛选更贴合主题的句子...";
+"study.scene.review.pending" = "部分句子尚未完成筛选，请稍后重试。";
+"study.scene.review.retry" = "继续筛选";
+"study.scene.review.waiting" = "等待筛选";

@@ -94,6 +94,10 @@ protocol SupabaseServicing {
     func fetchUserStudySceneSummaries(
         session: SupabaseSession
     ) async throws -> [UserStudySceneSummary]
+    func reviewUserStudyScene(
+        session: SupabaseSession,
+        sceneID: UUID
+    ) async throws -> SupabaseStudySceneReviewStatus
     func createUserStudyScene(
         session: SupabaseSession,
         name: String,
@@ -919,6 +923,20 @@ struct SupabaseService: SupabaseServicing {
             throw SupabaseServiceError.invalidResponse
         }
         return scene
+    }
+
+    func reviewUserStudyScene(
+        session: SupabaseSession,
+        sceneID: UUID
+    ) async throws -> SupabaseStudySceneReviewStatus {
+        var request = try makeRequest(
+            path: "/functions/v1/review-study-scene",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: SupabaseReviewStudySceneRequest(sceneID: sceneID.uuidString.lowercased())
+        )
+        request.timeoutInterval = 30
+        return try await perform(request)
     }
 
     func deleteUserStudyScene(

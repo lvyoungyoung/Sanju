@@ -298,6 +298,10 @@ struct SupabaseStudySceneQueueRequest: Encodable {
     }
 }
 
+struct SupabaseReviewStudySceneRequest: Encodable {
+    let sceneID: String
+}
+
 struct SupabaseExtractStudyTopicExpressionsRequest: Encodable {
     let topicKey: String
     let sourceSentences: [StudyTopicExpressionSourceSentence]?

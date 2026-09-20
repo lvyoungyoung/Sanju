@@ -1638,6 +1638,19 @@ extension AppModel {
         return sentences
     }
 
+    func reviewUserStudyScene(_ scene: UserStudySceneSummary) async throws -> SupabaseStudySceneReviewStatus {
+        guard isNetworkAvailable else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+        let session = try await ensureValidSession()
+        guard !session.isAnonymous else {
+            throw SentenceStudyTopicLoadingError.signInRequired
+        }
+        let status = try await supabaseService.reviewUserStudyScene(session: session, sceneID: scene.id)
+        guard supabaseSession?.userID == session.userID else { throw CancellationError() }
+        return status
+    }
+
     func extractStudyTopicExpressions(
         topicKey: String,
         sourceSentences: [StudyTopicExpressionSourceSentence]

@@ -130,6 +130,7 @@ final class CloudSyncManagerTests: XCTestCase {
             id: id,
             imagePath: imagePath,
             createdAt: createdAt,
+            tags: nil,
             sentences: sentences ?? [
                 makeRemoteSentence(sortOrder: 0),
                 makeRemoteSentence(sortOrder: 1),
@@ -150,6 +151,8 @@ final class CloudSyncManagerTests: XCTestCase {
             sortOrder: sortOrder,
             english: english,
             chinese: chinese,
+            learningTopicIDs: nil,
+            presentationGroup: nil,
             isFavorite: isFavorite
         )
     }
