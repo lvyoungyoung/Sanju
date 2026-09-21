@@ -582,6 +582,12 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 新客户端的收藏和自定义主题学习统一使用手机当前时区的自然日。`StudyCalendar` 随 RPC 和 `create-study-scene` 请求发送 `x-sanju-study-time-zone`；后端验证时区并以服务端时间计算今日队列、计数、完成去重和下次复习日。旧客户端不传时区时仍使用北京时间，不改变接口签名和权限。匿名学习记录登录合并时也按设备时区转换。部署迁移 `20260921000000_use_device_study_time_zone.sql`，并重新部署 `create-study-scene`；详情及测试见 `docs/study-time-zone.md`。
 
+## 启蒙难度
+
+生成偏好的难度为启蒙（Starter）、初级、中级、高级。启蒙的存储值为 `启蒙`，原有三档 raw value 和默认初级不变。启蒙优先使用 3–6 个词的完整短句、具体常用词，图片描述和生活表达两组都遵循此规则；MiMo/Kimi 共用生成提示词。启蒙不允许抒情优雅：客户端禁用并置灰该风格，切换难度、启动恢复和远端偏好读取时自动归一为平铺直叙；后端提示词也忽略启蒙请求中的抒情风格。
+
+部署时先应用 `20260921001000_add_starter_english_level.sql`，再更新 `generate-memory-v2` 和客户端。`recover-guest-generation` 只恢复已经生成的结果，不调用生成模型，本次无需修改。新增 `starter-english-level.test.ts` 覆盖两种响应格式的提示词、旧档位和数据库约束，`GenerationPreferenceTests` 覆盖客户端档位、风格约束、存储与分段控件禁用状态。
+
 ## 24. 当前高价值待办
 
 这些不是必须立刻做，但长期有价值：

@@ -304,12 +304,14 @@ extension AppModel {
 
         englishLevel = level
         defaults.set(level.rawValue, forKey: AppStorageKey.englishLevel)
+        normalizeGenerationPreferenceStyle()
         schedulePreferenceSync()
         return true
     }
 
     @discardableResult
     func updateLanguageStyle(_ style: LanguageStyle) -> Bool {
+        guard englishLevel.allows(style) else { return true }
         guard style != languageStyle else { return true }
         guard consumePreferenceChangeAllowance() else { return false }
 
@@ -317,6 +319,11 @@ extension AppModel {
         defaults.set(style.rawValue, forKey: AppStorageKey.languageStyle)
         schedulePreferenceSync()
         return true
+    }
+
+    private func normalizeGenerationPreferenceStyle() {
+        languageStyle = englishLevel.resolvedStyle(languageStyle)
+        defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
     }
 
     private func consumePreferenceChangeAllowance(now: Date = .now) -> Bool {
@@ -567,6 +574,7 @@ extension AppModel {
             languageStyle = storedStyle
         }
 
+        normalizeGenerationPreferenceStyle()
         loadLearningReminderSettings()
 
         if let rawTransactionIDs = defaults.array(forKey: AppStorageKey.processedPurchaseTransactions) as? [String] {
@@ -769,6 +777,7 @@ extension AppModel {
         remainingCredits = remoteProfile.availableGenerations
         englishLevel = EnglishLevel(rawValue: remoteProfile.englishLevel) ?? englishLevel
         languageStyle = LanguageStyle(rawValue: remoteProfile.languageStyle) ?? languageStyle
+        normalizeGenerationPreferenceStyle()
         defaults.set(englishLevel.rawValue, forKey: AppStorageKey.englishLevel)
         defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
     }

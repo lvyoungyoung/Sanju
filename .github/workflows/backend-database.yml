@@ -59,6 +59,9 @@ jobs:
       - name: Test device-local study days
         run: deno test --no-lock --allow-read --allow-env scripts/tests/study-time-zone.test.ts
 
+      - name: Test starter difficulty
+        run: deno test --no-lock --allow-read --allow-env scripts/tests/starter-english-level.test.ts
+
   migrate:
     name: SQL Migrations
     runs-on: [self-hosted, linux, x64, aliyun-ecs]

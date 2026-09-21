@@ -67,11 +67,11 @@ struct ProfileView: View {
                         .foregroundStyle(.secondary)
 
                     PreferenceCard(
-                        title: L10n.string("profile.preference.english_level", "级别"),
+                        title: L10n.string("profile.preference.english_level", "难度"),
                         systemImage: "gauge.with.dots.needle.33percent",
                         accentColor: Color(red: 0.17, green: 0.73, blue: 0.76)
                     ) {
-                        Picker(L10n.string("profile.preference.english_level", "级别"), selection: englishLevelBinding) {
+                        Picker(L10n.string("profile.preference.english_level", "难度"), selection: englishLevelBinding) {
                             ForEach(EnglishLevel.allCases) { level in
                                 Text(level.displayTitle).tag(level)
                             }
@@ -84,12 +84,7 @@ struct ProfileView: View {
                         systemImage: "paintpalette",
                         accentColor: Color(red: 0.18, green: 0.53, blue: 1.00)
                     ) {
-                        Picker(L10n.string("profile.preference.language_style", "语言风格"), selection: languageStyleBinding) {
-                            ForEach(LanguageStyle.allCases) { style in
-                                Text(style.displayTitle).tag(style)
-                            }
-                        }
-                        .pickerStyle(.segmented)
+                        LanguageStylePicker(selection: languageStyleBinding, englishLevel: appModel.englishLevel)
                     }
                 }
 

@@ -51,6 +51,7 @@
 "english_level.advanced" = "Advanced";
 "english_level.intermediate" = "Intermediate";
 "english_level.simple" = "Beginner";
+"english_level.starter" = "Starter";
 "generation_error.invalid_image" = "Image processing failed. Please choose another photo.";
 "generation_error.no_credits" = "No generation credits left. Please purchase more first.";
 "generation_error.session_unavailable" = "Unable to start a guest session. Please check your network and try again.";
@@ -227,7 +228,7 @@
 "profile.nickname.helper" = "Nicknames can be up to 20 characters long.";
 "profile.nickname.sheet_title" = "Edit Nickname";
 "profile.nickname.updated" = "Nickname updated.";
-"profile.preference.english_level" = "Level";
+"profile.preference.english_level" = "Difficulty";
 "profile.preference.language_style" = "Language Style";
 "profile.restoring.title" = "Restoring account information";
 "profile.section.about" = "About";

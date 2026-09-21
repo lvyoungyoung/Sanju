@@ -51,6 +51,7 @@
 "english_level.advanced" = "高级";
 "english_level.intermediate" = "中级";
 "english_level.simple" = "初级";
+"english_level.starter" = "启蒙";
 "generation_error.invalid_image" = "图片处理失败，请重新选择一张图片。";
 "generation_error.no_credits" = "可用生成次数不足，请先购买。";
 "generation_error.session_unavailable" = "暂时无法建立访客会话，请检查网络后重试。";
@@ -227,7 +228,7 @@
 "profile.nickname.helper" = "昵称最长 20 个字符。";
 "profile.nickname.sheet_title" = "修改昵称";
 "profile.nickname.updated" = "昵称已更新。";
-"profile.preference.english_level" = "级别";
+"profile.preference.english_level" = "难度";
 "profile.preference.language_style" = "语言风格";
 "profile.restoring.title" = "正在恢复账号信息";
 "profile.section.about" = "关于";

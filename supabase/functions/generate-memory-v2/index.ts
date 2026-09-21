@@ -87,19 +87,23 @@ const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
 ].join("；")
 
 function buildPromptText(
-  englishLevel: "简单" | "中等" | "高级",
+  englishLevel: "启蒙" | "简单" | "中等" | "高级",
   languageStyle: "平铺直叙" | "抒情优美",
   generationFormat: GenerationFormat
 ): string {
   const englishLevelPrompt =
-    englishLevel === "简单"
+    englishLevel === "启蒙"
+      ? "启蒙难度：面向儿童和零基础英语学习者。两组中的每一句都使用 3 到 6 个英文单词，优先 3 到 5 个；用完整、自然的超短句，不要用碎片短语凑句。每句只表达一个意思，只用极常见、具体的词，例如 cat、dog、red、big、eat、run、happy。优先使用 This is a cat.、I like this cake.、We are happy. 这样的简单句型，主要用一般现在时和简单的 be 动词句。不要使用从句、抽象词、习语、俚语、比喻、拟人、双关、复杂时态或文学表达，不为幽默或风格牺牲易懂程度。中文翻译也要短、直接、适合儿童理解。这些难度限制高于下面的风格、生活表达范例和表达层次要求，适用于每一组句子。"
+      : englishLevel === "简单"
       ? "请使用非常简单、非常常见的英语词汇和句式，默认面向英语初学者。每句尽量控制在 6 到 12 个单词之间，优先使用小学到初中阶段常见词，不要使用抽象词、书面词、复杂从句、比喻、拟人、现在分词作状语、过去分词作定语等复杂结构。尽量多用简单主谓宾句型，例如 This is..., There is..., A girl is..., The cat is...。"
       : englishLevel === "高级"
         ? "请使用更丰富、更自然、更有层次感的英语表达，默认面向英语水平较高的学习者。每句尽量控制在 14 到 24 个单词之间，可以使用更细腻的词汇、更加完整的句子结构，以及适度的修辞和节奏变化，但仍要保持自然、准确、可理解，不要写得像诗歌或过度炫技。"
         : "请使用自然、日常、适合中等英语水平学习者的表达。每句尽量控制在 10 到 18 个单词之间，可以使用常见但稍丰富一些的日常表达，允许适度使用定语、状语和更完整的句子结构，但不要过于书面或艰深。"
 
   const languageStylePrompt =
-    languageStyle === "抒情优美"
+    englishLevel === "启蒙"
+      ? "语言风格固定为平铺直叙：友好、自然、直接，不使用抒情优雅风格。即使请求传入抒情风格，也必须遵守启蒙短句和词汇限制。"
+      : languageStyle === "抒情优美"
       ? "整体风格请明显更细腻、更有画面感、更有情绪和节奏。可以适度使用温柔、优美、富有氛围感的词语，让句子读起来更柔和、更有美感，但仍然要自然、准确、易懂。允许轻微的抒情和意境表达，但不要写成诗歌，不要过度夸张，不要脱离图片内容。"
       : "整体风格请生动、活泼、自然，像人看到眼前画面时会脱口而出的日常英语。优先使用具体而有动作感的动词、自然的口语化搭配和有节奏感的表达。允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞，让句子更有记忆点，但幽默必须来自画面中真实可见的对比、动作或细节。不要写段子、网络梗、夸张笑话或生硬的拟人化；不要虚构图片中没有的动作、对话、情绪或细节。"
 
@@ -116,7 +120,7 @@ ${languageStylePrompt}
 2. 我当时的感受：自然说出看到或经历这个画面时的情绪、反应或氛围，例如 "This little moment made my whole day."。
 3. 我想记住的话：写一句简短、有个人温度、值得反复学习的感叹、分享或回忆表达，例如 "I want to remember this feeling for a long time."。
 优先使用 I 或 we，像人会对朋友说、发照片时会配的日常英语。不要写成客观的物体清单，不要让三句只是同义改写，也不要使用空泛、放之四海皆准的鸡汤。
-生活表达的“日常口语感”优先级高于用户选择的英语级别和语言风格：
+${englishLevel === "启蒙" ? '启蒙的生活表达也必须使用 3 到 6 个单词的超短句，上面的长句仅用于说明表达角度，不能模仿其长度和难度。可参考 I am at a party.、I am happy.、I like this day.，但内容必须贴合当前照片。启蒙词汇和句长限制优先于表达层次和风格。' : '生活表达的“日常口语感”优先级高于用户选择的英语级别和语言风格：'}
 - 即使英语级别为“高级”，也只能使用更地道的日常搭配、更准确的情绪词和自然的表达节奏；不要使用复杂从句、书面词、文学化修辞或刻意高级的词汇。每句尽量控制在 8 到 18 个英文单词之间。
 - 即使语言风格为“抒情优美”，也只能让语气更温暖、有画面感或更真诚；不能写成诗歌、散文、文艺配文或不符合日常对话的优雅腔调。
 - 生活表达的标准是：一位英语母语者会自然地对朋友说、发在社交平台上，或在回想照片时脱口而出的句子。
@@ -127,7 +131,7 @@ ${languageStylePrompt}
 2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
 4. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段
-5. 每句中文控制在 8 到 30 个汉字之间
+5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 6. learning_topic_ids 是句子的分类，不是照片的分类。每句选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个必须是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。例如同一张生日聚餐照，单纯描述蛋糕味道的句子只选 food_and_drinks，表达庆生的句子选 festivals_and_celebrations；“We went camping with our family.” 可选 ["sports_and_outdoors","family_time"]，但没有提到家人的露营句子不要添加 family_time。对于 scene_and_feelings，也以该句实际表达的活动或关系为准；照片只能辅助消除歧义，不能用照片中未在句子表达的细节强行归类。没有合适场景的句子（如仅记录票据、证件、备忘截图或无场景指向的感叹）返回空数组 []；不要新增“实用记录”分类。每句最多 2 个分类
 7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 8. 不要输出任何多余字段或 JSON 前后的任何字符
@@ -160,7 +164,7 @@ ${languageStylePrompt}
 13. 不要转义整个 JSON 对象
 14. 不要在 JSON 前后添加任何字符
 15. learning_topic_ids 按每个句子实际表达的重点选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。分类对象是句子，不是照片；同一张照片可以生成不同分类的句子。例如生日聚餐照中，单纯描述蛋糕味道只选 food_and_drinks，表达庆生选 festivals_and_celebrations；“A family is camping by the lake.” 可选 ["sports_and_outdoors","family_time"]，但不要仅因背景里有湖就再加 natural_scenery。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。无合适场景的句子（如仅记录票据、证件、备忘截图）返回 []，不要强行分类，不要自创“实用记录”等 ID。每句最多 2 个分类。
-16. 每句中文控制在 8 到 30 个汉字之间
+16. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
@@ -571,7 +575,7 @@ function normalizeOptionalUUID(value: unknown): string | undefined {
 
 interface RequestBody {
   imageBase64: string
-  englishLevel?: "简单" | "中等" | "高级"
+  englishLevel?: "启蒙" | "简单" | "中等" | "高级"
   languageStyle?: "平铺直叙" | "抒情优美"
   guestJobID?: string
   clientRequestID?: string

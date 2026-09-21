@@ -331,14 +331,25 @@ enum ProfileNavigationRoute: Hashable {
 }
 
 enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
+    case starter = "启蒙"
     case simple = "简单"
     case intermediate = "中等"
     case advanced = "高级"
 
     var id: String { rawValue }
 
+    func allows(_ style: LanguageStyle) -> Bool {
+        self != .starter || style != .lyrical
+    }
+
+    func resolvedStyle(_ style: LanguageStyle) -> LanguageStyle {
+        allows(style) ? style : .plain
+    }
+
     var displayTitle: String {
         switch self {
+        case .starter:
+            return L10n.string("english_level.starter", "启蒙")
         case .simple:
             return L10n.string("english_level.simple", "初级")
         case .intermediate:
