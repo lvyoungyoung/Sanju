@@ -11,6 +11,7 @@ on:
       - "scripts/tests/life-scene-catalog.test.ts"
       - "scripts/tests/study-scene-intent.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
+      - "scripts/tests/generation-*.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -26,6 +27,7 @@ on:
       - "scripts/tests/life-scene-catalog.test.ts"
       - "scripts/tests/study-scene-intent.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
+      - "scripts/tests/generation-*.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -82,6 +84,9 @@ jobs:
 
       - name: Test topic intent and creation limits
         run: deno test --no-lock --allow-read scripts/tests/study-scene-intent.test.ts scripts/tests/study-scene-limit.test.ts
+
+      - name: Test generation retries and full-response deadlines
+        run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-timeouts.test.ts
 
   deploy:
     name: Deploy Edge Functions

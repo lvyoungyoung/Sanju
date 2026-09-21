@@ -598,6 +598,14 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 本项只需运行数据库迁移，无需重新部署 Edge Function 或修改客户端；接口字段、访问权限、主题顺序、句子队列和学习统计不变。`study-time-zone.test.ts` 同时覆盖封面稳定性、时间相同的选择、移除后的递补、空主题和迁移重复执行。
 
+## 生成任务可靠性与完整响应超时
+
+迁移 `20260921005000_claim_generation_jobs_atomically.sql` 新增仅 service role 可调用的 `claim_generation_job`。登录请求 ID 与匿名 job ID 都通过原子插入领取执行权，重复 pending 请求返回处理中，终态直接复用或返回失败，不重置 pending。两个任务表的触发器阻止跨账号修改身份、终态回退及覆盖已完成结果，保留匿名 acknowledged 与回忆删除清空外键的合法操作。
+
+生成函数移除事务外的完成状态/回忆 ID 重写，带请求 ID 的结果从数据库读取；失败更新只针对本账号且仍 pending 的已领取任务。finalize 响应丢失不能当作确定回滚：不删图片、不标失败，返回可恢复超时。无请求 ID 的旧登录客户端仍可生成三句，不具备新请求 ID 级别去重。pending 不自动抢占重跑，本轮没有增加后台接管或改变匿名结果 24 小时保留策略。
+
+`generate-memory-v2` 和 `moderate-image-v1` 使用 `_shared/fetch-with-timeout.ts`，计时覆盖完整响应体读取，原单阶段 10/20/8 秒等参数不变。生成函数所有出站请求另共享 90 秒网络预算，失败标记及释放名额各有独立 5 秒清理额度。客户端识别 `generation_in_progress` 并查询旧任务。部署顺序：数据库迁移 -> 两个函数 -> 客户端；无需修改 `recover-guest-generation`。完整链路及边界见 `docs/image-generation-flow.md`。
+
 ## 24. 当前高价值待办
 
 这些不是必须立刻做，但长期有价值：

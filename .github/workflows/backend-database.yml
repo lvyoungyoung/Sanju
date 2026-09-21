@@ -65,6 +65,9 @@ jobs:
       - name: Test study topic limit responses
         run: deno test --no-lock --allow-read scripts/tests/study-scene-limit.test.ts
 
+      - name: Test generation job ownership and atomic completion
+        run: deno test --no-lock --allow-read --allow-env scripts/tests/generation-jobs.test.ts
+
   migrate:
     name: SQL Migrations
     runs-on: [self-hosted, linux, x64, aliyun-ecs]

@@ -452,6 +452,7 @@ enum SupabaseServiceError: LocalizedError {
         }
 
         let recoverableMarkers = [
+            "generation_in_progress",
             "request time out",
             "request timed out",
             "timed out",

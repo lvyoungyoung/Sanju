@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "../_shared/fetch-with-timeout.ts"
+
 type ImageModerationResult =
   | { allowed: true }
   | {
@@ -540,23 +542,6 @@ function buildImageModerationUnavailableResult(internalError: string): ImageMode
   return { allowed: true }
 }
 
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timeout)
-  }
-}
 
 function decodeBase64(base64: string): Uint8Array {
   const binary = atob(base64)

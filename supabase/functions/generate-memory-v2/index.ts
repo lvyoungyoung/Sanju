@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
 
 interface Sentence {
   english: string
@@ -170,24 +171,6 @@ ${languageStylePrompt}
 你必须严格按照下面这个格式返回：
 {"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"]},{"english":"...","chinese":"...","learning_topic_ids":["home_life"]},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"]}],"tags":["动物","生活场景"]}
 `.trim()
-}
-
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  timeoutMs: number
-): Promise<Response> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timeout)
-  }
 }
 
 function serializeGenerationError(args: {
@@ -590,12 +573,20 @@ const GENERATION_VIOLATION_WINDOW_SECONDS = 24 * 60 * 60
 const GENERATION_VIOLATION_LIMIT = 20
 const GENERATION_VIOLATION_BAN_SECONDS = 24 * 60 * 60
 const IMAGE_MODERATION_FUNCTION_TIMEOUT_MS = 10000
+const GENERATION_REQUEST_BUDGET_MS = 90000
 
 Deno.serve(async (req) => {
   let adminClient: any = null
   let generationSlotRequestID: string | null = null
   let generationSlotAcquired = false
   let authenticatedClientRequestID: string | null = null
+  let ownedGuestJobID: string | null = null
+  let generationUserID: string | null = null
+  let ownsAuthenticatedJob = false
+  let finalizationStarted = false
+  let cleanupClient: any = null
+  const generationDeadline = Date.now() + GENERATION_REQUEST_BUDGET_MS
+  const generationFetch = fetchWithinDeadline(generationDeadline)
 
   try {
     if (req.method !== "POST") {
@@ -631,8 +622,11 @@ Deno.serve(async (req) => {
 
     const accessToken = authHeader.replace("Bearer ", "").trim()
 
-    const userClient = createClient(supabaseUrl, supabaseAnonKey)
-    adminClient = createClient(supabaseUrl, serviceRoleKey)
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, { global: { fetch: generationFetch } })
+    adminClient = createClient(supabaseUrl, serviceRoleKey, { global: { fetch: generationFetch } })
+    cleanupClient = createClient(supabaseUrl, serviceRoleKey, {
+      global: { fetch: (input, init) => fetchWithTimeout(input, init, 5000) },
+    })
 
     const {
       data: { user },
@@ -640,6 +634,7 @@ Deno.serve(async (req) => {
     } = await userClient.auth.getUser(accessToken)
 
     if (userError || !user) {
+      if (Date.now() >= generationDeadline) return generationPendingResponse(true)
       return jsonResponse(
         {
           error: "Invalid JWT",
@@ -649,6 +644,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    generationUserID = user.id
     const { data: profile, error: profileError } = await adminClient
       .from("profiles")
       .select("available_generations, generation_banned_until")
@@ -656,6 +652,7 @@ Deno.serve(async (req) => {
       .single()
 
     if (profileError || !profile) {
+      if (Date.now() >= generationDeadline) return generationPendingResponse(true)
       return jsonResponse({ error: "Profile not found" }, 404)
     }
 
@@ -796,81 +793,59 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (!isAnonymous && authenticatedClientRequestID) {
-      const { error: jobError } = await adminClient.from("generation_jobs").upsert(
-        {
-          client_request_id: authenticatedClientRequestID,
-          user_id: user.id,
-          status: "pending",
-          updated_at: createdAt,
-        },
-        { onConflict: "client_request_id" }
-      )
+    const guestImagePath = isAnonymous ? `${user.id}/guest/${guestJobID}.jpg` : null
+    let guestImageUploaded = false
+    const requestID = isAnonymous ? guestJobID! : authenticatedClientRequestID
+    if (requestID) {
+      const { data: claim, error: claimError } = await adminClient.rpc("claim_generation_job", {
+        p_user_id: user.id,
+        p_request_id: requestID,
+        p_is_anonymous: isAnonymous,
+        p_image_path: guestImagePath,
+      })
+      if (claimError) throw new Error(`Generation claim failed: ${claimError.message}`)
+      if (claim !== "acquired") {
+        if (claim === "completed" || claim === "acknowledged") {
+          const completed = isAnonymous
+            ? await loadCompletedGuestGenerationResponseIfNeeded(adminClient, {
+                guestJobID: requestID, userID: user.id, fallbackCreatedAt: createdAt,
+                fallbackRemainingCredits: profile.available_generations, generationFormat,
+              })
+            : await loadCompletedAuthenticatedGenerationResponseIfNeeded(adminClient, {
+                clientRequestID: requestID, userID: user.id,
+                fallbackRemainingCredits: profile.available_generations, generationFormat,
+              })
+          return completed ?? generationPendingResponse()
+        }
+        if (claim === "pending") return generationPendingResponse()
+        if (claim === "failed") return jsonResponse({ error: "生成失败，请重新生成。", code: "generation_failed" }, 500)
+        throw new Error("Invalid generation claim response")
+      }
+      ownsAuthenticatedJob = !isAnonymous
+      ownedGuestJobID = isAnonymous ? requestID : null
+    }
 
-      if (jobError) {
+    if (isAnonymous && guestImagePath) {
+      const { error: uploadError } = await adminClient.storage
+        .from("memories")
+        .upload(guestImagePath, imageBytes, {
+          contentType: "image/jpeg",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        await markGuestGenerationJobFailed(cleanupClient, guestJobID!, user.id, `upload image failed: ${uploadError.message}`)
+
         return jsonResponse(
           {
-            error: "Failed to create generation job",
-            details: jobError.message,
+            error: "upload image failed",
+            details: uploadError.message,
           },
           500
         )
       }
-    }
 
-    let guestImagePath: string | null = null
-    let guestImageUploaded = false
-
-    if (isAnonymous) {
-      guestImagePath = `${user.id}/guest/${guestJobID}.jpg`
-
-      if (!existingGuestJob) {
-        const { error: insertJobError } = await adminClient
-          .from("guest_generation_jobs")
-          .insert({
-            id: guestJobID,
-            user_id: user.id,
-            status: "pending",
-            image_path: guestImagePath,
-          })
-
-        if (insertJobError) {
-          return jsonResponse(
-            {
-              error: "Failed to create guest generation job",
-              details: insertJobError.message,
-            },
-            500
-          )
-        }
-
-        const { error: uploadError } = await adminClient.storage
-          .from("memories")
-          .upload(guestImagePath, imageBytes, {
-            contentType: "image/jpeg",
-            upsert: false,
-          })
-
-        if (uploadError) {
-          await adminClient
-            .from("guest_generation_jobs")
-            .update({
-              status: "failed",
-              error_message: `upload image failed: ${uploadError.message}`,
-            })
-            .eq("id", guestJobID)
-
-          return jsonResponse(
-            {
-              error: "upload image failed",
-              details: uploadError.message,
-            },
-            500
-          )
-        }
-
-        guestImageUploaded = true
-      }
+      guestImageUploaded = true
     }
 
     const moderationResult = await moderateImageBeforeGeneration({
@@ -878,6 +853,7 @@ Deno.serve(async (req) => {
       imageBase64,
       existingImagePath: isAnonymous ? guestImagePath : null,
       requestID: generationSlotRequestID,
+      fetcher: generationFetch,
     })
 
     if (!moderationResult.allowed) {
@@ -895,13 +871,7 @@ Deno.serve(async (req) => {
       }
 
       if (guestJobID) {
-        await adminClient
-          .from("guest_generation_jobs")
-          .update({
-            status: "failed",
-            error_message: serializedError,
-          })
-          .eq("id", guestJobID)
+        await markGuestGenerationJobFailed(cleanupClient, guestJobID!, user.id, serializedError)
       }
 
       if (guestImagePath) {
@@ -910,8 +880,9 @@ Deno.serve(async (req) => {
 
       if (authenticatedClientRequestID) {
         await markAuthenticatedGenerationJobFailed(
-          adminClient,
+          cleanupClient,
           authenticatedClientRequestID,
+          user.id,
           serializedError
         )
       }
@@ -934,6 +905,7 @@ Deno.serve(async (req) => {
       kimiBaseURL,
       kimiApiKey,
       generationFormat,
+      fetcher: generationFetch,
     })
 
     if (!completionResult.ok) {
@@ -952,13 +924,7 @@ Deno.serve(async (req) => {
       }
 
       if (guestJobID) {
-        await adminClient
-          .from("guest_generation_jobs")
-          .update({
-            status: "failed",
-            error_message: serializedError,
-          })
-          .eq("id", guestJobID)
+        await markGuestGenerationJobFailed(cleanupClient, guestJobID!, user.id, serializedError)
       }
 
       if (guestImageUploaded && guestImagePath) {
@@ -967,8 +933,9 @@ Deno.serve(async (req) => {
 
       if (authenticatedClientRequestID) {
         await markAuthenticatedGenerationJobFailed(
-          adminClient,
+          cleanupClient,
           authenticatedClientRequestID,
+          user.id,
           serializedError
         )
       }
@@ -991,6 +958,7 @@ Deno.serve(async (req) => {
     }))
 
     if (isAnonymous) {
+      finalizationStarted = true
       const finalizeResult = await finalizeGuestGeneration(adminClient, {
         guestJobID: guestJobID!,
         userID: user.id,
@@ -1001,6 +969,7 @@ Deno.serve(async (req) => {
       })
 
       if (!finalizeResult.ok) {
+        if (finalizeResult.outcomeUnknown) return generationPendingResponse(true)
         const serializedError = serializeGenerationError({
           provider,
           code: finalizeResult.code,
@@ -1010,13 +979,7 @@ Deno.serve(async (req) => {
 
         console.error("[generate-memory-v2]", serializedError)
 
-        await adminClient
-          .from("guest_generation_jobs")
-          .update({
-            status: "failed",
-            error_message: serializedError,
-          })
-          .eq("id", guestJobID)
+        await markGuestGenerationJobFailed(cleanupClient, guestJobID!, user.id, serializedError)
 
         if (guestImageUploaded && guestImagePath) {
           await adminClient.storage.from("memories").remove([guestImagePath])
@@ -1034,20 +997,12 @@ Deno.serve(async (req) => {
       // Anonymous memories do not have memory_sentences rows until they are
       // copied into an account. Keep vectors by their stable sentence IDs now;
       // the database promotes them automatically when that copy is inserted.
-      await stageGuestSentenceEmbeddings(adminClient, user.id, guestJobID!, finalizedSentences)
+      await stageGuestSentenceEmbeddings(adminClient, user.id, guestJobID!, finalizedSentences, generationFetch)
 
-      return jsonResponse({
-        memory: {
-          id: crypto.randomUUID(),
-          imagePath: "",
-          createdAt,
-          provider,
-          tags,
-          sentences: toClientSentences(finalizedSentences, generationFormat),
-        },
-        remainingCredits: finalizeResult.remainingCredits,
-        guestJobID,
-      })
+      return await loadCompletedGuestGenerationResponseIfNeeded(adminClient, {
+        guestJobID: guestJobID!, userID: user.id, fallbackCreatedAt: createdAt,
+        fallbackRemainingCredits: finalizeResult.remainingCredits, generationFormat,
+      }) ?? generationPendingResponse(true)
     }
 
     const memoryID = crypto.randomUUID()
@@ -1063,8 +1018,9 @@ Deno.serve(async (req) => {
     if (uploadError) {
       if (authenticatedClientRequestID) {
         await markAuthenticatedGenerationJobFailed(
-          adminClient,
+          cleanupClient,
           authenticatedClientRequestID,
+          user.id,
           `upload image failed: ${uploadError.message}`
         )
       }
@@ -1078,6 +1034,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    finalizationStarted = true
     const finalizeResult = await finalizeAuthenticatedGeneration(adminClient, {
       memoryID,
       userID: user.id,
@@ -1090,6 +1047,7 @@ Deno.serve(async (req) => {
     })
 
     if (!finalizeResult.ok) {
+      if (finalizeResult.outcomeUnknown) return generationPendingResponse(true)
       const serializedError = serializeGenerationError({
         provider,
         code: finalizeResult.code,
@@ -1102,8 +1060,9 @@ Deno.serve(async (req) => {
 
       if (authenticatedClientRequestID) {
         await markAuthenticatedGenerationJobFailed(
-          adminClient,
+          cleanupClient,
           authenticatedClientRequestID,
+          user.id,
           serializedError
         )
       }
@@ -1120,18 +1079,20 @@ Deno.serve(async (req) => {
 
     // Search indexing is intentionally best-effort. The atomic generation
     // transaction has already persisted the memory and deducted one credit.
-    await indexGeneratedSentencesForStudyScenes(adminClient, user.id, finalizedSentences)
+    await indexGeneratedSentencesForStudyScenes(adminClient, user.id, finalizedSentences, generationFetch)
 
     if (authenticatedClientRequestID) {
-      await markAuthenticatedGenerationJobCompleted(adminClient, {
+      await updateAuthenticatedGenerationDiagnostics(adminClient, {
         clientRequestID: authenticatedClientRequestID,
         userID: user.id,
         memoryID,
-        imagePath,
-        provider,
         mimoFailureReason,
-        remainingCredits: finalizeResult.remainingCredits,
       })
+      // The transaction owns the canonical memory ID and response, not this worker.
+      return await loadCompletedAuthenticatedGenerationResponseIfNeeded(adminClient, {
+        clientRequestID: authenticatedClientRequestID, userID: user.id,
+        fallbackRemainingCredits: finalizeResult.remainingCredits, generationFormat,
+      }) ?? generationPendingResponse(true)
     }
 
     return jsonResponse({
@@ -1147,12 +1108,15 @@ Deno.serve(async (req) => {
       clientRequestID: authenticatedClientRequestID,
     })
   } catch (error) {
-    if (adminClient && authenticatedClientRequestID) {
-      await markAuthenticatedGenerationJobFailed(
-        adminClient,
-        authenticatedClientRequestID,
-        error instanceof Error ? error.message : String(error)
-      )
+    // A transport failure during finalization cannot prove that the DB rolled back.
+    if (cleanupClient && generationUserID && !finalizationStarted) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (ownsAuthenticatedJob && authenticatedClientRequestID) {
+        await markAuthenticatedGenerationJobFailed(cleanupClient, authenticatedClientRequestID, generationUserID, message)
+      }
+      if (ownedGuestJobID) {
+        await markGuestGenerationJobFailed(cleanupClient, ownedGuestJobID, generationUserID, message)
+      }
     }
 
     console.error(
@@ -1166,16 +1130,14 @@ Deno.serve(async (req) => {
       })
     )
 
-    return jsonResponse(
-      {
-        error: "生成失败，请稍后再试",
-      },
-      500
-    )
+    if (finalizationStarted || isTimeoutError(error) || Date.now() >= generationDeadline) {
+      return generationPendingResponse(true)
+    }
+    return jsonResponse({ error: "生成失败，请稍后再试" }, 500)
   } finally {
     if (generationSlotAcquired && generationSlotRequestID && adminClient) {
       try {
-        await releaseGenerationSlot(adminClient, generationSlotRequestID)
+        await releaseGenerationSlot(cleanupClient ?? adminClient, generationSlotRequestID)
       } catch (error) {
         console.error(
           "[generate-memory-v2]",
@@ -1199,6 +1161,7 @@ async function requestWithFallback(args: {
   mimoApiKey: string
   kimiBaseURL: string
   kimiApiKey: string
+  fetcher: typeof fetch
 }): Promise<
   | {
       ok: true
@@ -1250,7 +1213,8 @@ async function requestWithFallback(args: {
     args.mimoBaseURL,
     args.mimoApiKey,
     mimoRequestBody,
-    args.generationFormat
+    args.generationFormat,
+    args.fetcher
   )
 
   if (mimoResult.ok) {
@@ -1316,7 +1280,8 @@ async function requestWithFallback(args: {
     args.kimiBaseURL,
     args.kimiApiKey,
     kimiRequestBody,
-    args.generationFormat
+    args.generationFormat,
+    args.fetcher
   )
 
   if (kimiResult.ok) {
@@ -1351,7 +1316,8 @@ async function requestMimoOnce(
   mimoBaseURL: string,
   mimoApiKey: string,
   requestBody: unknown,
-  generationFormat: GenerationFormat
+  generationFormat: GenerationFormat,
+  fetcher: typeof fetch
 ): Promise<
   | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
@@ -1379,7 +1345,8 @@ async function requestMimoOnce(
         },
         body: JSON.stringify(requestBody),
       },
-      MIMO_TIMEOUT_MS
+      MIMO_TIMEOUT_MS,
+      fetcher
     )
   } catch (error) {
     const isTimeout = error instanceof DOMException && error.name === "AbortError"
@@ -1488,7 +1455,8 @@ async function requestKimiOnce(
   kimiBaseURL: string,
   kimiApiKey: string,
   requestBody: unknown,
-  generationFormat: GenerationFormat
+  generationFormat: GenerationFormat,
+  fetcher: typeof fetch
 ): Promise<
   | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
@@ -1515,7 +1483,8 @@ async function requestKimiOnce(
         },
         body: JSON.stringify(requestBody),
       },
-      KIMI_TIMEOUT_MS
+      KIMI_TIMEOUT_MS,
+      fetcher
     )
   } catch (error) {
     const isTimeout = error instanceof DOMException && error.name === "AbortError"
@@ -1620,6 +1589,7 @@ async function finalizeAuthenticatedGeneration(
   | {
       ok: false
       code?: string
+      outcomeUnknown?: boolean
       statusCode: number
       internalError: string
       publicError: Record<string, unknown>
@@ -1637,7 +1607,7 @@ async function finalizeAuthenticatedGeneration(
   })
 
   if (error) {
-    return buildRpcErrorResponse(error, "Authenticated finalize failed")
+    return { ...buildRpcErrorResponse(error, "Authenticated finalize failed"), outcomeUnknown: !/^[0-9A-Z]{5}$/.test(error.code ?? "") }
   }
 
   return {
@@ -1661,6 +1631,7 @@ async function finalizeGuestGeneration(
   | {
       ok: false
       code?: string
+      outcomeUnknown?: boolean
       statusCode: number
       internalError: string
       publicError: Record<string, unknown>
@@ -1676,7 +1647,7 @@ async function finalizeGuestGeneration(
   })
 
   if (error) {
-    return buildRpcErrorResponse(error, "Guest finalize failed")
+    return { ...buildRpcErrorResponse(error, "Guest finalize failed"), outcomeUnknown: !/^[0-9A-Z]{5}$/.test(error.code ?? "") }
   }
 
   return {
@@ -1688,14 +1659,15 @@ async function finalizeGuestGeneration(
 async function indexGeneratedSentencesForStudyScenes(
   adminClient: any,
   userID: string,
-  sentences: FinalizedSentence[]
+  sentences: FinalizedSentence[],
+  fetcher: typeof fetch
 ): Promise<void> {
   if (sentences.length === 0) {
     return
   }
 
   try {
-    const embeddings = await fetchSentenceEmbeddings(sentences)
+    const embeddings = await fetchSentenceEmbeddings(sentences, fetcher)
 
     const { error: upsertError } = await adminClient.from("sentence_embeddings").upsert(
       sentences.map((sentence, index) => ({
@@ -1737,14 +1709,15 @@ async function stageGuestSentenceEmbeddings(
   adminClient: any,
   userID: string,
   guestJobID: string,
-  sentences: FinalizedSentence[]
+  sentences: FinalizedSentence[],
+  fetcher: typeof fetch
 ): Promise<void> {
   if (sentences.length === 0) {
     return
   }
 
   try {
-    const embeddings = await fetchSentenceEmbeddings(sentences)
+    const embeddings = await fetchSentenceEmbeddings(sentences, fetcher)
     const { error } = await adminClient.from("guest_sentence_embeddings").upsert(
       sentences.map((sentence, index) => ({
         sentence_id: sentence.id,
@@ -1767,7 +1740,7 @@ async function stageGuestSentenceEmbeddings(
   }
 }
 
-async function fetchSentenceEmbeddings(sentences: FinalizedSentence[]): Promise<number[][]> {
+async function fetchSentenceEmbeddings(sentences: FinalizedSentence[], fetcher: typeof fetch): Promise<number[][]> {
   const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
   const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
   if (!apiKey || !embeddingURL) {
@@ -1802,7 +1775,8 @@ async function fetchSentenceEmbeddings(sentences: FinalizedSentence[]): Promise<
         },
       }),
     },
-    8_000
+    8_000,
+    fetcher
   )
   const rawText = await response.text()
   if (!response.ok) {
@@ -1915,9 +1889,12 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     .eq("user_id", args.userID)
     .maybeSingle()
 
-  if (jobError || job?.status !== "completed" || !job.memory_id) {
-    return null
+  if (jobError) {
+    console.error("[generate-memory-v2] generation lookup failed", jobError.message)
+    return generationPendingResponse(true)
   }
+  if (job?.status !== "completed") return null
+  if (!job.memory_id) return jsonResponse({ error: "生成结果已不可用。", code: "generation_result_unavailable" }, 410)
 
   const { data: memory, error: memoryError } = await adminClient
     .from("memories")
@@ -1943,9 +1920,8 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     .eq("user_id", args.userID)
     .maybeSingle()
 
-  if (memoryError || !memory) {
-    return null
-  }
+  if (memoryError) return generationPendingResponse(true)
+  if (!memory) return jsonResponse({ error: "生成结果已不可用。", code: "generation_result_unavailable" }, 410)
 
   const sentences = Array.isArray(memory.memory_sentences)
     ? [...memory.memory_sentences].sort(
@@ -1954,7 +1930,7 @@ async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     : []
 
   if (!hasSupportedStoredSentenceCount(sentences.length, args.generationFormat)) {
-    return null
+    return generationPendingResponse(true)
   }
 
   return jsonResponse({
@@ -1989,18 +1965,13 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
     .maybeSingle()
 
   if (completedJobError) {
-    return jsonResponse(
-      {
-        error: "Failed to load completed guest generation job",
-        details: completedJobError.message,
-      },
-      500
-    )
+    console.error("[generate-memory-v2] completed guest lookup failed", completedJobError.message)
+    return generationPendingResponse(true)
   }
 
   const sentences = Array.isArray(completedJob?.sentences) ? completedJob.sentences : []
   if (!hasSupportedStoredSentenceCount(sentences.length, args.generationFormat)) {
-    return null
+    return generationPendingResponse(true)
   }
 
   return jsonResponse({
@@ -2053,56 +2024,27 @@ function toClientSentences(
   })
 }
 
-async function markAuthenticatedGenerationJobCompleted(
+async function updateAuthenticatedGenerationDiagnostics(
   adminClient: any,
-  args: {
-    clientRequestID: string
-    userID: string
-    memoryID: string
-    imagePath: string
-    provider: ProviderName
-    mimoFailureReason: string | null
-    remainingCredits: number
-  }
+  args: { clientRequestID: string; userID: string; memoryID: string; mimoFailureReason: string | null }
 ): Promise<void> {
   try {
-    const now = new Date().toISOString()
-    const { error } = await adminClient
-      .from("generation_jobs")
-      .update({
-        status: "completed",
-        memory_id: args.memoryID,
-        image_path: args.imagePath,
-        provider: args.provider,
-        mimo_failure_reason: args.mimoFailureReason,
-        remaining_credits: args.remainingCredits,
-        error_message: null,
-        updated_at: now,
-        completed_at: now,
-        failed_at: null,
-      })
+    const { error } = await adminClient.from("generation_jobs")
+      .update({ mimo_failure_reason: args.mimoFailureReason })
       .eq("client_request_id", args.clientRequestID)
       .eq("user_id", args.userID)
-
-    if (error) {
-      throw error
-    }
+      .eq("memory_id", args.memoryID)
+      .eq("status", "completed")
+    if (error) throw error
   } catch (error) {
-    console.error(
-      "[generate-memory-v2]",
-      serializeGenerationError({
-        provider: args.provider,
-        code: "authenticated_generation_job_complete_failed",
-        statusCode: 500,
-        internalError: error instanceof Error ? error.message : String(error),
-      })
-    )
+    console.error("[generate-memory-v2] job diagnostics failed", String(error))
   }
 }
 
 async function markAuthenticatedGenerationJobFailed(
   adminClient: any,
   clientRequestID: string,
+  userID: string,
   errorMessage: string
 ): Promise<void> {
   try {
@@ -2116,6 +2058,8 @@ async function markAuthenticatedGenerationJobFailed(
         failed_at: now,
       })
       .eq("client_request_id", clientRequestID)
+      .eq("user_id", userID)
+      .eq("status", "pending")
 
     if (error) {
       throw error
@@ -2241,6 +2185,7 @@ async function moderateImageBeforeGeneration(args: {
   imageBase64: string
   existingImagePath: string | null
   requestID: string
+  fetcher: typeof fetch
 }): Promise<ImageModerationResult> {
   if (!isEnabledEnvFlag(Deno.env.get("IMAGE_MODERATION_ENABLED"))) {
     return { allowed: true }
@@ -2271,7 +2216,8 @@ async function moderateImageBeforeGeneration(args: {
         },
         body: JSON.stringify(requestBody),
       },
-      IMAGE_MODERATION_FUNCTION_TIMEOUT_MS
+      IMAGE_MODERATION_FUNCTION_TIMEOUT_MS,
+      args.fetcher
     )
     const rawText = await response.text()
     let data: unknown = null
@@ -2475,5 +2421,24 @@ function buildGenerationPolicyViolationError(
     code: isBanned ? "generation_banned" : "generation_policy_violation",
     bannedUntil: record?.bannedUntil ?? null,
     violationCount: record?.violationCount ?? null,
+  }
+}
+
+function generationPendingResponse(timedOut = false): Response {
+  return jsonResponse({
+    error: timedOut ? "request timed out" : "生成仍在处理中，请稍后查看回忆。",
+    code: "generation_in_progress",
+    provider: "generation_job",
+  }, timedOut ? 504 : 409)
+}
+
+async function markGuestGenerationJobFailed(adminClient: any, jobID: string, userID: string, message: string): Promise<void> {
+  try {
+    const { error } = await adminClient.from("guest_generation_jobs")
+      .update({ status: "failed", error_message: truncateDiagnosticText(message, 1000) })
+      .eq("id", jobID).eq("user_id", userID).eq("status", "pending")
+    if (error) throw error
+  } catch (error) {
+    console.error("[generate-memory-v2] guest failure update failed", String(error))
   }
 }
