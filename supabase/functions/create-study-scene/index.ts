@@ -1,8 +1,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { resolveStudySceneIntent } from "./intent.ts"
 
 const EMBEDDING_MODEL = "qwen3.7-text-embedding"
 const EMBEDDING_DIMENSIONS = 1024
 const EMBEDDING_TIMEOUT_MS = 20_000
+const MAX_STUDY_SCENES = 20
+
+function sceneLimitResponse() {
+  return jsonResponse({ error: "最多可以创建20个学习主题", code: "study_scene_limit_reached" }, 409)
+}
 
 interface CreateStudySceneRequest {
   name?: string
@@ -87,6 +93,20 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
     }
 
+    // Avoid paying for intent extraction or embedding when the limit is known. The
+    // database trigger is authoritative if concurrent requests race this check.
+    const { count, error: countError } = await adminClient.from("study_scenes")
+      .select("id", { count: "exact", head: true }).eq("user_id", user.id)
+    if (countError || count === null) {
+      throw new Error("Unable to check study scene limit")
+    }
+    if (count >= MAX_STUDY_SCENES) {
+      const { data: existing, error: existingError } = await adminClient.from("study_scenes")
+        .select("id").eq("user_id", user.id).eq("name", name).maybeSingle()
+      if (existingError) throw existingError
+      if (!existing) return sceneLimitResponse()
+    }
+
     let data: unknown
     let error: { code?: string; message: string; details?: string; hint?: string } | null
 
@@ -103,7 +123,15 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Missing semantic matching configuration" }, 500)
       }
 
-      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
+      const intent = await resolveStudySceneIntent(name, {
+        url: Deno.env.get("MIMO_BASE_URL"),
+        apiKey: Deno.env.get("MIMO_API_KEY"),
+        fetcher: fetch,
+      })
+      if (intent.fallbackReason) {
+        console.warn("[create-study-scene] intent fallback", intent.fallbackReason)
+      }
+      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [intent.query], "query")
       const response = await adminClient.rpc("create_study_scene_with_embedding", {
         p_user_id: user.id,
         p_name: name,
@@ -115,6 +143,7 @@ Deno.serve(async (req) => {
     }
 
     if (error) {
+      if (error.message === "study_scene_limit_reached") return sceneLimitResponse()
       const diagnostic = {
         code: error.code ?? null,
         message: error.message,

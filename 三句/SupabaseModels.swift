@@ -333,6 +333,9 @@ enum SupabaseServiceError: LocalizedError {
             return L10n.string("supabase_error.invalid_response", "Supabase 返回了无法识别的数据。")
         case .apiError(let message):
             let normalized = message.lowercased()
+            if normalized.contains("study_scene_limit_reached") {
+                return StudySceneCreationPolicy.limitMessage
+            }
             if normalized.contains("invalid login credentials") {
                 return L10n.string("supabase_error.invalid_login_credentials", "邮箱或密码不正确。")
             }

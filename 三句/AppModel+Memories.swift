@@ -1497,6 +1497,12 @@ extension AppModel {
             throw SentenceStudyTopicLoadingError.signInRequired
         }
 
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard StudySceneCreationPolicy.canCreate(currentCount: userStudySceneSummaries.count)
+            || userStudySceneSummaries.contains(where: { $0.name == normalizedName }) else {
+            throw SentenceStudyTopicLoadingError.limitReached
+        }
+
         guard isNetworkAvailable else {
             throw SentenceStudyTopicLoadingError.networkUnavailable
         }

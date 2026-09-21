@@ -297,7 +297,7 @@
 "study.topic.favorites" = "收藏";
 "study.topic.favorites_count" = "收藏（%d）";
 "study.topic.view_all" = "查看全部";
-"study.topic.section_title" = "按主题学习";
+"study.topic.section_title" = "我的学习主题";
 "study.topic.create_short" = "+ 创建";
 "study.topic.mastery" = "掌握度 %d%%";
 "study.topic.page_subtitle" = "按主题练习，让你更自然地说出眼前的画面。";
@@ -307,6 +307,7 @@
 "study.topic.map.subtitle" = "%d 个主题，慢慢点亮";
 "study.topic.map.mastery" = "掌握 %d%%";
 "study.scene.create" = "创建我的学习主题";
+"study.scene.limit_reached" = "最多可以创建%d个学习主题";
 "study.scene.create_failed" = "暂时无法创建学习主题，请稍后再试。";
 "study.scene.create_hint" = "例如：海边度假、和朋友聚会、雨天通勤";
 "study.scene.create_title" = "创建我的学习主题";
@@ -358,6 +359,7 @@
 "study.scene.detail.empty_subtitle" = "以后生成相关画面时，它们会自动出现在这里。";
 "study.scene.detail.empty_title" = "暂未找到匹配句子";
 "study.scene.detail.loading_subtitle" = "马上就好，正在整理相关表达";
+"study.scene.detail.loading_slow_subtitle" = "首次寻找主题下的句子可能耗时较长，请稍后";
 "study.scene.detail.loading_title" = "正在寻找这个主题的句子";
 "study.scene.detail.sentence_count" = "共 %d 句";
 "study.scene.detail.start" = "去学习";

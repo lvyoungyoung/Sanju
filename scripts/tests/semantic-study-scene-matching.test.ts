@@ -97,7 +97,7 @@ function vector(score: number) {
   return [score, Math.sqrt(1 - score * score), ...Array(1022).fill(0)];
 }
 
-Deno.test("custom themes require cached AI approval", async (t) => {
+Deno.test("semantic theme migrations preserve matching and safely pause AI review", async (t) => {
   const db = new PGlite();
   try {
     await db.exec(schema);
@@ -790,7 +790,372 @@ Deno.test("custom themes require cached AI approval", async (t) => {
         await expectLinks(celebration, [birthday]);
       },
     );
+    await t.step(
+      "pausing review restores semantic matches without deleting history or progress",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const fixed = await scene({
+          topic: "food_and_drinks",
+          embedded: false,
+        });
+        const fixedSentence = await sentence(0.10, {
+          topic: "food_and_drinks",
+        });
+        const rejected = await sentence(0.90);
+        await refresh(topic);
+        await complete(await claim(topic), false);
+        const accepted = await sentence(0.80, { favorite: true });
+        await matchNew(accepted);
+        await complete(await claim(topic), true);
+        const pending = await sentence(0.45);
+        await matchNew(pending);
+        const inFlight = await claim(topic);
+        strictEqual(inFlight.length, 1);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values ($1,$2,$3,5)",
+          [owner, accepted, `scene:${topic}`],
+        );
+        const pause = await readMigration(
+          "20260921002000_pause_study_scene_ai_review.sql",
+        );
+        await db.exec(pause);
+        await expectLinks(topic, [rejected, accepted, pending]);
+        await expectLinks(fixed, [fixedSentence]);
+        strictEqual(await complete(inFlight, false), 0);
+        await expectLinks(topic, [rejected, accepted, pending]);
+        strictEqual((await claim(topic)).length, 0);
+        deepStrictEqual(
+          (await db.query(
+            "select * from get_study_scene_review_status($1,$2)",
+            [owner, topic],
+          )).rows,
+          [{ pending_count: 0, retry_after_seconds: 0 }],
+        );
+        strictEqual(
+          (await db.query("select * from study_scene_sentence_reviews")).rows
+            .length,
+          3,
+        );
+        strictEqual(
+          (await db.query(
+            "select * from study_scene_sentence_reviews where lease_token is not null",
+          )).rows.length,
+          0,
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress",
+          )).rows[0].correct_count,
+          5,
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select is_favorite from memory_sentences where id=$1",
+            [accepted],
+          )).rows[0].is_favorite,
+          true,
+        );
+        await db.exec(pause);
+        await expectLinks(topic, [rejected, accepted, pending]);
+      },
+    );
+
+    await t.step(
+      "new custom themes immediately include matches at the unchanged threshold",
+      async () => {
+        await reset();
+        const high = await sentence(0.90);
+        const near = await sentence(0.4201);
+        await sentence(0.4199);
+        await sentence(0.99, { user: otherOwner });
+        await sentence(0.99, { embeddingModel: "another-model" });
+        const result = await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,$2,$3::jsonb,$4)",
+          [owner, "Food descriptions", JSON.stringify(vector(1)), model],
+        );
+        const topic = result.rows[0].id;
+        strictEqual(result.rows[0].total_count, 2);
+        await expectLinks(topic, [high, near]);
+        strictEqual(
+          (await db.query("select * from study_scene_sentence_reviews")).rows
+            .length,
+          0,
+        );
+        await refresh(topic, owner, 0.10);
+        await expectLinks(topic, [high, near]);
+        await refresh(topic, owner, 0.80);
+        await expectLinks(topic, [high]);
+        await refresh(topic);
+        await expectLinks(topic, [high, near]);
+      },
+    );
+
+    await t.step(
+      "new sentences match directly and cannot modify other users or fixed themes",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const another = await scene();
+        const fixed = await scene({
+          topic: "food_and_drinks",
+          embedded: false,
+        });
+        const other = await scene({ user: otherOwner });
+        const otherItem = await sentence(0.80, { user: otherOwner });
+        await matchNew(otherItem, otherOwner);
+        const item = await sentence(0.80, { topic: "food_and_drinks" });
+        await matchNew(item);
+        await expectLinks(topic, [item]);
+        await expectLinks(another, [item]);
+        await expectLinks(fixed, [item]);
+        await matchNew(item, otherOwner);
+        await expectLinks(other, [otherItem]);
+        await refresh(topic, otherOwner);
+        await expectLinks(topic, [item]);
+        await db.query(
+          "update sentence_embeddings set embedding=$1 where sentence_id=$2",
+          [vector(0.20), item],
+        );
+        await matchNew(item);
+        await expectLinks(topic, []);
+        await expectLinks(another, []);
+        await expectLinks(fixed, [item]);
+        await expectLinks(other, [otherItem]);
+        strictEqual(
+          (await db.query("select * from study_scene_sentence_reviews")).rows
+            .length,
+          0,
+        );
+      },
+    );
+
+    await t.step(
+      "missing and incompatible embeddings remain safely excluded",
+      async () => {
+        await reset();
+        const missing = await scene({ embedded: false });
+        const incompatible = await scene({ embeddingModel: "another-model" });
+        const topic = await scene();
+        await sentence(0.90, { embedded: false });
+        const wrongOwner = await sentence(0.90, { embeddingOwner: otherOwner });
+        const item = await sentence(0.90);
+        await matchNew(wrongOwner);
+        await matchNew(item);
+        await refresh(missing);
+        await refresh(incompatible);
+        await refresh(topic);
+        await expectLinks(missing, []);
+        await expectLinks(incompatible, []);
+        await expectLinks(topic, [item]);
+      },
+    );
+
+    await t.step(
+      "anonymous imports now join custom themes without review",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const id = crypto.randomUUID();
+        const memoryID = crypto.randomUUID();
+        await db.query(
+          "insert into guest_sentence_embeddings (sentence_id, guest_user_id, guest_job_id, embedding, model) values ($1, $2, $3, $4, $5)",
+          [id, otherOwner, crypto.randomUUID(), vector(0.70), model],
+        );
+        await db.query("insert into memories (id, user_id) values ($1, $2)", [
+          memoryID,
+          owner,
+        ]);
+        await db.query(
+          "insert into memory_sentences (id, memory_id) values ($1, $2)",
+          [id, memoryID],
+        );
+        await expectLinks(topic, [id]);
+        strictEqual((await claim(topic)).length, 0);
+        strictEqual(
+          (await db.query("select * from study_scene_sentence_reviews")).rows
+            .length,
+          0,
+        );
+      },
+    );
+
+    await t.step("paused review RPCs keep service-only access", async () => {
+      for (
+        const signature of [
+          "claim_study_scene_sentence_reviews(uuid,uuid)",
+          "complete_study_scene_sentence_reviews(uuid,jsonb)",
+          "defer_study_scene_sentence_reviews(uuid,jsonb)",
+          "get_study_scene_review_status(uuid,uuid)",
+          "refresh_semantic_study_scene_matches_for_sentence(uuid,uuid,double precision)",
+        ]
+      ) {
+        for (const role of ["anon", "authenticated", "service_role"]) {
+          const result = await db.query<any>(
+            "select has_function_privilege($1,$2,'EXECUTE') as allowed",
+            [role, signature],
+          );
+          strictEqual(result.rows[0].allowed, role === "service_role");
+        }
+      }
+    });
+    await t.step(
+      "topic limit preserves existing accounts above twenty",
+      async () => {
+        await reset();
+        const existing = [];
+        for (let i = 0; i < 21; i++) {
+          existing.push(await scene({ embedded: false }));
+        }
+        const migration = await readMigration(
+          "20260921003000_limit_study_scenes_to_twenty.sql",
+        );
+        await db.exec(migration);
+        await db.exec(migration);
+        strictEqual(
+          (await db.query("select id from study_scenes")).rows.length,
+          21,
+        );
+        await rejects(() => scene(), /study_scene_limit_reached/);
+        await db.query(
+          "update study_scenes set name='Renamed theme' where id=$1",
+          [existing[0]],
+        );
+        await db.query("delete from study_scenes where id = any($1::uuid[])", [
+          existing.slice(0, 2),
+        ]);
+        await scene();
+        strictEqual(
+          (await db.query("select id from study_scenes")).rows.length,
+          20,
+        );
+        await rejects(() => scene(), /study_scene_limit_reached/);
+      },
+    );
+
+    await t.step(
+      "both creation RPCs share twenty slots and existing-name upserts do not consume slots",
+      async () => {
+        await reset();
+        for (let i = 0; i < 19; i++) {
+          await scene({
+            embedded: false,
+            topic: i % 2 ? "food_and_drinks" : undefined,
+          });
+        }
+        const fixed = (await db.query<any>(
+          "select * from create_learning_topic_study_scene($1,$2,$3)",
+          [owner, "Food topic", "food_and_drinks"],
+        )).rows[0];
+        await rejects(
+          () =>
+            db.query(
+              "select * from create_study_scene_with_embedding($1,$2,$3::jsonb,$4)",
+              [owner, "Another custom theme", JSON.stringify(vector(1)), model],
+            ),
+          /study_scene_limit_reached/,
+        );
+        const repeated = (await db.query<any>(
+          "select * from create_learning_topic_study_scene($1,$2,$3)",
+          [owner, "Food topic", "food_and_drinks"],
+        )).rows[0];
+        strictEqual(repeated.id, fixed.id);
+        await db.query("delete from study_scenes where id=$1", [fixed.id]);
+        const custom = (await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,$2,$3::jsonb,$4)",
+          [owner, "Custom theme", JSON.stringify(vector(1)), model],
+        )).rows[0];
+        const customAgain = (await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,$2,$3::jsonb,$4)",
+          [owner, "Custom theme", JSON.stringify(vector(1)), model],
+        )).rows[0];
+        strictEqual(custom.id, customAgain.id);
+        await rejects(
+          () =>
+            db.query(
+              "select * from create_learning_topic_study_scene($1,$2,$3)",
+              [owner, "More food", "food_and_drinks"],
+            ),
+          /study_scene_limit_reached/,
+        );
+        strictEqual(
+          (await db.query("select id from study_scenes")).rows.length,
+          20,
+        );
+      },
+    );
+
+    await t.step(
+      "the database limit covers bulk inserts and owner transfers but not favorites or other accounts",
+      async () => {
+        await reset();
+        for (let i = 0; i < 19; i++) await scene({ embedded: false });
+        await rejects(
+          () =>
+            db.query(
+              "insert into study_scenes(user_id,name) values ($1,'Twentieth'),($1,'Twenty-first')",
+              [owner],
+            ),
+          /study_scene_limit_reached/,
+        );
+        strictEqual(
+          (await db.query("select id from study_scenes")).rows.length,
+          19,
+        );
+        await scene({ embedded: false });
+        const other = await scene({ user: otherOwner, embedded: false });
+        await rejects(
+          () =>
+            db.query("update study_scenes set user_id=$1 where id=$2", [
+              owner,
+              other,
+            ]),
+          /study_scene_limit_reached/,
+        );
+        for (let i = 0; i < 21; i++) {
+          await sentence(0.10, { favorite: true, embedded: false });
+        }
+        strictEqual(
+          (await db.query("select id from study_scenes where user_id=$1", [
+            owner,
+          ])).rows.length,
+          20,
+        );
+        strictEqual(
+          (await db.query("select id from memory_sentences where is_favorite"))
+            .rows.length,
+          21,
+        );
+        const definition = (await db.query<any>(
+          "select pg_get_functiondef('enforce_study_scene_count_limit()'::regprocedure) as body",
+        )).rows[0].body;
+        strictEqual(definition.includes("pg_advisory_xact_lock"), true);
+      },
+    );
   } finally {
     await db.close();
   }
+});
+
+Deno.test("active client and generation paths do not invoke paused AI review", async () => {
+  const root = new URL("../../", import.meta.url);
+  for (
+    const file of [
+      "三句/StudySceneDetailView.swift",
+      "supabase/functions/generate-memory-v2/index.ts",
+    ]
+  ) {
+    const source = await Deno.readTextFile(new URL(file, root));
+    strictEqual(source.includes("reviewUserStudyScene("), false);
+    strictEqual(source.includes("startStudySceneReviewInBackground"), false);
+    strictEqual(source.includes("/functions/v1/review-study-scene"), false);
+  }
+  const endpoint = await Deno.readTextFile(
+    new URL("supabase/functions/review-study-scene/index.ts", root),
+  );
+  strictEqual(endpoint.includes("reviewCandidates"), false);
+  strictEqual(endpoint.includes("claim_study_scene_sentence_reviews"), false);
+  strictEqual(endpoint.includes("pendingCount: 0"), true);
+  strictEqual(endpoint.includes("user.is_anonymous"), true);
+  strictEqual(endpoint.includes('.eq("user_id", userID)'), true);
 });

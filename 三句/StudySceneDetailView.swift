@@ -10,11 +10,17 @@ struct StudySceneDetailView: View {
     @State private var studySession: SentenceStudyTopicSession?
     @State private var errorMessage: String?
     @State private var refreshedSceneSummary: SentenceStudyTopicSummary?
-    @State private var isReviewing = false
-    @State private var hasPendingReview = false
     @State private var detailLoadID = UUID()
+    @State private var showsSlowLoadingHint = false
 
-    private var title: String { route.title }
+    private var title: String {
+        switch route {
+        case .favorites:
+            return L10n.string("study.topic.favorites_count", "收藏（%d）", appModel.favorites.count)
+        case .userScene:
+            return route.title
+        }
+    }
 
     private var cachedSceneItems: [SentenceStudyQueueItem]? {
         guard case let .userScene(scene) = route else { return nil }
@@ -23,7 +29,7 @@ struct StudySceneDetailView: View {
 
     private var shouldShowInitialLoading: Bool {
         guard case .userScene = route else { return false }
-        return isLoading && cachedSceneItems == nil
+        return isLoading && (cachedSceneItems?.isEmpty ?? true)
     }
 
     private var items: [StudySceneDetailSentence] {
@@ -72,9 +78,6 @@ struct StudySceneDetailView: View {
     private var studyButtonTitle: String {
         if isStartingStudy {
             return L10n.string("study.button.preparing", "正在准备学习内容...")
-        }
-        if !canStartStudy && (hasPendingReview || isReviewing) {
-            return L10n.string("study.scene.review.waiting", "等待筛选")
         }
         if studySummary.dueCount > 0 {
             return L10n.string("study.button.start", "开始学习")
@@ -133,9 +136,25 @@ struct StudySceneDetailView: View {
         ScrollView {
             SyncLoadingState(
                 title: L10n.string("study.scene.detail.loading_title", "正在寻找这个主题的句子"),
-                subtitle: L10n.string("study.scene.detail.loading_subtitle", "马上就好，正在整理相关表达")
+                subtitle: showsSlowLoadingHint
+                    ? L10n.string("study.scene.detail.loading_slow_subtitle", "首次寻找主题下的句子可能耗时较长，请稍后")
+                    : L10n.string("study.scene.detail.loading_subtitle", "马上就好，正在整理相关表达")
             )
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, AppSpacing.xLarge)
             .padding(.top, 170)
+        }
+        .task(id: detailLoadID) {
+            showsSlowLoadingHint = false
+            do {
+                try await Task.sleep(for: .seconds(5))
+                try Task.checkCancellation()
+                showsSlowLoadingHint = true
+            } catch is CancellationError {
+                // Leaving the loading state cancels its delayed hint.
+            } catch {
+                return
+            }
         }
     }
 
@@ -143,9 +162,6 @@ struct StudySceneDetailView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
                 studyOverviewBar
-                if hasPendingReview || isReviewing {
-                    reviewStatusView
-                }
                 sentenceContent
             }
             .padding(.horizontal, AppSpacing.xLarge)
@@ -156,9 +172,7 @@ struct StudySceneDetailView: View {
 
     @ViewBuilder
     private var sentenceContent: some View {
-        if items.isEmpty && (hasPendingReview || isReviewing) {
-            Color.clear.frame(height: 1)
-        } else if items.isEmpty {
+        if items.isEmpty {
             EmptyStateView(
                 title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
                 subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
@@ -178,30 +192,6 @@ struct StudySceneDetailView: View {
                     .padding(.top, AppSpacing.small)
             }
         }
-    }
-
-    private var reviewStatusView: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.small) {
-            HStack(spacing: AppSpacing.small) {
-                if isReviewing { ProgressView().controlSize(.small) }
-                Text(isReviewing
-                    ? L10n.string("study.scene.review.in_progress", "正在筛选更贴合主题的句子...")
-                    : L10n.string("study.scene.review.pending", "部分句子尚未完成筛选，请稍后重试。"))
-                    .font(.subheadline)
-                    .foregroundStyle(AppTextColor.secondary)
-            }
-            if !isReviewing {
-                Button(L10n.string("study.scene.review.retry", "继续筛选")) {
-                    Task { await loadDetail(forceRefresh: true) }
-                }
-                .font(.subheadline)
-                .tint(.orange)
-                .frame(minHeight: 44)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AppSpacing.large)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
     }
 
     private var studyOverviewBar: some View {
@@ -301,7 +291,6 @@ struct StudySceneDetailView: View {
         defer {
             if detailLoadID == loadID {
                 isLoading = false
-                isReviewing = false
             }
         }
 
@@ -313,28 +302,14 @@ struct StudySceneDetailView: View {
                 sceneItems = cachedSceneItems
             }
             do {
-                repeat {
-                    isReviewing = true
-                    var review: SupabaseStudySceneReviewStatus?
-                    do {
-                        review = try await appModel.reviewUserStudyScene(scene)
-                    } catch {
-                        if Task.isCancelled || error is CancellationError { return }
-                        // A review outage must not hide previously approved sentences.
-                    }
-                    guard detailLoadID == loadID, !Task.isCancelled else { return }
-                    hasPendingReview = review == nil || (review?.pendingCount ?? 0) > 0
-                    let refreshedItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
-                    guard detailLoadID == loadID, !Task.isCancelled else { return }
-                    sceneItems = refreshedItems
-                    isLoading = false
-                    await appModel.refreshUserStudySceneSummaries()
-                    guard detailLoadID == loadID, !Task.isCancelled else { return }
-                    refreshedSceneSummary = appModel.userStudySceneSummaries
-                        .first(where: { $0.id == scene.id })?.summary
-                    guard let review, review.shouldContinueAutomatically else { break }
-                    try await Task.sleep(for: .seconds(max(1, review.retryAfterSeconds)))
-                } while detailLoadID == loadID && !Task.isCancelled
+                let refreshedItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
+                guard detailLoadID == loadID, !Task.isCancelled else { return }
+                sceneItems = refreshedItems
+                isLoading = false
+                await appModel.refreshUserStudySceneSummaries()
+                guard detailLoadID == loadID, !Task.isCancelled else { return }
+                refreshedSceneSummary = appModel.userStudySceneSummaries
+                    .first(where: { $0.id == scene.id })?.summary
             } catch {
                 guard detailLoadID == loadID, !Task.isCancelled, !(error is CancellationError) else { return }
                 if !hasCachedItems || forceRefresh {

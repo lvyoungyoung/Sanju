@@ -4,6 +4,7 @@ import UIKit
 struct StudyView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var errorMessage: String?
+    @State private var creationErrorMessage: String?
     @State private var isShowingCreateScene = false
     @State private var newSceneName = ""
     @State private var selectedSuggestedTopicID: String?
@@ -24,19 +25,22 @@ struct StudyView: View {
 
                 favoriteStudySection
 
-                topicSectionHeader
+                VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                    topicSectionHeader
 
-                LazyVStack(spacing: AppSpacing.xLarge) {
-                    if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
-                        topicListLoadingState
-                    } else {
-                        ForEach(appModel.userStudySceneSummaries) { scene in
-                            userStudySceneCard(scene)
+                    LazyVStack(spacing: AppSpacing.xLarge) {
+                        if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
+                            topicListLoadingState
+                        } else {
+                            ForEach(appModel.userStudySceneSummaries) { scene in
+                                userStudySceneCard(scene)
+                            }
+
+                            createSceneButton
                         }
-
-                        createSceneButton
                     }
                 }
+                .padding(.top, AppSpacing.medium)
             }
             .padding(.horizontal, AppSpacing.xLarge)
             .padding(.top, AppSpacing.xLarge)
@@ -90,6 +94,13 @@ struct StudyView: View {
                 onRefreshSuggestions: refreshSceneSuggestions,
                 onCreate: createScene
             )
+            .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: creationErrorAlertBinding) {
+                Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
+                    creationErrorMessage = nil
+                }
+            } message: {
+                Text(creationErrorMessage ?? "")
+            }
             .presentationDetents([.height(320)])
             .presentationBackground(AppSurfaceColor.page)
             .presentationDragIndicator(.visible)
@@ -148,13 +159,7 @@ struct StudyView: View {
     private var favoriteStudySection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             HStack(alignment: .firstTextBaseline) {
-                Text(
-                    L10n.string(
-                        "study.topic.favorites_count",
-                        "收藏（%d）",
-                        appModel.favorites.count
-                    )
-                )
+                Text(L10n.string("study.topic.favorites", "收藏"))
                 .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)
 
@@ -174,7 +179,7 @@ struct StudyView: View {
 
     private var topicSectionHeader: some View {
         HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-            Text(L10n.string("study.topic.section_title", "按主题学习"))
+            Text(L10n.string("study.topic.section_title", "我的学习主题"))
                 .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)
 
@@ -480,6 +485,11 @@ struct StudyView: View {
             appModel.isShowingSignInSheet = true
             return
         }
+        guard StudySceneCreationPolicy.canCreate(currentCount: appModel.userStudySceneSummaries.count) else {
+            errorMessage = StudySceneCreationPolicy.limitMessage
+            return
+        }
+        creationErrorMessage = nil
         newSceneName = ""
         selectedSuggestedTopicID = nil
         refreshSceneSuggestions()
@@ -512,6 +522,13 @@ struct StudyView: View {
         )
     }
 
+    private var creationErrorAlertBinding: Binding<Bool> {
+        Binding(
+            get: { creationErrorMessage != nil },
+            set: { if !$0 { creationErrorMessage = nil } }
+        )
+    }
+
     @MainActor
     private func createScene() async {
         let name = newSceneName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -532,7 +549,7 @@ struct StudyView: View {
             selectedSuggestedTopicID = nil
             appModel.studyNavigationPath.append(.userScene(scene))
         } catch {
-            errorMessage = error.localizedDescription.isEmpty
+            creationErrorMessage = error.localizedDescription.isEmpty
                 ? L10n.string("study.scene.create_failed", "暂时无法创建学习主题，请稍后再试。")
                 : error.localizedDescription
         }

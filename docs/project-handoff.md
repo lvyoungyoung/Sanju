@@ -568,15 +568,15 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 预定义分类现为 21 个相册生活场景，按句子（每句最多两个，主场景在前，第二个需要明确的句子依据）而不是照片归类，不包含“实用记录”。新目录、边界、迁移及部署步骤见 `docs/life-scene-topics.md`。迁移 `20260920001000_use_photo_life_scenes.sql` 移除旧预定义主题、清空旧句子分类，不重分历史内容；照片、句子、收藏、自定义主题和学习进度行不删除。此轮需要同步部署 `generate-memory-v2`、`recover-guest-generation`、`create-study-scene`。
 
-用户创建“我的学习主题”时，客户端将主题名称提交给 `create-study-scene`。预定义主题使用分类 ID 精确匹配；自定义名称使用阿里云百炼 `qwen3.7-text-embedding` 生成 1024 维向量，主题名按 `query`、英文句子及中文翻译按 `document` 生成向量。
+用户创建“我的学习主题”时，客户端将主题名称提交给 `create-study-scene`。预定义主题使用分类 ID 精确匹配；自定义主题先由 MiMo 提取一段简短英文检索描述，再使用阿里云百炼 `qwen3.7-text-embedding` 生成 1024 维 `query` 向量；英文句子及中文翻译按 `document` 生成向量。主题仍保存原始名称，不批量改已有主题向量。意图提取复用 `MIMO_BASE_URL` / `MIMO_API_KEY`，最多等待 8 秒；缺配置、失败、格式错误或不明确时回退原名，不阻断创建。推荐分类和超出 20 个上限的创建请求不调用意图模型；此步骤不是逐句复核。意图提取本身只需更新 `create-study-scene`，无新增迁移或客户端接口。
 
-2026-09-20 的 migration 将自定义主题改为“语义初筛 + AI 逐句复核”：相似度 `>= 0.42` 只进入候选，由新增 `review-study-scene` 使用 MiMo 判断句子是否真正贴题。只有通过复核才进入主题，正反结果均缓存，失败保留待办且不按相似度直接放行。完整规则、触发时机、部署步骤和测试见 `docs/custom-study-topic-matching.md`。
+2026-09-21 按用户要求暂时停用 AI 逐句复核，自定义主题恢复为同账号、相同向量模型、相似度 `>= 0.42` 直接收录。`20260921002000_pause_study_scene_ai_review.sql` 替换匹配 RPC 并重算已有自定义主题，保留复核历史和学习记录；旧复核 RPC 停用，旧客户端入口 `review-study-scene` 只返回零待办。客户端不再调用复核，生成函数不再启动后台复核。需先运行迁移，再部署 `generate-memory-v2`、`review-study-scene`。完整规则、历史方案和测试见 `docs/custom-study-topic-matching.md`。
 
 - 表：`sentence_embeddings`、`study_scene_embeddings`、`study_scene_sentences`、`study_scene_sentence_reviews`。新增的复核表保存候选、输入指纹、判断原因及重试租约，不对客户端开放。
 - 新生成的登录用户句子会在 `generate-memory-v2` 原子化落库后异步式地补写向量并匹配已有场景；这一步失败不会影响生成结果或可用次数。
 - 第一版不回填历史句子向量，因此旧句子可能不会进入新建的自定义场景。
 - 必需环境变量：`DASHSCOPE_API_KEY`、`DASHSCOPE_EMBEDDING_URL`。后者应填写百炼原生接口 `https://<WorkspaceId>.cn-beijing.maas.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding`；地址不内置默认值，以便和 MiMo、Kimi 的服务地址配置方式保持一致。
-- 首次向量功能 migration：`20260811006000_add_semantic_study_scene_matching.sql`。本次复核功能需先应用 `20260920000000_review_custom_study_scene_matches.sql`，再部署新增的 `review-study-scene` 和更新的 `generate-memory-v2`，并更新客户端以续跑未完成的复核。`create-study-scene`、匿名恢复和旧收藏学习接口保持兼容。
+- 首次向量功能 migration：`20260811006000_add_semantic_study_scene_matching.sql`。历史复核 migration `20260920000000_review_custom_study_scene_matches.sql` 不修改，后续暂停迁移覆盖其行为。`create-study-scene`、匿名恢复和旧收藏学习接口保持兼容。
 
 ## 学习日与设备时区
 
@@ -587,6 +587,10 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 生成偏好的难度为启蒙（Starter）、初级、中级、高级。启蒙的存储值为 `启蒙`，原有三档 raw value 和默认初级不变。启蒙优先使用 3–6 个词的完整短句、具体常用词，图片描述和生活表达两组都遵循此规则；MiMo/Kimi 共用生成提示词。启蒙不允许抒情优雅：客户端禁用并置灰该风格，切换难度、启动恢复和远端偏好读取时自动归一为平铺直叙；后端提示词也忽略启蒙请求中的抒情风格。
 
 部署时先应用 `20260921001000_add_starter_english_level.sql`，再更新 `generate-memory-v2` 和客户端。`recover-guest-generation` 只恢复已经生成的结果，不调用生成模型，本次无需修改。新增 `starter-english-level.test.ts` 覆盖两种响应格式的提示词、旧档位和数据库约束，`GenerationPreferenceTests` 覆盖客户端档位、风格约束、存储与分段控件禁用状态。
+
+## 学习主题数量上限
+
+学习主题数量上限为每账号 20 个，推荐分类创建的主题和自定义语义主题共用额度；收藏不计入。客户端在打开创建窗口及提交时检查缓存，后端在生成向量前预检查，`20260921003000_limit_study_scenes_to_twenty.sql` 的数据库触发器通过账号级事务锁保护最终写入（覆盖两条创建 RPC、直接插入和账号归属变更）。同名 upsert 不新增名额，删除后可继续创建，已有超过 20 个的账号不删旧主题、仅限制新增。错误码 `study_scene_limit_reached` 映射为中英文提示。部署需运行该迁移并更新 `create-study-scene`。
 
 ## 24. 当前高价值待办
 

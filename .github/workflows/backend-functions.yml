@@ -9,6 +9,8 @@ on:
       - "scripts/deploy-edge-functions.sh"
       - "scripts/tests/study-scene-review-ai.test.ts"
       - "scripts/tests/life-scene-catalog.test.ts"
+      - "scripts/tests/study-scene-intent.test.ts"
+      - "scripts/tests/study-scene-limit.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -22,6 +24,8 @@ on:
       - "scripts/deploy-edge-functions.sh"
       - "scripts/tests/study-scene-review-ai.test.ts"
       - "scripts/tests/life-scene-catalog.test.ts"
+      - "scripts/tests/study-scene-intent.test.ts"
+      - "scripts/tests/study-scene-limit.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -75,6 +79,9 @@ jobs:
 
       - name: Test life scene classification contracts
         run: deno test --no-lock --allow-read scripts/tests/life-scene-catalog.test.ts
+
+      - name: Test topic intent and creation limits
+        run: deno test --no-lock --allow-read scripts/tests/study-scene-intent.test.ts scripts/tests/study-scene-limit.test.ts
 
   deploy:
     name: Deploy Edge Functions

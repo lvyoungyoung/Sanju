@@ -165,9 +165,22 @@ struct StudyTopicExpressionSourceSentence: Encodable {
 }
 
 
+enum StudySceneCreationPolicy {
+    static let maximumCount = 20
+
+    static func canCreate(currentCount: Int) -> Bool {
+        currentCount < maximumCount
+    }
+
+    static var limitMessage: String {
+        L10n.string("study.scene.limit_reached", "最多可以创建%d个学习主题", maximumCount)
+    }
+}
+
 enum SentenceStudyTopicLoadingError: LocalizedError {
     case networkUnavailable
     case signInRequired
+    case limitReached
 
     var errorDescription: String? {
         switch self {
@@ -175,6 +188,8 @@ enum SentenceStudyTopicLoadingError: LocalizedError {
             return L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
         case .signInRequired:
             return L10n.string("study.error.sign_in_required", "登录后即可创建自己的学习主题。")
+        case .limitReached:
+            return StudySceneCreationPolicy.limitMessage
         }
     }
 }

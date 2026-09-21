@@ -297,7 +297,7 @@
 "study.topic.favorites" = "Favorites";
 "study.topic.favorites_count" = "Favorites (%d)";
 "study.topic.view_all" = "View All";
-"study.topic.section_title" = "Learn by Topic";
+"study.topic.section_title" = "My Study Topics";
 "study.topic.create_short" = "+ Create";
 "study.topic.mastery" = "%d%% Mastery";
 "study.topic.page_subtitle" = "Practice by topic, so describing what you see feels more natural.";
@@ -307,6 +307,7 @@
 "study.topic.map.subtitle" = "%d topics, lighting up one by one";
 "study.topic.map.mastery" = "%d%% Mastery";
 "study.scene.create" = "Create My Study Topic";
+"study.scene.limit_reached" = "You can create up to %d study topics.";
 "study.scene.create_failed" = "Unable to create this study topic right now. Please try again later.";
 "study.scene.create_hint" = "For example: beach trips, meeting friends, rainy-day commutes";
 "study.scene.create_title" = "Create My Study Topic";
@@ -358,6 +359,7 @@
 "study.scene.detail.empty_subtitle" = "Related sentences from future memories will appear here automatically.";
 "study.scene.detail.empty_title" = "No matching sentences yet";
 "study.scene.detail.loading_subtitle" = "Just a moment while we organize related expressions.";
+"study.scene.detail.loading_slow_subtitle" = "Finding sentences for this topic for the first time may take a little longer. Please wait.";
 "study.scene.detail.loading_title" = "Finding sentences for this topic";
 "study.scene.detail.sentence_count" = "%d sentences";
 "study.scene.detail.start" = "Start Studying";
