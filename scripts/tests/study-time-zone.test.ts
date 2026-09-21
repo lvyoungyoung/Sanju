@@ -73,6 +73,11 @@ Deno.test("study RPCs use request-local calendar days without changing old contr
       "revoke all on function get_study_scene_summary_for_owner(uuid,uuid) from public, anon, authenticated; grant execute on function get_study_scene_summary_for_owner(uuid,uuid) to service_role",
     );
     await db.exec(migration);
+    const coverMigration = await read(
+      "supabase/migrations/20260921004000_use_oldest_study_scene_cover.sql",
+    );
+    await db.exec(coverMigration);
+    await db.exec(coverMigration);
 
     async function zone(value: string | null) {
       await db.query("select set_config('request.headers', $1, false)", [
@@ -365,6 +370,85 @@ Deno.test("study RPCs use request-local calendar days without changing old contr
         strictEqual(saved.correct_count, 1);
         strictEqual(saved.day, "2026-09-20");
         strictEqual(saved.local_midnight, true);
+      },
+    );
+
+    await t.step(
+      "topic covers keep the oldest memory and fall back deterministically",
+      async () => {
+        await reset();
+        await db.query(
+          "update memories set created_at = '2026-01-01T00:00:00Z' where id = $1",
+          [memory],
+        );
+        const newerMemory = "20000000-0000-0000-0000-000000000002";
+        const tiedMemory = "20000000-0000-0000-0000-000000000000";
+        const newerSentence = "40000000-0000-0000-0000-000000000005";
+        const tiedSentence = "40000000-0000-0000-0000-000000000006";
+
+        async function assertCover(expected: string | null, count: number) {
+          const list = (await db.query<any>(
+            "select * from get_study_scenes() where id = $1",
+            [scene],
+          )).rows[0];
+          const summary = (await db.query<any>(
+            "select * from get_study_scene_summary_for_owner($1,$2)",
+            [owner, scene],
+          )).rows[0];
+          deepStrictEqual(list, summary);
+          strictEqual(list.cover_memory_id, expected);
+          strictEqual(list.total_count, count);
+        }
+
+        await assertCover(memory, 4);
+        for (
+          const [memoryID, sentenceID, date] of [
+            [newerMemory, newerSentence, "2026-02-01T00:00:00Z"],
+            [tiedMemory, tiedSentence, "2026-01-01T00:00:00Z"],
+          ]
+        ) {
+          await db.query(
+            "insert into memories(id,user_id,created_at) values ($1,$2,$3)",
+            [memoryID, owner, date],
+          );
+          await db.query(
+            "insert into memory_sentences(id,memory_id,sort_order) values ($1,$2,99)",
+            [sentenceID, memoryID],
+          );
+          await db.query(
+            "insert into study_scene_sentences(scene_id,sentence_id,match_score) values ($1,$2,100)",
+            [scene, sentenceID],
+          );
+          await assertCover(
+            memoryID === newerMemory ? memory : tiedMemory,
+            memoryID === newerMemory ? 5 : 6,
+          );
+        }
+
+        // Deleting the selected cover's sentence removes its link; the next oldest wins.
+        await db.query("delete from memory_sentences where id = $1", [
+          tiedSentence,
+        ]);
+        await db.query("delete from memories where id = $1", [tiedMemory]);
+        await assertCover(memory, 5);
+
+        // Losing one matching sentence keeps the same cover while others still match.
+        await db.query(
+          "delete from study_scene_sentences where scene_id = $1 and sentence_id = $2",
+          [scene, ids[0]],
+        );
+        await assertCover(memory, 4);
+        await db.query(
+          "delete from study_scene_sentences where scene_id = $1 and sentence_id in (select id from memory_sentences where memory_id = $2)",
+          [scene, memory],
+        );
+        await assertCover(newerMemory, 1);
+
+        await db.query("delete from memory_sentences where id = $1", [
+          newerSentence,
+        ]);
+        await db.query("delete from memories where id = $1", [newerMemory]);
+        await assertCover(null, 0);
       },
     );
 

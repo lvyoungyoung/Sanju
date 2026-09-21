@@ -31,6 +31,8 @@ struct StudyView: View {
                     LazyVStack(spacing: AppSpacing.xLarge) {
                         if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
                             topicListLoadingState
+                        } else if appModel.userStudySceneSummaries.isEmpty {
+                            topicListEmptyState
                         } else {
                             ForEach(appModel.userStudySceneSummaries) { scene in
                                 userStudySceneCard(scene)
@@ -188,20 +190,37 @@ struct StudyView: View {
     }
 
     private var topicListLoadingState: some View {
-        VStack(spacing: AppSpacing.small) {
-            ProgressView()
-                .tint(Color.orange)
+        ProgressView()
+            .progressViewStyle(.circular)
+            .controlSize(.regular)
+            .tint(Color.orange)
+            .frame(maxWidth: .infinity)
+            .frame(height: 80)
+            .accessibilityLabel(L10n.string("study.topic.loading", "正在加载学习主题..."))
+    }
 
-            Text(L10n.string("study.topic.loading", "正在加载学习主题..."))
-                .font(.system(size: AppFontSize.metadata, weight: .medium))
+    private var topicListEmptyState: some View {
+        VStack(spacing: AppSpacing.xLarge) {
+            Image(systemName: "text.book.closed")
+                .font(.system(size: 56, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(AppTextColor.tertiary)
+                .frame(height: 88)
+                .accessibilityHidden(true)
+
+            Text(L10n.string("study.topic.empty.create_message", "创建一个学习主题，集中练习相关句子。\n比如「和朋友聚餐」或「海边度假」。"))
+                .font(.subheadline)
                 .foregroundStyle(AppTextColor.secondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 320)
+
+            createSceneButton
+                .frame(maxWidth: 280)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 100)
-        .background(
-            AppSurfaceColor.card,
-            in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-        )
+        .padding(.vertical, AppSpacing.xxxLarge)
     }
 
     private var createSceneButton: some View {
