@@ -275,6 +275,7 @@ struct StudyView: View {
 
     private func userStudySceneCard(_ scene: UserStudySceneSummary) -> some View {
         let tint = sceneTint(for: scene)
+        let coverRequest = scene.coverMemoryID.flatMap { appModel.pendingMemoryImageRequest(memoryID: $0) }
 
         return NavigationLink(value: StudySceneDetailRoute.userScene(scene)) {
             sceneListCardContent(scene: scene, tint: tint)
@@ -291,6 +292,10 @@ struct StudyView: View {
             }
         }
         .disabled(isDeletingScene)
+        .task(id: coverRequest) {
+            guard let coverRequest else { return }
+            await appModel.ensureMemoryImageLoaded(memoryID: coverRequest.memoryID)
+        }
     }
 
     private func sceneListCardContent(

@@ -332,35 +332,31 @@ extension AppModel {
         draftGeneratedMemoryID = nil
     }
 
+    func pendingMemoryImageRequest(memoryID: UUID) -> MemoryImageLoadRequest? {
+        guard isNetworkAvailable else { return nil }
+        return MemoryImageLoadRequest(
+            memory: memories.first(where: { $0.id == memoryID }),
+            session: supabaseSession
+        )
+    }
+
     func ensureMemoryImageLoaded(memoryID: UUID) async {
-        guard let memoryIndex = memories.firstIndex(where: { $0.id == memoryID }) else {
-            return
-        }
-
-        let memory = memories[memoryIndex]
-        guard memory.imageData.isEmpty, let remoteImagePath = memory.remoteImagePath else {
-            return
-        }
-
-        guard !memoryImageLoadTaskIDs.contains(memoryID) else {
-            return
-        }
-        memoryImageLoadTaskIDs.insert(memoryID)
-        defer {
-            memoryImageLoadTaskIDs.remove(memoryID)
-        }
-
-        guard let session = try? await ensureValidSession() else {
+        guard !Task.isCancelled,
+              let request = pendingMemoryImageRequest(memoryID: memoryID),
+              let session = try? await ensureValidSession(),
+              isSessionStillCurrent(session),
+              request == pendingMemoryImageRequest(memoryID: memoryID) else {
             return
         }
 
         do {
-            let downloadedImageData = try await supabaseService.downloadMemoryImage(
-                session: session,
-                path: remoteImagePath
-            )
+            let downloadedImageData = try await memoryImageLoader.load(request: request) { [supabaseService] in
+                try await supabaseService.downloadMemoryImage(session: session, path: request.remoteImagePath)
+            }
 
-            guard let refreshedIndex = memories.firstIndex(where: { $0.id == memoryID }) else {
+            guard !downloadedImageData.isEmpty,
+                  let refreshedIndex = memories.firstIndex(where: { $0.id == memoryID }),
+                  request == MemoryImageLoadRequest(memory: memories[refreshedIndex], session: supabaseSession) else {
                 return
             }
 
@@ -368,7 +364,7 @@ extension AppModel {
                 id: memories[refreshedIndex].id,
                 createdAt: memories[refreshedIndex].createdAt,
                 imageData: downloadedImageData,
-                remoteImagePath: remoteImagePath,
+                remoteImagePath: request.remoteImagePath,
                 syncedToAccount: memories[refreshedIndex].syncedToAccount,
                 tags: memories[refreshedIndex].tags,
                 sentences: memories[refreshedIndex].sentences
@@ -760,19 +756,28 @@ extension AppModel {
 
         for index in hydratedMemories.indices {
             guard index < cappedVisibleCount else { break }
+            guard !Task.isCancelled, isSessionStillCurrent(session) else { return memories }
             guard shouldHydrateRemoteImage(hydratedMemories[index]) else { continue }
-            guard let remoteImagePath = hydratedMemories[index].remoteImagePath else { continue }
+            guard let request = MemoryImageLoadRequest(memory: hydratedMemories[index], session: session) else { continue }
+
+            // A visible cover may have already loaded this image while the batch was waiting.
+            if let currentMemory = memories.first(where: { $0.id == request.memoryID }),
+               currentMemory.remoteImagePath == request.remoteImagePath,
+               !currentMemory.imageData.isEmpty {
+                hydratedMemories[index] = currentMemory
+                continue
+            }
 
             do {
-                let downloadedImageData = try await supabaseService.downloadMemoryImage(
-                    session: session,
-                    path: remoteImagePath
-                )
+                let downloadedImageData = try await memoryImageLoader.load(request: request) { [supabaseService] in
+                    try await supabaseService.downloadMemoryImage(session: session, path: request.remoteImagePath)
+                }
+                guard !downloadedImageData.isEmpty else { continue }
                 hydratedMemories[index] = MemoryEntry(
                     id: hydratedMemories[index].id,
                     createdAt: hydratedMemories[index].createdAt,
                     imageData: downloadedImageData,
-                    remoteImagePath: remoteImagePath,
+                    remoteImagePath: request.remoteImagePath,
                     syncedToAccount: hydratedMemories[index].syncedToAccount,
                     tags: hydratedMemories[index].tags,
                     sentences: hydratedMemories[index].sentences
