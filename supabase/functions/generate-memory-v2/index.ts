@@ -37,43 +37,53 @@ const MEMORY_TAGS = [
 ] as const
 
 const LEARNING_TOPICS = [
-  ["people_and_relationships", "人物与关系"],
-  ["clothes_and_appearance", "衣着与形象"],
-  ["house_and_home", "家与居住"],
-  ["daily_routines", "日常事务"],
-  ["food_and_cooking", "餐饮与烹饪"],
-  ["shopping_and_consumption", "购物与消费"],
-  ["health_and_body", "健康与身体"],
-  ["hobbies_and_culture", "兴趣、娱乐与文化"],
-  ["sports_and_fitness", "运动与健身"],
-  ["social_occasions", "节日与社交场合"],
-  ["travel_and_transport", "出行与旅行"],
-  ["places_and_public_services", "城市地点与公共服务"],
-  ["education_and_learning", "学校与学习"],
-  ["work_and_career", "工作与职场"],
-  ["nature_weather_and_environment", "自然、天气与环境"],
-  ["digital_life_and_communication", "数码生活与沟通"],
+  ["self_and_style", "自己与穿搭"],
+  ["family_time", "家人相处"],
+  ["children_growing_up", "孩子成长"],
+  ["friends_gatherings", "朋友相聚"],
+  ["romance_and_companionship", "恋爱与陪伴"],
+  ["pet_life", "宠物日常"],
+  ["food_and_drinks", "吃喝"],
+  ["cooking", "下厨"],
+  ["home_life", "居家"],
+  ["city_life", "城市生活"],
+  ["natural_scenery", "自然风景"],
+  ["plants_and_wildlife", "花草与动物"],
+  ["travel", "旅行"],
+  ["transport", "交通出行"],
+  ["sports_and_outdoors", "运动与户外"],
+  ["festivals_and_celebrations", "节日与庆祝"],
+  ["arts_and_entertainment", "文化娱乐"],
+  ["school_and_study", "学校与学习"],
+  ["work_life", "工作"],
+  ["shopping", "购物"],
+  ["health_and_wellness", "身体与健康"],
 ] as const
 
 const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
 const LEARNING_TOPIC_PROMPT = LEARNING_TOPICS.map(([id, title]) => `${id}（${title}）`).join("、")
 const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
-  "people_and_relationships：人物肖像、家人朋友、人与人的关系或互动；如果重点是聚会或庆祝，选 social_occasions",
-  "clothes_and_appearance：穿搭、外貌、配饰或个人形象",
-  "house_and_home：房间、家具、居住空间或在家生活",
-  "daily_routines：作息、家务、生活习惯、办事等日常事务",
-  "food_and_cooking：食物、饮料、做饭、用餐、餐厅或咖啡馆",
-  "shopping_and_consumption：购物、商品、价格、消费或店内购买行为",
-  "health_and_body：身体、休息、医疗、健康状态或照顾自己",
-  "hobbies_and_culture：阅读、音乐、电影、展览、游戏、手作等兴趣娱乐文化活动",
-  "sports_and_fitness：运动、比赛、锻炼、健身或户外运动",
-  "social_occasions：生日、婚礼、派对、节日、聚会或集体活动",
-  "travel_and_transport：通勤、交通工具、旅途、景点、酒店或旅行安排",
-  "places_and_public_services：街道、城市建筑、公园、公共场所或公共服务地点",
-  "education_and_learning：学校、课堂、作业、考试或学习过程",
-  "work_and_career：办公室、会议、工作任务或职业场景",
-  "nature_weather_and_environment：风景、天气、季节、动物、植物或环境",
-  "digital_life_and_communication：手机、App、网页、线上消息、拍照或社交媒体",
+  "self_and_style：自拍、个人形象、衣着、发型或配饰；只是出现人物不等于这个场景",
+  "family_time：家人相伴、家庭合影、陪伴父母；重点是孩子成长选 children_growing_up",
+  "children_growing_up：孩子玩耍、成长里程碑、亲子活动；学校课程本身选 school_and_study",
+  "friends_gatherings：朋友见面、相伴、普通聚餐或一起活动；明确庆生过节选 festivals_and_celebrations",
+  "romance_and_companionship：约会、情侣相处、恋爱或亲密陪伴；不要仅凭照片中有两个人臆造情侣关系",
+  "pet_life：宠物睡觉、玩耍、喂养或遛宠物；野生或动物园动物选 plants_and_wildlife",
+  "food_and_drinks：菜品、饮料、咖啡、甜品的外观、味道、口感或吃喝体验；制作过程选 cooking",
+  "cooking：备菜、烹调、烘焙及制作过程；只描述成品味道选 food_and_drinks",
+  "home_life：房间、家具、家居布置、搬家、家务或居家日常；强调家人互动选 family_time",
+  "city_life：街道、建筑、商店外观或城市夜景；购买行为选 shopping",
+  "natural_scenery：山川、湖海、日落、天气、季节、雪景等自然环境；具体花草动物选 plants_and_wildlife",
+  "plants_and_wildlife：鲜花、树木、鸟、野生动物或动物园；宠物相处选 pet_life",
+  "travel：旅行经历、景点游览、酒店住宿、当地见闻；交通过程选 transport，不因旅游照片就把所有句子归旅行",
+  "transport：机场、车站、乘车、通勤、自驾或旅途中的交通过程",
+  "sports_and_outdoors：健身、跑步、骑行、徒步、露营或其他户外活动；单纯描写山景选 natural_scenery",
+  "festivals_and_celebrations：生日、婚礼、过节、纪念日庆祝或毕业庆典；普通朋友见面选 friends_gatherings",
+  "arts_and_entertainment：演出、展览、电影、游乐园、阅读、音乐、游戏或其他文化娱乐活动",
+  "school_and_study：课堂、校园、书本、课程、作业或学习过程；毕业庆祝选 festivals_and_celebrations",
+  "work_life：工位、同事、会议、任务或工作成果；只描述室内布置不能据此臆造工作场景",
+  "shopping：买东西、挑选商品、试穿、价格、购买体验或新购物品；单纯描述穿着选 self_and_style",
+  "health_and_wellness：身体状况、医院、体检、康复、休息或健康照护；锻炼动作选 sports_and_outdoors",
 ].join("；")
 
 function buildPromptText(
@@ -118,12 +128,12 @@ ${languageStylePrompt}
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
 4. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段
 5. 每句中文控制在 8 到 30 个汉字之间
-6. learning_topic_ids 必须是恰好包含 1 个字符串的数组，只能从以下稳定主题 ID 中选择：${LEARNING_TOPIC_PROMPT}。为每句选择最匹配的一个主学习主题；不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类。分类边界：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。对于 scene_and_feelings 中只表达感受的句子，也按照片对应的生活场景分类，不要凭情绪单独分类
+6. learning_topic_ids 是句子的分类，不是照片的分类。每句选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个必须是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。例如同一张生日聚餐照，单纯描述蛋糕味道的句子只选 food_and_drinks，表达庆生的句子选 festivals_and_celebrations；“We went camping with our family.” 可选 ["sports_and_outdoors","family_time"]，但没有提到家人的露营句子不要添加 family_time。对于 scene_and_feelings，也以该句实际表达的活动或关系为准；照片只能辅助消除歧义，不能用照片中未在句子表达的细节强行归类。没有合适场景的句子（如仅记录票据、证件、备忘截图或无场景指向的感叹）返回空数组 []；不要新增“实用记录”分类。每句最多 2 个分类
 7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 8. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["people_and_relationships"]},{"english":"...","chinese":"...","learning_topic_ids":["nature_weather_and_environment"]},{"english":"...","chinese":"...","learning_topic_ids":["house_and_home"]}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["social_occasions"]},{"english":"...","chinese":"...","learning_topic_ids":["people_and_relationships"]},{"english":"...","chinese":"...","learning_topic_ids":["social_occasions"]}],"tags":["人物","生活场景"]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["self_and_style"]},{"english":"...","chinese":"...","learning_topic_ids":["natural_scenery"]},{"english":"...","chinese":"...","learning_topic_ids":["home_life"]}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["festivals_and_celebrations"]},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"]},{"english":"...","chinese":"...","learning_topic_ids":[]}],"tags":["人物","生活场景"]}
 `.trim()
   }
 
@@ -149,12 +159,12 @@ ${languageStylePrompt}
 12. 不要输出任何多余字段
 13. 不要转义整个 JSON 对象
 14. 不要在 JSON 前后添加任何字符
-15. learning_topic_ids 必须恰好包含 1 个主题 ID，只能从以下列表中选择：${LEARNING_TOPIC_PROMPT}。按句子内容选择最匹配的一个主分类，不要自创 ID。分类边界：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。
+15. learning_topic_ids 按每个句子实际表达的重点选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。分类对象是句子，不是照片；同一张照片可以生成不同分类的句子。例如生日聚餐照中，单纯描述蛋糕味道只选 food_and_drinks，表达庆生选 festivals_and_celebrations；“A family is camping by the lake.” 可选 ["sports_and_outdoors","family_time"]，但不要仅因背景里有湖就再加 natural_scenery。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。无合适场景的句子（如仅记录票据、证件、备忘截图）返回 []，不要强行分类，不要自创“实用记录”等 ID。每句最多 2 个分类。
 16. 每句中文控制在 8 到 30 个汉字之间
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["nature_weather_and_environment"]},{"english":"...","chinese":"...","learning_topic_ids":["daily_routines"]},{"english":"...","chinese":"...","learning_topic_ids":["nature_weather_and_environment"]}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"]},{"english":"...","chinese":"...","learning_topic_ids":["home_life"]},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"]}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -402,7 +412,7 @@ function normalizeSentenceArray(
     }))
     .filter(
       (item: Sentence) =>
-        item.english && item.chinese && item.learning_topic_ids.length > 0
+        item.english && item.chinese
     )
 }
 
@@ -417,7 +427,7 @@ function normalizeLearningTopicIDs(value: unknown): string[] {
         .map((item) => String(item ?? "").trim())
         .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
     )
-  ).slice(0, 1)
+  ).slice(0, 2)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {

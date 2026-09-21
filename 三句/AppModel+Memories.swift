@@ -1965,7 +1965,7 @@ extension AppModel {
             nextReviewDay: today
         )
 
-        if let lastStudiedDay = progress.lastStudiedDay,
+        if let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay,
            isSameLocalStudyDay(lastStudiedDay, today) {
             return makeSentenceStudyProgress(from: progress)
         }
@@ -2032,7 +2032,7 @@ extension AppModel {
                     }
                     .compactMap { sentence -> LocalSentenceStudyCandidate? in
                         guard let progress = localProgress(for: sentence.id, topic: topic ?? .favorites),
-                              let lastStudiedDay = progress.lastStudiedDay,
+                              let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay,
                               isSameLocalStudyDay(lastStudiedDay, studyDay) else {
                             return nil
                         }
@@ -2086,11 +2086,11 @@ extension AppModel {
 
     private func localSentenceStudyPriority(progress: LocalSentenceStudyProgress?, today: Date) -> Int {
         guard let progress else { return 2 }
-        if let lastStudiedDay = progress.lastStudiedDay,
+        if let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay,
            isSameLocalStudyDay(lastStudiedDay, today) {
             return 99
         }
-        guard progress.nextReviewDay <= today else { return 99 }
+        guard localStudyDay(for: progress.nextReviewDay) <= today else { return 99 }
         return progress.learningStep < 5 ? 1 : 3
     }
 
@@ -2170,17 +2170,17 @@ extension AppModel {
 
     private func localStudiedTodayCount(today: Date) -> Int {
         localSentenceStudyProgress.values.filter { progress in
-            guard let lastStudiedDay = progress.lastStudiedDay else { return false }
+            guard let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay else { return false }
             return isSameLocalStudyDay(lastStudiedDay, today)
         }.count
     }
 
     private func localStudyDay(for date: Date = .now) -> Date {
-        Calendar.current.startOfDay(for: date)
+        StudyCalendar.calendar().startOfDay(for: date)
     }
 
     private func isSameLocalStudyDay(_ lhs: Date, _ rhs: Date) -> Bool {
-        Calendar.current.isDate(lhs, inSameDayAs: rhs)
+        StudyCalendar.calendar().isDate(lhs, inSameDayAs: rhs)
     }
 
     private func localNextReviewDay(after today: Date, learningStep: Int) -> Date {
@@ -2197,12 +2197,12 @@ extension AppModel {
         default:
             daysToAdd = 14
         }
-        return Calendar.current.date(byAdding: .day, value: daysToAdd, to: today) ?? today
+        return StudyCalendar.calendar().date(byAdding: .day, value: daysToAdd, to: today) ?? today
     }
 
     private func localMasteredNextReviewDay(after today: Date, masteredReviewCount: Int) -> Date {
         let daysToAdd = masteredReviewCount == 1 ? 30 : 60
-        return Calendar.current.date(byAdding: .day, value: daysToAdd, to: today) ?? today
+        return StudyCalendar.calendar().date(byAdding: .day, value: daysToAdd, to: today) ?? today
     }
 }
 

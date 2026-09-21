@@ -15,22 +15,27 @@ struct LearningTopic: Identifiable, Hashable {
     }
 
     static let all: [LearningTopic] = [
-        .init(id: "people_and_relationships", localizationKey: "learning_topic.people_and_relationships", fallbackTitle: "人物与关系"),
-        .init(id: "clothes_and_appearance", localizationKey: "learning_topic.clothes_and_appearance", fallbackTitle: "衣着与形象"),
-        .init(id: "house_and_home", localizationKey: "learning_topic.house_and_home", fallbackTitle: "家与居住"),
-        .init(id: "daily_routines", localizationKey: "learning_topic.daily_routines", fallbackTitle: "日常事务"),
-        .init(id: "food_and_cooking", localizationKey: "learning_topic.food_and_cooking", fallbackTitle: "餐饮与烹饪"),
-        .init(id: "shopping_and_consumption", localizationKey: "learning_topic.shopping_and_consumption", fallbackTitle: "购物与消费"),
-        .init(id: "health_and_body", localizationKey: "learning_topic.health_and_body", fallbackTitle: "健康与身体"),
-        .init(id: "hobbies_and_culture", localizationKey: "learning_topic.hobbies_and_culture", fallbackTitle: "兴趣、娱乐与文化"),
-        .init(id: "sports_and_fitness", localizationKey: "learning_topic.sports_and_fitness", fallbackTitle: "运动与健身"),
-        .init(id: "social_occasions", localizationKey: "learning_topic.social_occasions", fallbackTitle: "节日与社交场合"),
-        .init(id: "travel_and_transport", localizationKey: "learning_topic.travel_and_transport", fallbackTitle: "出行与旅行"),
-        .init(id: "places_and_public_services", localizationKey: "learning_topic.places_and_public_services", fallbackTitle: "城市地点与公共服务"),
-        .init(id: "education_and_learning", localizationKey: "learning_topic.education_and_learning", fallbackTitle: "学校与学习"),
-        .init(id: "work_and_career", localizationKey: "learning_topic.work_and_career", fallbackTitle: "工作与职业"),
-        .init(id: "nature_weather_and_environment", localizationKey: "learning_topic.nature_weather_and_environment", fallbackTitle: "自然、天气与环境"),
-        .init(id: "digital_life_and_communication", localizationKey: "learning_topic.digital_life_and_communication", fallbackTitle: "数码生活与沟通")
+        .init(id: "self_and_style", localizationKey: "learning_topic.self_and_style", fallbackTitle: "自己与穿搭"),
+        .init(id: "family_time", localizationKey: "learning_topic.family_time", fallbackTitle: "家人相处"),
+        .init(id: "children_growing_up", localizationKey: "learning_topic.children_growing_up", fallbackTitle: "孩子成长"),
+        .init(id: "friends_gatherings", localizationKey: "learning_topic.friends_gatherings", fallbackTitle: "朋友相聚"),
+        .init(id: "romance_and_companionship", localizationKey: "learning_topic.romance_and_companionship", fallbackTitle: "恋爱与陪伴"),
+        .init(id: "pet_life", localizationKey: "learning_topic.pet_life", fallbackTitle: "宠物日常"),
+        .init(id: "food_and_drinks", localizationKey: "learning_topic.food_and_drinks", fallbackTitle: "吃喝"),
+        .init(id: "cooking", localizationKey: "learning_topic.cooking", fallbackTitle: "下厨"),
+        .init(id: "home_life", localizationKey: "learning_topic.home_life", fallbackTitle: "居家"),
+        .init(id: "city_life", localizationKey: "learning_topic.city_life", fallbackTitle: "城市生活"),
+        .init(id: "natural_scenery", localizationKey: "learning_topic.natural_scenery", fallbackTitle: "自然风景"),
+        .init(id: "plants_and_wildlife", localizationKey: "learning_topic.plants_and_wildlife", fallbackTitle: "花草与动物"),
+        .init(id: "travel", localizationKey: "learning_topic.travel", fallbackTitle: "旅行"),
+        .init(id: "transport", localizationKey: "learning_topic.transport", fallbackTitle: "交通出行"),
+        .init(id: "sports_and_outdoors", localizationKey: "learning_topic.sports_and_outdoors", fallbackTitle: "运动与户外"),
+        .init(id: "festivals_and_celebrations", localizationKey: "learning_topic.festivals_and_celebrations", fallbackTitle: "节日与庆祝"),
+        .init(id: "arts_and_entertainment", localizationKey: "learning_topic.arts_and_entertainment", fallbackTitle: "文化娱乐"),
+        .init(id: "school_and_study", localizationKey: "learning_topic.school_and_study", fallbackTitle: "学校与学习"),
+        .init(id: "work_life", localizationKey: "learning_topic.work_life", fallbackTitle: "工作"),
+        .init(id: "shopping", localizationKey: "learning_topic.shopping", fallbackTitle: "购物"),
+        .init(id: "health_and_wellness", localizationKey: "learning_topic.health_and_wellness", fallbackTitle: "身体与健康")
     ]
 
     static func topic(for id: String?) -> LearningTopic? {

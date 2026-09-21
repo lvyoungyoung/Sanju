@@ -226,16 +226,6 @@ struct SupabaseService: SupabaseServicing {
         #endif
     }
 
-    private static func sentenceStudyDayString(from date: Date?) -> String? {
-        guard let date else { return nil }
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Shanghai") ?? .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
-    }
-
     func signInWithEmail(email: String, password: String) async throws -> SupabaseSession {
         var request = try makeRequest(
             path: "/auth/v1/token?grant_type=password",
@@ -1089,6 +1079,7 @@ struct SupabaseService: SupabaseServicing {
     ) async throws -> Set<SentenceStudyProgressKey> {
         guard !progressRecords.isEmpty else { return [] }
 
+        let timeZone = TimeZone.current
         let items = progressRecords.map { progress in
             SupabaseLocalSentenceStudyProgressMergeItem(
                 sentenceID: progress.sentenceID.uuidString.lowercased(),
@@ -1099,8 +1090,8 @@ struct SupabaseService: SupabaseServicing {
                 wrongCount: progress.wrongCount,
                 lastResult: progress.lastResult?.rawValue,
                 lastStudiedAt: progress.lastStudiedAt,
-                lastStudiedOn: Self.sentenceStudyDayString(from: progress.lastStudiedDay),
-                nextReviewOn: Self.sentenceStudyDayString(from: progress.nextReviewDay) ?? Self.sentenceStudyDayString(from: Date()) ?? ""
+                lastStudiedOn: StudyCalendar.dayString(from: progress.lastStudiedAt ?? progress.lastStudiedDay, timeZone: timeZone),
+                nextReviewOn: StudyCalendar.dayString(from: progress.nextReviewDay, timeZone: timeZone) ?? StudyCalendar.dayString(from: Date(), timeZone: timeZone) ?? ""
             )
         }
 
@@ -1108,6 +1099,7 @@ struct SupabaseService: SupabaseServicing {
             path: "/rest/v1/rpc/merge_local_sentence_study_progress",
             method: "POST",
             bearerToken: session.accessToken,
+            additionalHeaders: [StudyCalendar.timeZoneHeader: timeZone.identifier],
             body: SupabaseLocalSentenceStudyProgressMergeRequest(items: items)
         )
         let records: [SupabaseMergedSentenceStudyProgressRecord] = try await perform(request)
@@ -1196,6 +1188,9 @@ struct SupabaseService: SupabaseServicing {
         request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         request.setValue("no-cache", forHTTPHeaderField: "Pragma")
         request.setValue(publishableKey, forHTTPHeaderField: "apikey")
+        if path.hasPrefix("/rest/v1/rpc/") || path == "/functions/v1/create-study-scene" {
+            StudyCalendar.applyTimeZone(to: &request)
+        }
         additionalHeaders.forEach { key, value in
             request.setValue(value, forHTTPHeaderField: key)
         }

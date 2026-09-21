@@ -1,4 +1,4 @@
-import { deepStrictEqual, strictEqual } from "node:assert";
+import { deepStrictEqual, rejects, strictEqual } from "node:assert";
 import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 
 const migrationDirectory = new URL(
@@ -7,6 +7,9 @@ const migrationDirectory = new URL(
 );
 const migration = await readMigration(
   "20260920000000_review_custom_study_scene_matches.sql",
+);
+const lifeScenesMigration = await readMigration(
+  "20260920001000_use_photo_life_scenes.sql",
 );
 const originalMatching = await readMigration(
   "20260811006000_add_semantic_study_scene_matching.sql",
@@ -582,6 +585,209 @@ Deno.test("custom themes require cached AI approval", async (t) => {
           );
           strictEqual(result.rows[0].allowed, false);
         }
+      },
+    );
+    await t.step(
+      "life scene migration preserves content, favorites and custom learning",
+      async () => {
+        await reset();
+        const oldCategory = await scene({ topic: "food_and_cooking" });
+        const custom = await scene();
+        const item = await sentence(0.70, {
+          topic: "food_and_cooking",
+          favorite: true,
+        });
+        await refresh(custom);
+        await complete(await claim(custom), true);
+        for (
+          const scope of [
+            "favorites",
+            `scene:${custom}`,
+            `scene:${oldCategory}`,
+          ]
+        ) {
+          await db.query(
+            "insert into sentence_study_progress (user_id, sentence_id, study_scope, correct_count) values ($1, $2, $3, 5)",
+            [owner, item, scope],
+          );
+        }
+        await db.exec(lifeScenesMigration);
+        await expectLinks(custom, [item]);
+        strictEqual(
+          (await db.query(
+            "select id from study_scenes where learning_topic_id is not null",
+          )).rows.length,
+          0,
+        );
+        strictEqual((await db.query("select id from memories")).rows.length, 1);
+        const saved = (await db.query<any>(
+          "select learning_topic_ids, is_favorite from memory_sentences",
+        )).rows[0];
+        deepStrictEqual(saved.learning_topic_ids, []);
+        strictEqual(saved.is_favorite, true);
+        strictEqual(
+          (await db.query(
+            "select id from sentence_study_progress where correct_count = 5",
+          )).rows.length,
+          3,
+        );
+        strictEqual(
+          (await db.query(
+            "select sentence_id from study_scene_sentence_reviews where status = 'accepted'",
+          )).rows.length,
+          1,
+        );
+      },
+    );
+
+    await t.step(
+      "new scenes support exact matching and reject retired or excessive categories",
+      async () => {
+        await reset();
+        const item = await sentence(0.10, { topic: "food_and_drinks" });
+        const elsewhere = await sentence(0.99, {
+          topic: "food_and_drinks",
+          user: otherOwner,
+        });
+        const created = (await db.query<any>(
+          "select * from create_learning_topic_study_scene($1, $2, $3)",
+          [owner, "Food & Drinks", "food_and_drinks"],
+        )).rows[0];
+        await expectLinks(created.id, [item]);
+        strictEqual(created.total_count, 1);
+        const newItem = await sentence(0.10, { topic: "food_and_drinks" });
+        await expectLinks(created.id, [item, newItem]);
+        strictEqual((await links(created.id)).includes(elsewhere), false);
+        strictEqual((await claim(created.id)).length, 0);
+        await rejects(() =>
+          db.query(
+            "select * from create_learning_topic_study_scene($1, $2, $3)",
+            [owner, "Old category", "food_and_cooking"],
+          ), /Invalid learning topic/);
+        await rejects(() =>
+          db.query(
+            "update memory_sentences set learning_topic_ids = array['food_and_cooking'] where id = $1",
+            [item],
+          ), /memory_sentences_learning_topic_ids_check/);
+        await rejects(() =>
+          db.query(
+            "update memory_sentences set learning_topic_ids = array['food_and_drinks', 'cooking', 'family_time'] where id = $1",
+            [item],
+          ), /memory_sentences_learning_topic_ids_check/);
+        await rejects(() =>
+          db.query(
+            "update study_scenes set learning_topic_id = 'practical_records' where id = $1",
+            [created.id],
+          ), /study_scenes_learning_topic_id_check/);
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids_from_json($1::jsonb) as ids",
+            [JSON.stringify([
+              "food_and_cooking",
+              "cooking",
+              "cooking",
+              "food_and_drinks",
+              "family_time",
+            ])],
+          )).rows[0].ids,
+          ["cooking", "food_and_drinks"],
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids_from_json($1::jsonb) as ids",
+            ["[]"],
+          )).rows[0].ids,
+          [],
+        );
+      },
+    );
+
+    await t.step(
+      "a sentence joins both scenes without duplicate links or merged progress",
+      async () => {
+        await reset();
+        const family = await scene({ topic: "family_time", embedded: false });
+        const memoryID = crypto.randomUUID();
+        const item = crypto.randomUUID();
+        await db.query("insert into memories (id, user_id) values ($1, $2)", [
+          memoryID,
+          owner,
+        ]);
+        await db.query(
+          "insert into memory_sentences (id, memory_id, english, chinese, learning_topic_ids) values ($1, $2, 'We went camping with our family.', '我们一家人去露营。', public.learning_topic_ids_from_json($3::jsonb))",
+          [
+            item,
+            memoryID,
+            JSON.stringify(["sports_and_outdoors", "family_time"]),
+          ],
+        );
+        await expectLinks(family, [item]);
+        const outdoors = (await db.query<any>(
+          "select * from create_learning_topic_study_scene($1, $2, $3)",
+          [owner, "Sports & Outdoors", "sports_and_outdoors"],
+        )).rows[0];
+        await expectLinks(outdoors.id, [item]);
+        strictEqual(outdoors.total_count, 1);
+        for (const topic of [family, outdoors.id]) {
+          for (let index = 0; index < 2; index++) {
+            await db.query(
+              "select refresh_learning_topic_study_scene_matches_for_owner($1, $2)",
+              [topic, owner],
+            );
+          }
+          await expectLinks(topic, [item]);
+        }
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where id = $1",
+            [item],
+          )).rows[0].learning_topic_ids,
+          ["sports_and_outdoors", "family_time"],
+        );
+        for (const [topic, count] of [[family, 2], [outdoors.id, 5]] as const) {
+          await db.query(
+            "insert into sentence_study_progress (user_id, sentence_id, study_scope, correct_count) values ($1, $2, $3, $4)",
+            [owner, item, `scene:${topic}`, count],
+          );
+        }
+        const counts = (await db.query<any>(
+          "select correct_count from sentence_study_progress where sentence_id = $1 order by correct_count",
+          [item],
+        )).rows.map((row) => row.correct_count);
+        deepStrictEqual(counts, [2, 5]);
+        strictEqual(
+          (await db.query("select id from memory_sentences")).rows.length,
+          1,
+        );
+        strictEqual((await claim()).length, 0);
+      },
+    );
+
+    await t.step(
+      "different sentences in the same memory join different life scenes",
+      async () => {
+        await reset();
+        const food = await scene({ topic: "food_and_drinks", embedded: false });
+        const celebration = await scene({
+          topic: "festivals_and_celebrations",
+          embedded: false,
+        });
+        const cake = await sentence(0.10, { topic: "food_and_drinks" });
+        const memoryID = (await db.query<any>(
+          "select memory_id from memory_sentences where id = $1",
+          [cake],
+        )).rows[0].memory_id;
+        const birthday = crypto.randomUUID();
+        await db.query(
+          "insert into memory_sentences (id, memory_id, english, chinese, sort_order, learning_topic_ids) values ($1, $2, 'We celebrated her birthday.', '生日庆祝', 1, array['festivals_and_celebrations'])",
+          [birthday, memoryID],
+        );
+        await db.query(
+          "insert into memory_sentences (id, memory_id, sort_order) values ($1, $2, 2)",
+          [crypto.randomUUID(), memoryID],
+        );
+        await expectLinks(food, [cake]);
+        await expectLinks(celebration, [birthday]);
       },
     );
   } finally {

@@ -8,6 +8,9 @@ on:
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
       - "scripts/tests/study-scene-review-ai.test.ts"
+      - "scripts/tests/life-scene-catalog.test.ts"
+      - "三句/LearningTopics.swift"
+      - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
   push:
     branches:
@@ -18,6 +21,9 @@ on:
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
       - "scripts/tests/study-scene-review-ai.test.ts"
+      - "scripts/tests/life-scene-catalog.test.ts"
+      - "三句/LearningTopics.swift"
+      - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
   workflow_dispatch:
     inputs:
@@ -66,6 +72,9 @@ jobs:
 
       - name: Test AI review validation
         run: deno test --no-lock scripts/tests/study-scene-review-ai.test.ts
+
+      - name: Test life scene classification contracts
+        run: deno test --no-lock --allow-read scripts/tests/life-scene-catalog.test.ts
 
   deploy:
     name: Deploy Edge Functions

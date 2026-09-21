@@ -10,11 +10,27 @@ interface CreateStudySceneRequest {
 }
 
 const LEARNING_TOPIC_IDS = new Set([
-  "people_and_relationships", "clothes_and_appearance", "house_and_home", "daily_routines",
-  "food_and_cooking", "shopping_and_consumption", "health_and_body", "hobbies_and_culture",
-  "sports_and_fitness", "social_occasions", "travel_and_transport", "places_and_public_services",
-  "education_and_learning", "work_and_career", "nature_weather_and_environment",
-  "digital_life_and_communication",
+  "self_and_style",
+  "family_time",
+  "children_growing_up",
+  "friends_gatherings",
+  "romance_and_companionship",
+  "pet_life",
+  "food_and_drinks",
+  "cooking",
+  "home_life",
+  "city_life",
+  "natural_scenery",
+  "plants_and_wildlife",
+  "travel",
+  "transport",
+  "sports_and_outdoors",
+  "festivals_and_celebrations",
+  "arts_and_entertainment",
+  "school_and_study",
+  "work_life",
+  "shopping",
+  "health_and_wellness",
 ])
 
 Deno.serve(async (req) => {
@@ -52,7 +68,12 @@ Deno.serve(async (req) => {
     const userClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${accessToken}` } },
     })
-    const adminClient = createClient(supabaseUrl, serviceRoleKey)
+    // Preserve the device's local day when the RPC returns the new theme summary.
+    // PostgreSQL validates the identifier and handles missing/invalid values.
+    const studyTimeZone = req.headers.get("x-sanju-study-time-zone")
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      global: { headers: studyTimeZone ? { "x-sanju-study-time-zone": studyTimeZone } : {} },
+    })
     const {
       data: { user },
       error: userError,

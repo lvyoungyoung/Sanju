@@ -60,7 +60,8 @@ struct StudySceneDetailView: View {
         case .favorites:
             return appModel.sentenceStudyTopicSummaries[.favorites] ?? .empty
         case let .userScene(scene):
-            return refreshedSceneSummary ?? scene.summary
+            return appModel.userStudySceneSummaries.first(where: { $0.id == scene.id })?.summary
+                ?? refreshedSceneSummary ?? scene.summary
         }
     }
 

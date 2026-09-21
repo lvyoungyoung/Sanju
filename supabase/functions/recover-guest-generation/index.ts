@@ -6,11 +6,27 @@ interface RequestBody {
 }
 
 const LEARNING_TOPIC_IDS = new Set([
-  "people_and_relationships", "clothes_and_appearance", "house_and_home", "daily_routines",
-  "food_and_cooking", "shopping_and_consumption", "health_and_body", "hobbies_and_culture",
-  "sports_and_fitness", "social_occasions", "travel_and_transport", "places_and_public_services",
-  "education_and_learning", "work_and_career", "nature_weather_and_environment",
-  "digital_life_and_communication",
+  "self_and_style",
+  "family_time",
+  "children_growing_up",
+  "friends_gatherings",
+  "romance_and_companionship",
+  "pet_life",
+  "food_and_drinks",
+  "cooking",
+  "home_life",
+  "city_life",
+  "natural_scenery",
+  "plants_and_wildlife",
+  "travel",
+  "transport",
+  "sports_and_outdoors",
+  "festivals_and_celebrations",
+  "arts_and_entertainment",
+  "school_and_study",
+  "work_life",
+  "shopping",
+  "health_and_wellness",
 ])
 
 Deno.serve(async (req) => {
@@ -170,5 +186,5 @@ function normalizeLearningTopicIDs(value: unknown): string[] {
         .map((item) => String(item ?? "").trim())
         .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
     )
-  ).slice(0, 1)
+  ).slice(0, 2)
 }

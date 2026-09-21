@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var appModel = AppModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var signInSheetHeight: CGFloat = 380
+    @State private var studyDayContext = StudyCalendar.currentDayContext
 
     var body: some View {
         GeometryReader { proxy in
@@ -47,12 +48,23 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: LearningReminderNotificationRoute.didRequestOpenFavorites)) { _ in
                 openFavoritesIfNeededFromLearningReminder()
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                refreshStudyDayIfNeeded()
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 guard newPhase == .active else { return }
                 openFavoritesIfNeededFromLearningReminder()
+                refreshStudyDayIfNeeded()
                 appModel.syncOnForegroundIfNeeded()
             }
         }
+    }
+
+    private func refreshStudyDayIfNeeded() {
+        let context = StudyCalendar.currentDayContext
+        guard context != studyDayContext else { return }
+        studyDayContext = context
+        Task { await appModel.refreshSentenceStudyDueCount() }
     }
 
     private func openFavoritesIfNeededFromLearningReminder() {
