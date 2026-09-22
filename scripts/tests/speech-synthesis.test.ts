@@ -46,6 +46,16 @@ Deno.test("speech text is bounded without rewriting the sentence", () => {
   }
 });
 
+Deno.test("every voice uses a minimal read-once instruction separate from unchanged text", () => {
+  const text = "I'd love to sit here all afternoon.";
+  for (const voice of SPEECH_VOICES) {
+    deepStrictEqual(speechRequest(text, voice).messages, [
+      { role: "user", content: "Read the text naturally and exactly once. Do not add, repeat, or change any words." },
+      { role: "assistant", content: text },
+    ]);
+  }
+});
+
 Deno.test("voice defaults preserve old clients and unsupported voices are rejected", () => {
   strictEqual(validateSpeechVoice({ text: "Hello" }), "Mia");
   for (const voice of SPEECH_VOICES) {

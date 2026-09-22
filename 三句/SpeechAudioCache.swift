@@ -12,7 +12,7 @@ actor SpeechAudioCache {
     }
 
     nonisolated static func key(text: String, scope: String, voice: SpeechVoice = .mia) -> String {
-        let input = "mimo-v2.5-tts:\(voice.rawValue):pcm24k:prompt1|\(scope)|\(text)"
+        let input = "mimo-v2.5-tts:\(voice.rawValue):pcm24k:prompt2|\(scope)|\(text)"
         return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 

@@ -49,8 +49,19 @@ alerts as well if exposing the service broadly.
 Input is limited to 500 characters, output to 60 seconds of PCM. Disk cache is capped at
 64 MiB and expires after 30 days. It lives in the app's disposable Caches directory,
 outside cloud backup, with file protection. Cache keys hash environment, user ID, text,
-model, voice and prompt version. Bump `prompt1` in `SpeechAudioCache` when changing voice
+model, voice and prompt version. Bump `prompt2` in `SpeechAudioCache` when changing voice
 or delivery instructions so old recordings are not reused.
+
+### Simplified prompt (2026-09-23)
+
+The delivery instruction is now: "Read the text naturally and exactly once. Do not add,
+repeat, or change any words." The assistant message remains the original text. This
+removes detailed style directions; it does not guarantee that the model will never
+produce incorrect audio. No transcription or content verification is added.
+
+Redeploy only `synthesize-speech`, then run the updated client to bypass `prompt1`
+recordings using the `prompt2` cache key. No new migration, secrets or proxy changes
+are required. Older clients remain compatible but may still play their old local cache.
 
 ## Deploy to staging first
 

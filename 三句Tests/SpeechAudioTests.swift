@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 @testable import 三句
@@ -115,6 +116,21 @@ final class SpeechAudioTests: XCTestCase {
         XCTAssertNotEqual(key, SpeechAudioCache.key(text: "Hello", scope: "production|alice"))
         XCTAssertNotEqual(key, SpeechAudioCache.key(text: "Hello", scope: "staging|bob"))
         XCTAssertNotEqual(key, SpeechAudioCache.key(text: "Hello!", scope: "staging|alice"))
+    }
+
+    func testSimplifiedPromptDoesNotReusePreviousPromptAudio() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SpeechAudioCache(directory: directory)
+        for voice in SpeechVoice.allCases {
+            let oldInput = "mimo-v2.5-tts:\(voice.rawValue):pcm24k:prompt1|staging|alice|Hello"
+            let oldKey = SHA256.hash(data: Data(oldInput.utf8)).map { String(format: "%02x", $0) }.joined()
+            await cache.save(Data([0, 0, 1, 0]), key: oldKey)
+            let currentKey = SpeechAudioCache.key(text: "Hello", scope: "staging|alice", voice: voice)
+            XCTAssertNotEqual(currentKey, oldKey)
+            let loaded = await cache.load(currentKey)
+            XCTAssertNil(loaded)
+        }
     }
 
     func testCacheRoundTripAndRejectsOddLengthAudio() async throws {

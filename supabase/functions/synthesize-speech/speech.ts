@@ -11,7 +11,7 @@ export function speechRequest(text: string, voice: SpeechVoice = SPEECH_VOICE) {
     messages: [
       {
         role: "user",
-        content: "Read the supplied English text exactly as written, without additions or paraphrasing. Use natural conversational English with a warm, relaxed tone, clear pronunciation, and natural connected speech. Use a moderate pace suitable for English learners, not a slow word-by-word reading. Respect punctuation and sentence stress. Do not sing, add sound effects, or exaggerate emotion.",
+        content: "Read the text naturally and exactly once. Do not add, repeat, or change any words.",
       },
       { role: "assistant", content: text },
     ],
