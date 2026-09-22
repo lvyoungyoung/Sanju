@@ -11,7 +11,7 @@ struct SaveResultHUD: View {
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(
                     isSuccess
-                    ? Color(red: 0.98, green: 0.65, blue: 0.00)
+                    ? AppPalette.accent
                     : Color(red: 0.88, green: 0.37, blue: 0.24)
                 )
 
@@ -78,12 +78,7 @@ struct MemoryDetailSentencePanel: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Picker("", selection: $selectedGroup) {
-                ForEach(SentencePresentationGroup.allCases, id: \.self) { group in
-                    Text(group.localizedTabTitle).tag(group)
-                }
-            }
-            .pickerStyle(.segmented)
+            SentenceGroupPicker(selection: $selectedGroup)
             .onAppear {
                 if !memory.sentences.contains(where: { $0.presentationGroup == selectedGroup }) {
                     selectedGroup = memory.sentences.first?.presentationGroup ?? .whatISee
@@ -100,8 +95,9 @@ struct MemoryDetailSentencePanel: View {
             } else {
                 ForEach(displayedSentences) { sentence in
                     MemoryDetailSentenceRow(sentence: sentence)
-                        .padding(16)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                        .padding(20)
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                        .appCardBorder()
                 }
             }
         }
@@ -116,7 +112,8 @@ struct MemoryDetailSentenceRow: View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(sentence.english)
-                    .font(.system(size: 17))
+                    .font(AppTypography.sentence)
+                    .lineSpacing(4)
                     .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -127,18 +124,13 @@ struct MemoryDetailSentenceRow: View {
             }
 
             HStack(spacing: 10) {
-                sentenceActionButton(
-                    title: L10n.string("new.result.play", "播放"),
-                    icon: "play.fill"
-                ) {
-                    appModel.speech.speak(sentence.english)
-                }
+                SentencePlaybackButton(speech: appModel.speech, text: sentence.english)
 
                 sentenceActionButton(
                     title: L10n.string("new.result.favorite", "收藏"),
                     icon: sentence.isFavorite ? "star.fill" : "star",
                     iconColor: sentence.isFavorite
-                        ? Color(red: 0.98, green: 0.65, blue: 0.00)
+                        ? AppPalette.accent
                         : AppTextColor.secondary
                 ) {
                     appModel.toggleFavorite(sentenceID: sentence.id)
@@ -160,7 +152,7 @@ struct MemoryDetailSentenceRow: View {
                 .foregroundStyle(iconColor)
                 .padding(.horizontal, 11)
                 .frame(height: 36)
-                .background(AppSurfaceColor.elevated, in: Capsule())
+                .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: 12))
         }
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())

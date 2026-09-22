@@ -32,7 +32,7 @@ struct LearningReminderSetupCard: View {
             HStack(spacing: AppSpacing.medium) {
                 Toggle("", isOn: reminderEnabledBinding)
                     .labelsHidden()
-                    .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
+                    .tint(AppPalette.accentText)
                     .disabled(isSaving)
 
                 Spacer(minLength: 0)
@@ -40,7 +40,7 @@ struct LearningReminderSetupCard: View {
                 if isSaving {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
+                        .tint(AppPalette.accentText)
                 } else if isEnabled {
                     Button(action: onEditTime) {
                         Text(reminderTimeText)
@@ -51,7 +51,7 @@ struct LearningReminderSetupCard: View {
                             .padding(.vertical, 9)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(Color(red: 1.00, green: 0.92, blue: 0.82))
+                                    .fill(AppPalette.apricot)
                             )
                     }
                     .buttonStyle(.plain)
@@ -69,7 +69,7 @@ struct LearningReminderSetupCard: View {
         .padding(.vertical, AppSpacing.medium)
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                .fill(Color(.secondarySystemGroupedBackground))
+                .fill(AppSurfaceColor.card)
         )
     }
 

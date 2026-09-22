@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol SupabaseServicing {
+protocol SupabaseServicing: StudyOverviewFetching {
     var isConfigured: Bool { get }
 
     func signInWithEmail(email: String, password: String) async throws -> SupabaseSession
@@ -77,12 +77,7 @@ protocol SupabaseServicing {
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord]
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
-    func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
-    func fetchMasteredSentenceCount(session: SupabaseSession) async throws -> Int
-    func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int
-    func fetchSentenceStudyTodayCount(session: SupabaseSession) async throws -> Int
-    func fetchSentenceStudyReviewableTodayCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyQueue(
         session: SupabaseSession,
         limit: Int
@@ -91,9 +86,6 @@ protocol SupabaseServicing {
         session: SupabaseSession,
         limit: Int
     ) async throws -> [SentenceStudyQueueItem]
-    func fetchUserStudySceneSummaries(
-        session: SupabaseSession
-    ) async throws -> [UserStudySceneSummary]
     func reviewUserStudyScene(
         session: SupabaseSession,
         sceneID: UUID
@@ -127,10 +119,6 @@ protocol SupabaseServicing {
         topicKey: String,
         sourceSentences: [StudyTopicExpressionSourceSentence]?
     ) async throws -> [StudyTopicExpression]
-    func fetchSentenceStudyCounts(
-        session: SupabaseSession,
-        sentenceIDs: [UUID]
-    ) async throws -> [UUID: Int]
     func recordSentenceStudyResult(
         session: SupabaseSession,
         sentenceID: UUID,

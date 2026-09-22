@@ -11,6 +11,9 @@ struct LanguageStylePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> UISegmentedControl {
         let control = UISegmentedControl(items: LanguageStyle.allCases.map(\.displayTitle))
         control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.backgroundColor = UIColor(AppSurfaceColor.subtleFill)
+        control.selectedSegmentTintColor = UIColor(AppSurfaceColor.card)
+        control.setTitleTextAttributes([.foregroundColor: UIColor(AppPalette.accentText)], for: .selected)
         control.setTitleTextAttributes([.foregroundColor: UIColor.tertiaryLabel], for: .disabled)
         control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
         return control

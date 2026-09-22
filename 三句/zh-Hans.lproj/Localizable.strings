@@ -177,6 +177,7 @@
 "new.empty.select_photo" = "点击选择图片";
 "new.empty.title" = "选一张你愿意记住的画面，用它来学会一句英语。";
 "new.generate.action" = "用三句描述一下";
+"new.brand.name" = "三句";
 "new.generate.auto_save_hint" = "生成后自动保存到回忆";
 "new.generation.initial_status" = "正在识别图片内容...";
 "new.generation.step.checking" = "正在检查翻译...";
@@ -412,3 +413,4 @@
 "study.scene.review.pending" = "部分句子尚未完成筛选，请稍后重试。";
 "study.scene.review.retry" = "继续筛选";
 "study.scene.review.waiting" = "等待筛选";
+"speech.loading" = "正在准备朗读";

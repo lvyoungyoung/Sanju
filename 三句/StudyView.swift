@@ -28,7 +28,7 @@ struct StudyView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.medium) {
                     topicSectionHeader
 
-                    LazyVStack(spacing: AppSpacing.xLarge) {
+                    LazyVStack(spacing: AppSpacing.medium) {
                         if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
                             topicListLoadingState
                         } else if appModel.userStudySceneSummaries.isEmpty {
@@ -44,9 +44,9 @@ struct StudyView: View {
                 }
                 .padding(.top, AppSpacing.medium)
             }
-            .padding(.horizontal, AppSpacing.xLarge)
+            .padding(.horizontal, AppSpacing.section)
             .padding(.top, AppSpacing.xLarge)
-            .padding(.bottom, 120)
+            .padding(.bottom, AppSpacing.section)
         }
         .coordinateSpace(name: StudyPageScrollMetrics.coordinateSpaceName)
         .background(AppSurfaceColor.page)
@@ -57,11 +57,12 @@ struct StudyView: View {
             }
             pageTitleMinY = minY
         }
-        .task {
+        .task(id: appModel.isRestoringAuthenticatedSession ? nil : appModel.supabaseSession?.userID) {
+            guard !appModel.isRestoringAuthenticatedSession else { return }
             await refreshStudyOverview()
         }
         .refreshable {
-            await refreshStudyOverview()
+            await appModel.refreshSentenceStudyDueCount()
         }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
@@ -127,7 +128,7 @@ struct StudyView: View {
 
     private var pageHeader: some View {
         Text(L10n.string("study.topic.page_title", "学习"))
-            .font(.system(size: 34, weight: .bold))
+            .font(AppTypography.pageTitle)
             .foregroundStyle(AppTextColor.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(pageTitleOpacity)
@@ -170,7 +171,7 @@ struct StudyView: View {
                 NavigationLink(value: StudySceneDetailRoute.favorites) {
                     Text(L10n.string("study.topic.view_all", "查看全部"))
                         .font(.system(size: AppFontSize.body, weight: .medium))
-                        .foregroundStyle(Color.orange)
+                        .foregroundStyle(AppPalette.accentText)
                 }
                 .buttonStyle(.plain)
             }
@@ -193,7 +194,7 @@ struct StudyView: View {
         ProgressView()
             .progressViewStyle(.circular)
             .controlSize(.regular)
-            .tint(Color.orange)
+            .tint(AppPalette.accent)
             .frame(maxWidth: .infinity)
             .frame(height: 80)
             .accessibilityLabel(L10n.string("study.topic.loading", "正在加载学习主题..."))
@@ -230,7 +231,7 @@ struct StudyView: View {
                 systemImage: "plus"
             )
             .font(.system(size: AppFontSize.body, weight: .semibold))
-            .foregroundStyle(Color.orange)
+            .foregroundStyle(AppPalette.accentText)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(
@@ -239,7 +240,7 @@ struct StudyView: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .stroke(Color.orange.opacity(0.7), lineWidth: 1)
+                    .stroke(AppPalette.accent.opacity(0.7), lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -319,13 +320,11 @@ struct StudyView: View {
         tint: Color
     ) -> some View {
         HStack(spacing: AppSpacing.xLarge) {
-            sceneCover(image: coverImage, tint: tint)
-
             VStack(alignment: .leading, spacing: AppSpacing.small) {
                 Text(title)
-                    .font(.system(size: AppFontSize.bodyProminent, weight: .regular))
+                    .font(.system(.body, weight: .semibold))
                     .foregroundStyle(AppTextColor.primary)
-                    .lineLimit(1)
+                    .lineLimit(2)
 
                 Text(
                     L10n.string(
@@ -337,20 +336,18 @@ struct StudyView: View {
                 .font(.system(size: AppFontSize.metadata, weight: .medium))
                 .foregroundStyle(AppTextColor.secondary)
 
-                Spacer(minLength: 0)
-
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(AppStroke.soft)
+                            .fill(AppSurfaceColor.subtleFill)
 
                         Capsule()
-                            .fill(Color.orange)
+                            .fill(AppPalette.accent)
                             .frame(width: proxy.size.width * CGFloat(min(max(summary.masteryScore, 0), 100)) / 100)
                     }
                 }
                     .frame(width: 110, height: 8)
-                    .offset(y: -6)
+                    .padding(.top, 5)
                     .accessibilityLabel(
                         L10n.string(
                             "study.topic.mastery",
@@ -360,11 +357,15 @@ struct StudyView: View {
                     )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            sceneCover(image: coverImage, tint: tint)
         }
         .padding(AppSpacing.medium)
-        .frame(maxWidth: .infinity, minHeight: 100, maxHeight: 100, alignment: .leading)
+        .padding(.leading, AppSpacing.small)
+        .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .appCardBorder()
     }
 
     @ViewBuilder
@@ -382,88 +383,20 @@ struct StudyView: View {
                     .background(tint.opacity(0.14))
             }
         }
-        .frame(width: 120, height: 80)
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .frame(width: 112, height: 92)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .allowsHitTesting(false)
     }
 
     private func favoriteStudyOverview(summary: SentenceStudyTopicSummary) -> some View {
-        HStack(spacing: AppSpacing.large) {
-            HStack(spacing: AppSpacing.medium) {
-                StudyTopicOverviewMetric(
-                    value: summary.dueCount,
-                    label: L10n.string("study.metric.due_today", "今日待学")
-                )
-
-                Rectangle()
-                    .fill(AppStroke.subtle)
-                    .frame(width: 1, height: 34)
-
-                StudyTopicOverviewMetric(
-                    value: summary.reviewableTodayCount,
-                    label: L10n.string("study.metric.studied_today", "今日已学")
-                )
-            }
-            .padding(.leading, AppSpacing.xSmall)
-
-            Spacer(minLength: 0)
-
-            Button {
-                Task { await startFavoriteStudy() }
-            } label: {
-                HStack(spacing: AppSpacing.small) {
-                    if isStartingFavoriteStudy {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    }
-
-                    Text(favoriteStudyButtonTitle)
-                        .font(.system(size: AppFontSize.body, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, AppControlPadding.prominent)
-                .frame(height: AppControlHeight.regular)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: canStartFavoriteStudy ? [
-                                    Color(red: 0.98, green: 0.67, blue: 0.18),
-                                    Color(red: 0.91, green: 0.52, blue: 0.17)
-                                ] : [
-                                    Color(red: 0.86, green: 0.79, blue: 0.72),
-                                    Color(red: 0.82, green: 0.75, blue: 0.68)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!canStartFavoriteStudy || isStartingFavoriteStudy)
-        }
-        .padding(.horizontal, AppSpacing.xLarge)
-        .padding(.vertical, AppSpacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AppSurfaceColor.card,
-                            AppSurfaceColor.elevated
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+        StudyOverviewCard(
+            dueCount: summary.dueCount,
+            studiedCount: summary.reviewableTodayCount,
+            buttonTitle: favoriteStudyButtonTitle,
+            isPreparing: isStartingFavoriteStudy,
+            canStart: canStartFavoriteStudy,
+            onStart: { Task { await startFavoriteStudy() } }
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(AppStroke.highlight, lineWidth: 1)
-        }
-        .appCardShadow()
     }
 
     private var canStartFavoriteStudy: Bool {
@@ -521,7 +454,7 @@ struct StudyView: View {
     }
 
     private func refreshStudyOverview() async {
-        isLoadingStudyTopics = true
+        isLoadingStudyTopics = appModel.userStudySceneSummaries.isEmpty
         defer { isLoadingStudyTopics = false }
         await appModel.refreshSentenceStudyDueCount()
     }
@@ -661,7 +594,7 @@ private struct CreateStudySceneSheet: View {
                     HStack(spacing: AppSpacing.xSmall) {
                         Text(selectedTopic.title)
                             .font(.system(size: AppFontSize.body, weight: .medium))
-                            .foregroundStyle(Color.orange)
+                            .foregroundStyle(AppPalette.accentText)
 
                         Button {
                             selectedSuggestedTopicID = nil
@@ -669,7 +602,7 @@ private struct CreateStudySceneSheet: View {
                         } label: {
                             Image(systemName: "xmark")
                                 .font(.system(size: AppIconSize.compact, weight: .bold))
-                                .foregroundStyle(Color.orange.opacity(0.78))
+                                .foregroundStyle(AppPalette.accent.opacity(0.78))
                                 .frame(width: 28, height: 28)
                         }
                         .buttonStyle(.plain)
@@ -683,7 +616,7 @@ private struct CreateStudySceneSheet: View {
                     .padding(.leading, AppSpacing.medium)
                     .padding(.trailing, AppSpacing.xSmall)
                     .frame(height: 34)
-                    .background(Color.orange.opacity(0.14), in: Capsule())
+                    .background(AppPalette.accent.opacity(0.14), in: Capsule())
 
                     Spacer(minLength: 0)
                 } else {
@@ -705,7 +638,7 @@ private struct CreateStudySceneSheet: View {
             .overlay {
                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                     .stroke(
-                        selectedSuggestedTopicID != nil || isSceneNameFocused ? Color.orange.opacity(0.72) : AppStroke.soft,
+                        selectedSuggestedTopicID != nil || isSceneNameFocused ? AppPalette.accent.opacity(0.72) : AppStroke.soft,
                         lineWidth: selectedSuggestedTopicID != nil || isSceneNameFocused ? 1.5 : 1
                     )
             }
@@ -739,16 +672,16 @@ private struct CreateStudySceneSheet: View {
                             } label: {
                                 Text(topic.title)
                                     .font(.system(size: AppFontSize.metadata, weight: .medium))
-                                    .foregroundStyle(selectedSuggestedTopicID == topic.id ? Color.orange : AppTextColor.primary)
+                                    .foregroundStyle(selectedSuggestedTopicID == topic.id ? AppPalette.accent : AppTextColor.primary)
                                     .padding(.horizontal, AppSpacing.medium)
                                     .frame(height: 32)
                                     .background(
-                                        selectedSuggestedTopicID == topic.id ? Color.orange.opacity(0.14) : AppSurfaceColor.secondaryFill,
+                                        selectedSuggestedTopicID == topic.id ? AppPalette.accent.opacity(0.14) : AppSurfaceColor.secondaryFill,
                                         in: Capsule()
                                     )
                                     .overlay {
                                         Capsule()
-                                            .stroke(selectedSuggestedTopicID == topic.id ? Color.orange.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
+                                            .stroke(selectedSuggestedTopicID == topic.id ? AppPalette.accent.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
                                     }
                             }
                             .buttonStyle(.plain)
@@ -776,7 +709,7 @@ private struct CreateStudySceneSheet: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
                 .foregroundStyle(AppTextColor.inverse)
-                .background(sceneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppSurfaceColor.subtleFill : Color.orange, in: Capsule())
+                .background(sceneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppSurfaceColor.subtleFill : AppPalette.accent, in: Capsule())
             }
             .buttonStyle(.plain)
             .disabled(isCreating || sceneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// A stable identifier for sentence learning progress.
 /// `favorites` represents the user's saved sentences; custom scenes use a separate namespace.
-struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable {
+nonisolated struct SentenceStudyTopic: RawRepresentable, Codable, Hashable, Identifiable, Sendable {
     static let favorites = SentenceStudyTopic(uncheckedRawValue: "favorites")
 
     let rawValue: String

@@ -29,7 +29,7 @@ struct MemoryDetailView: View {
                             MemoryDetailSentencePanel(memory: memory)
                                 .padding(.bottom, 88)
                         }
-                        .padding(.horizontal, AppSpacing.xLarge)
+                        .padding(.horizontal, AppSpacing.section)
                         .padding(.top, 24)
                         .padding(.bottom, 24)
                     }
@@ -52,7 +52,7 @@ struct MemoryDetailView: View {
                             }
                         }
                     )
-                    .padding(.horizontal, AppSpacing.xLarge)
+                    .padding(.horizontal, AppSpacing.section)
                     .padding(.bottom, 26)
 
                     if let saveResultMessage {
@@ -61,7 +61,7 @@ struct MemoryDetailView: View {
                             .transition(.scale(scale: 0.96).combined(with: .opacity))
                     }
                 }
-                .background(Color(.systemGroupedBackground))
+                .background(AppSurfaceColor.page)
                 .toolbar(.hidden, for: .tabBar)
                 .navigationTitle(L10n.string("memory_detail.title", "详情"))
                 .navigationBarTitleDisplayMode(.inline)
@@ -205,6 +205,9 @@ private struct MemoryDetailImageView: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(displayAspectRatio, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
+        .padding(7)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: 32))
+        .appCardBorder(cornerRadius: 32)
     }
 }

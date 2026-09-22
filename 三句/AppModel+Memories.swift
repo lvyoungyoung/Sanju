@@ -1417,6 +1417,10 @@ extension AppModel {
     }
 
     func refreshSentenceStudyDueCount() async {
+        let refreshID = UUID()
+        studyOverviewRefreshID = refreshID
+        studySceneSummariesRefreshID = refreshID
+        guard !isRestoringAuthenticatedSession else { return }
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
@@ -1428,56 +1432,64 @@ extension AppModel {
             return
         }
 
+        let requestedUserID = supabaseSession?.userID
         do {
             let session = try await ensureValidSession()
-            guard !session.isAnonymous else {
-                sentenceStudyDueCount = 0
-                sentenceStudyTodayCount = 0
-                sentenceStudyReviewableTodayCount = 0
-                memorySentenceCount = 0
-                masteredSentenceCount = 0
-                sentenceStudyTopicSummaries = [:]
-                userStudySceneSummaries = []
-                isRepeatingSentenceStudyQueue = false
-                return
+            guard !session.isAnonymous, session.userID == requestedUserID,
+                  isSessionStillCurrent(session) else { return }
+            let favoriteSentenceIDs = currentFavoriteSentenceIDs()
+            let snapshot = try await StudyOverviewSnapshot.load(
+                from: supabaseService,
+                session: session,
+                favoriteSentenceIDs: favoriteSentenceIDs
+            )
+            guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
+                  studyOverviewRefreshID == refreshID else { return }
+
+            if let count = snapshot.dueCount { sentenceStudyDueCount = count }
+            if let count = snapshot.todayCount { sentenceStudyTodayCount = count }
+            if let count = snapshot.reviewableTodayCount { sentenceStudyReviewableTodayCount = count }
+            if let count = snapshot.sentenceCount { memorySentenceCount = count }
+            if let count = snapshot.masteredCount { masteredSentenceCount = count }
+            if let counts = snapshot.favoriteCounts {
+                let existingCounts = favoriteSentenceStudyCounts
+                favoriteSentenceStudyCounts = currentFavoriteSentenceIDs().reduce(into: [:]) { result, sentenceID in
+                    result[sentenceID] = favoriteSentenceIDs.contains(sentenceID)
+                        ? (counts[sentenceID] ?? 0)
+                        : (existingCounts[sentenceID] ?? 0)
+                }
             }
-            sentenceStudyDueCount = try await supabaseService.fetchSentenceStudyDueCount(session: session)
-            sentenceStudyTodayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? 0
-            sentenceStudyReviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? 0
-            memorySentenceCount = (try? await supabaseService.fetchMemorySentencesCount(session: session))
-                ?? memories.reduce(0) { $0 + $1.sentences.count }
-            masteredSentenceCount = (try? await supabaseService.fetchMasteredSentenceCount(session: session)) ?? 0
-            await refreshFavoriteSentenceStudyCounts()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
-            userStudySceneSummaries = (try? await supabaseService.fetchUserStudySceneSummaries(session: session)) ?? userStudySceneSummaries
+            if studySceneSummariesRefreshID == refreshID, let scenes = snapshot.scenes {
+                userStudySceneSummaries = scenes
+            }
         } catch {
-            sentenceStudyDueCount = 0
-            sentenceStudyTodayCount = 0
-            sentenceStudyReviewableTodayCount = 0
-            memorySentenceCount = 0
-            masteredSentenceCount = 0
-            sentenceStudyTopicSummaries = [:]
-            userStudySceneSummaries = []
-            isRepeatingSentenceStudyQueue = false
+            // Network failures and view cancellation must not erase the last successful overview.
+            return
         }
     }
 
     func refreshUserStudySceneSummaries() async {
+        let refreshID = UUID()
+        studySceneSummariesRefreshID = refreshID
+        guard !isRestoringAuthenticatedSession else { return }
         guard isSignedIn else {
             userStudySceneSummaries = []
             return
         }
 
+        let requestedUserID = supabaseSession?.userID
         do {
             let session = try await ensureValidSession()
-            guard !session.isAnonymous else {
-                userStudySceneSummaries = []
-                return
-            }
+            guard !session.isAnonymous, session.userID == requestedUserID,
+                  isSessionStillCurrent(session) else { return }
 
-            userStudySceneSummaries = try await supabaseService.fetchUserStudySceneSummaries(session: session)
+            let scenes = try await supabaseService.fetchUserStudySceneSummaries(session: session)
+            guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
+                  studySceneSummariesRefreshID == refreshID else { return }
+            userStudySceneSummaries = scenes
         } catch {
-            userStudySceneSummaries = []
+            return
         }
     }
 

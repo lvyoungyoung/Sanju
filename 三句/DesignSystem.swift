@@ -1,17 +1,44 @@
 import CoreGraphics
 import SwiftUI
+import UIKit
+
+enum AppPalette {
+    static let accent = Color(red: 0.945, green: 0.420, blue: 0.231)
+    static let accentText = adaptive(0x9F3715, 0xFFB695)
+    static let apricot = adaptive(0xFFF0E2, 0x35291F)
+    static let profile = Color(red: 0.918, green: 0.945, blue: 0.961)
+    static let onAccent = Color(red: 0.20, green: 0.13, blue: 0.09)
+
+    static func adaptive(_ light: UInt32, _ dark: UInt32) -> Color {
+        Color(uiColor: UIColor { traits in
+            let hex = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(
+                red: CGFloat((hex >> 16) & 0xff) / 255,
+                green: CGFloat((hex >> 8) & 0xff) / 255,
+                blue: CGFloat(hex & 0xff) / 255,
+                alpha: 1
+            )
+        })
+    }
+}
+
+enum AppTypography {
+    static let pageTitle = Font.custom("AvenirNext-Bold", size: 34, relativeTo: .largeTitle)
+    static let sentence = Font.custom("AvenirNext-DemiBold", size: 18, relativeTo: .body)
+}
 
 enum AppCornerRadius {
     static let small: CGFloat = 8
-    static let medium: CGFloat = 16
-    static let large: CGFloat = 24
+    static let medium: CGFloat = 19
+    static let large: CGFloat = 28
+    static let photo: CGFloat = 25
     static let pill: CGFloat = 999
 }
 
 enum AppStroke {
-    static let subtle = Color(.separator).opacity(0.32)
-    static let soft = Color(.separator).opacity(0.48)
-    static let highlight = Color(.separator).opacity(0.22)
+    static let subtle = AppPalette.adaptive(0xE9E9E1, 0x3B3C36)
+    static let soft = AppPalette.adaptive(0xDDDED5, 0x4D4E47)
+    static let highlight = subtle
 }
 
 enum AppSpacing {
@@ -28,7 +55,7 @@ enum AppSpacing {
 enum AppControlHeight {
     static let compact: CGFloat = 40
     static let regular: CGFloat = 48
-    static let prominent: CGFloat = 52
+    static let prominent: CGFloat = 56
 }
 
 enum AppControlPadding {
@@ -61,11 +88,11 @@ enum AppFontSize {
 }
 
 enum AppTextColor {
-    static let title = Color(.label)
-    static let primary = Color(.label)
-    static let secondary = Color(.secondaryLabel)
-    static let tertiary = Color(.tertiaryLabel)
-    static let subtle = Color(.quaternaryLabel)
+    static let title = AppPalette.adaptive(0x282A25, 0xF3F2EB)
+    static let primary = title
+    static let secondary = AppPalette.adaptive(0x686B62, 0xB8BAB0)
+    static let tertiary = AppPalette.adaptive(0x71746A, 0xA9ACA0)
+    static let subtle = tertiary
     static let inverse = Color(.systemBackground)
 }
 
@@ -76,12 +103,12 @@ enum AppHeroTextColor {
 }
 
 enum AppSurfaceColor {
-    static let page = Color(.systemGroupedBackground)
-    static let card = Color(.secondarySystemGroupedBackground)
-    static let elevated = Color(.tertiarySystemGroupedBackground)
-    static let input = Color(.systemBackground)
-    static let subtleFill = Color(.systemFill)
-    static let secondaryFill = Color(.secondarySystemFill)
+    static let page = AppPalette.adaptive(0xFCFBF8, 0x191B18)
+    static let card = AppPalette.adaptive(0xFFFFFF, 0x242721)
+    static let elevated = AppPalette.adaptive(0xF3F3EE, 0x30342C)
+    static let input = card
+    static let subtleFill = AppPalette.adaptive(0xF0F1EB, 0x34382F)
+    static let secondaryFill = subtleFill
 }
 
 enum AppImageAspectRatio {
@@ -108,11 +135,19 @@ extension View {
     }
 
     func appCardShadow() -> some View {
-        shadow(color: Color.black.opacity(0.04), radius: 16, x: 0, y: 10)
+        shadow(color: Color.black.opacity(0.02), radius: 4, x: 0, y: 2)
+    }
+
+    func appCardBorder(cornerRadius: CGFloat = AppCornerRadius.large) -> some View {
+        overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .strokeBorder(AppStroke.subtle, lineWidth: 1)
+                .allowsHitTesting(false)
+        }
     }
 
     func appHeroShadow() -> some View {
-        shadow(color: Color.black.opacity(0.03), radius: 18, x: 0, y: 12)
+        shadow(color: Color.black.opacity(0.015), radius: 4, x: 0, y: 2)
     }
 
     func appAccentShadow(_ color: Color, opacity: Double = 0.16) -> some View {

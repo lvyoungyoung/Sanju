@@ -145,7 +145,7 @@ struct SentenceStudySessionView: View {
                     }
                 )
                 .presentationDetents([.height(230)])
-                .presentationBackground(Color(.systemGroupedBackground))
+                .presentationBackground(AppSurfaceColor.page)
                 .presentationDragIndicator(.visible)
             }
         }
@@ -160,7 +160,7 @@ struct SentenceStudySessionView: View {
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: AppIconSize.regular, weight: .semibold))
-                    .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                    .foregroundStyle(AppPalette.accentText)
                     .frame(width: 46, height: 46)
                     .background(AppSurfaceColor.elevated, in: Circle())
                     .overlay {
@@ -241,12 +241,12 @@ private struct StudySettingsSheet: View {
             )
             .font(.system(size: AppFontSize.body, weight: .medium))
             .foregroundStyle(AppTextColor.primary)
-            .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
+            .tint(AppPalette.accentText)
             .padding(AppSpacing.large)
             .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .appSurfaceShadow()
         }
-        .padding(.horizontal, AppSpacing.xLarge)
+        .padding(.horizontal, AppSpacing.section)
         .padding(.top, AppSpacing.xLarge)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
@@ -371,6 +371,8 @@ private struct SentenceStudyQuestionView: View {
 
                 if allBlanksFilled {
                     SentenceStudySolvedState(
+                        speech: appModel.speech,
+                        spokenText: item.english,
                         isSavingProgress: isSavingProgress,
                         saveErrorMessage: saveErrorMessage,
                         onSpeak: {
@@ -389,7 +391,7 @@ private struct SentenceStudyQuestionView: View {
                         .padding(.horizontal, 6)
                 }
             }
-            .padding(.horizontal, AppSpacing.xLarge)
+            .padding(.horizontal, AppSpacing.section)
             .padding(.top, AppSpacing.section)
             .padding(.bottom, AppSpacing.xxxLarge)
         }
@@ -526,7 +528,7 @@ private struct SentenceStudyPromptCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(chinese)
                     .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                    .foregroundStyle(AppHeroTextColor.secondary)
+                    .foregroundStyle(AppTextColor.secondary)
                     .lineSpacing(3)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -538,14 +540,7 @@ private struct SentenceStudyPromptCard: View {
         .background(
             RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                 .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1.00, green: 0.97, blue: 0.93),
-                            Color(red: 0.98, green: 0.95, blue: 0.98)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    AppPalette.apricot
                 )
         )
         .appSurfaceShadow()
@@ -553,6 +548,8 @@ private struct SentenceStudyPromptCard: View {
 }
 
 private struct SentenceStudySolvedState: View {
+    let speech: SpeechService
+    let spokenText: String
     let isSavingProgress: Bool
     let saveErrorMessage: String?
     let onSpeak: () -> Void
@@ -594,14 +591,15 @@ private struct SentenceStudySolvedState: View {
                 Button {
                     onSpeak()
                 } label: {
-                    Label(L10n.string("study.solved.speak", "朗读句子"), systemImage: "speaker.wave.2.fill")
+                    SpeechPlaybackLabel(speech: speech, text: spokenText,
+                                        title: L10n.string("study.solved.speak", "朗读句子"), icon: "speaker.wave.2.fill")
                         .font(.system(size: AppFontSize.body, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(maxWidth: .infinity)
                         .frame(height: AppControlHeight.prominent)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(Color(red: 0.99, green: 0.95, blue: 0.90))
+                                .fill(AppPalette.apricot)
                         )
                 }
                 .buttonStyle(.plain)
@@ -629,14 +627,7 @@ private struct SentenceStudySolvedState: View {
                     .background(
                         RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                             .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.98, green: 0.67, blue: 0.18),
-                                        Color(red: 0.91, green: 0.52, blue: 0.17)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
+                                AppPalette.accent
                             )
                     )
                 }
@@ -690,18 +681,18 @@ private struct SentenceStudyCompletionView: View {
                             if isPreparingReviewQueue {
                                 ProgressView()
                                     .controlSize(.small)
-                                    .tint(Color(red: 0.91, green: 0.52, blue: 0.17))
+                                    .tint(AppPalette.accentText)
                             }
 
                             Text(isPreparingReviewQueue ? L10n.string("study.completion.preparing_review", "正在准备...") : L10n.string("study.completion.review_again", "再学习一遍"))
                                 .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
                         }
-                        .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(maxWidth: .infinity)
                         .frame(height: AppControlHeight.prominent)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(Color(red: 0.99, green: 0.95, blue: 0.90))
+                                .fill(AppPalette.apricot)
                         )
                     }
                     .buttonStyle(.plain)
@@ -726,14 +717,7 @@ private struct SentenceStudyCompletionView: View {
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                 .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.98, green: 0.67, blue: 0.18),
-                                            Color(red: 0.91, green: 0.52, blue: 0.17)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                                    AppPalette.accent
                                 )
                         )
                 }
@@ -749,7 +733,7 @@ private struct SentenceStudyCompletionView: View {
                 .padding(.bottom, AppSpacing.section)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.horizontal, AppSpacing.xLarge)
+        .padding(.horizontal, AppSpacing.section)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                 isAnimating = true
@@ -813,12 +797,12 @@ private struct SentenceStudySingleSentenceCompletionView: View {
                 Button(action: onReviewAgain) {
                     Text(L10n.string("study.completion.review_again", "再学习一遍"))
                         .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.91, green: 0.52, blue: 0.17))
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(maxWidth: .infinity)
                         .frame(height: AppControlHeight.prominent)
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                .fill(Color(red: 0.99, green: 0.95, blue: 0.90))
+                                .fill(AppPalette.apricot)
                         )
                 }
                 .buttonStyle(.plain)
@@ -832,14 +816,7 @@ private struct SentenceStudySingleSentenceCompletionView: View {
                         .background(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                 .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color(red: 0.98, green: 0.67, blue: 0.18),
-                                            Color(red: 0.91, green: 0.52, blue: 0.17)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
+                                    AppPalette.accent
                                 )
                         )
                 }
@@ -862,54 +839,15 @@ private struct SentenceStudySingleSentenceCompletionView: View {
 private struct SentenceStudyFireworksView: View {
     let isAnimating: Bool
 
-    private let bursts: [(x: CGFloat, y: CGFloat, color: Color, delay: Double)] = [
-        (0, 0, Color(red: 0.98, green: 0.67, blue: 0.18), 0.0),
-        (-48, -28, Color(red: 0.95, green: 0.49, blue: 0.32), 0.2),
-        (52, -22, Color(red: 0.96, green: 0.75, blue: 0.24), 0.35)
-    ]
-
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(red: 1.00, green: 0.96, blue: 0.91))
-                .frame(width: 148, height: 148)
-                .scaleEffect(isAnimating ? 1.04 : 0.96)
-
-            ForEach(Array(bursts.enumerated()), id: \.offset) { _, burst in
-                FireworkBurst(color: burst.color, isAnimating: isAnimating)
-                    .offset(x: burst.x, y: burst.y)
-            }
-
-            Image(systemName: "sparkles")
-                .font(.system(size: AppFontSize.celebration, weight: .bold))
-                .foregroundStyle(Color(red: 0.96, green: 0.60, blue: 0.14))
-                .scaleEffect(isAnimating ? 1.06 : 0.94)
-        }
-        .frame(height: 180)
-    }
-}
-
-private struct FireworkBurst: View {
-    let color: Color
-    let isAnimating: Bool
-
-    private let angles = stride(from: 0.0, to: 360.0, by: 45.0).map { $0 }
-
-    var body: some View {
-        ZStack {
-            ForEach(angles, id: \.self) { angle in
-                Capsule(style: .continuous)
-                    .fill(color.opacity(0.9))
-                    .frame(width: 7, height: 26)
-                    .offset(y: isAnimating ? -26 : -14)
-                    .rotationEffect(.degrees(angle))
-            }
-
-            Circle()
-                .fill(color)
-                .frame(width: isAnimating ? 9 : 6, height: isAnimating ? 9 : 6)
-        }
-        .opacity(isAnimating ? 1 : 0.7)
-        .scaleEffect(isAnimating ? 1 : 0.82)
+        Image(systemName: "checkmark")
+            .font(.system(size: 48, weight: .medium))
+            .foregroundStyle(AppPalette.accentText)
+            .frame(width: 144, height: 144)
+            .background(AppPalette.apricot, in: RoundedRectangle(cornerRadius: 36))
+            .rotationEffect(.degrees(-6))
+            .frame(maxWidth: .infinity)
+            .frame(height: 180)
+            .accessibilityHidden(true)
     }
 }

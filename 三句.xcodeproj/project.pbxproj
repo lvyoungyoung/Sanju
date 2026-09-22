@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		6F28B9FC2F7E4E760065A3EC /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6F28B9FB2F7E4E760065A3EC /* StoreKit.framework */; };
-		A10000000000000000000001 /* 三句小组件.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* 三句小组件.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000001 /* 三句小组件.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* 三句小组件.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B20000000000000000000001 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -44,15 +44,15 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		A10000000000000000000004 /* Embed App Extensions */ = {
+		A10000000000000000000004 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				A10000000000000000000001 /* 三句小组件.appex in Embed App Extensions */,
+				A10000000000000000000001 /* 三句小组件.appex in Embed Foundation Extensions */,
 			);
-			name = "Embed App Extensions";
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -150,7 +150,7 @@
 				6F28B9D62F7BBF700065A3EC /* Sources */,
 				6F28B9D72F7BBF700065A3EC /* Frameworks */,
 				6F28B9D82F7BBF700065A3EC /* Resources */,
-				A10000000000000000000004 /* Embed App Extensions */,
+				A10000000000000000000004 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 				6FEF881D2F97B13F0045F83E /* PBXBuildRule */,
@@ -221,7 +221,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2630;
-				LastUpgradeCheck = 2630;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					6F28B9D92F7BBF700065A3EC = {
 						CreatedOnToolsVersion = 26.3;
@@ -324,6 +324,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -378,6 +379,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG STAGING $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
@@ -388,6 +390,7 @@
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
@@ -435,6 +438,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};

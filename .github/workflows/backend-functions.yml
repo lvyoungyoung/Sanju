@@ -12,6 +12,7 @@ on:
       - "scripts/tests/study-scene-intent.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
       - "scripts/tests/generation-*.test.ts"
+      - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -28,6 +29,7 @@ on:
       - "scripts/tests/study-scene-intent.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
       - "scripts/tests/generation-*.test.ts"
+      - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -58,6 +60,7 @@ on:
           - moderate-image-v1
           - recover-guest-generation
           - review-study-scene
+          - synthesize-speech
           - update-profile-avatar
 
 jobs:
@@ -87,6 +90,9 @@ jobs:
 
       - name: Test generation retries and full-response deadlines
         run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-timeouts.test.ts
+
+      - name: Test speech streaming and request limits
+        run: deno test --no-lock --allow-read scripts/tests/speech-synthesis.test.ts
 
   deploy:
     name: Deploy Edge Functions

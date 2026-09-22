@@ -59,7 +59,7 @@ struct SentenceStudyBlankTokenView: View {
                 filledWord != nil
                     ? Color.clear
                     : isFocused
-                        ? Color(red: 0.95, green: 0.61, blue: 0.15)
+                        ? AppPalette.accent
                         : isWrong
                             ? Color(red: 0.90, green: 0.31, blue: 0.28)
                             : Color(red: 0.88, green: 0.82, blue: 0.75),
@@ -84,11 +84,11 @@ struct SentenceStudyWordTagView: View {
                 .padding(.vertical, 11)
                 .frame(minHeight: 44)
                 .background(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 12)
                         .fill(AppSurfaceColor.card)
                 )
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: 12)
                         .stroke(AppStroke.soft, lineWidth: 1.2)
                 )
                 .appSurfaceShadow()

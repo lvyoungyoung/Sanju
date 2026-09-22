@@ -482,6 +482,8 @@ final class AppModel: ObservableObject {
     @Published var sentenceStudyReviewableTodayCount = 0
     @Published var sentenceStudyTopicSummaries: [SentenceStudyTopic: SentenceStudyTopicSummary] = [:]
     @Published var userStudySceneSummaries: [UserStudySceneSummary] = []
+    var studyOverviewRefreshID = UUID()
+    var studySceneSummariesRefreshID = UUID()
     var userStudySceneDetailSentenceCache: [UUID: [SentenceStudyQueueItem]] = [:]
     @Published var sentenceStudyQueue: [SentenceStudyQueueItem] = []
     @Published var isLoadingSentenceStudyQueue = false
@@ -504,7 +506,13 @@ final class AppModel: ObservableObject {
     let defaults = UserDefaults.standard
     let localRateLimiter = LocalRateLimiter()
     let networkStatusMonitor = NetworkStatusMonitor()
-    var supabaseSession: SupabaseSession?
+    var supabaseSession: SupabaseSession? {
+        didSet {
+            if let previousOwner = oldValue?.userID, previousOwner != supabaseSession?.userID {
+                speech.stop()
+            }
+        }
+    }
     var processedPurchaseTransactionIDs: Set<String> = []
     // Locally suppresses legacy transactions whose anonymous owner was lost after reinstall.
     // These transactions remain unfinished and never grant credits.
@@ -534,6 +542,25 @@ final class AppModel: ObservableObject {
 
     init(supabaseService: SupabaseServicing? = nil) {
         self.supabaseService = supabaseService ?? SupabaseService()
+        speech.ownerProvider = { [weak self] in
+            guard let self else { return "local" }
+            return (self.supabaseSession ?? self.loadStoredSession())?.userID ?? "local"
+        }
+        speech.sessionProvider = { [weak self] in
+            guard let self else { throw CancellationError() }
+            guard self.isNetworkAvailable else { throw CloudSpeechError.unavailable }
+            await self.ensureRemoteSessionRestoreCompleted()
+            try Task.checkCancellation()
+            // Speech needs only Auth, not anonymous profile/credit reconciliation.
+            guard let session = self.supabaseSession else { throw CloudSpeechError.unavailable }
+            if session.expiresAt > Date().addingTimeInterval(60) { return session }
+            let refreshed = try await self.supabaseService.refreshSession(refreshToken: session.refreshToken)
+            try Task.checkCancellation()
+            guard self.supabaseSession?.userID == session.userID else { throw CancellationError() }
+            self.supabaseSession = refreshed
+            self.persistSession()
+            return refreshed
+        }
 #if DEBUG
         // resetInitialCreditsGrantForDebug()
 #endif

@@ -67,6 +67,15 @@ server {
     }
 
     # Functions 请求耗时通常更长，单独放宽超时
+    # Stream speech immediately instead of waiting for a proxy buffer to fill.
+    location = /functions/v1/synthesize-speech {
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        proxy_read_timeout 30s;
+        proxy_pass https://sanju_supabase_backend;
+    }
+
     location ^~ /functions/v1/ {
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;

@@ -177,6 +177,7 @@
 "new.empty.select_photo" = "Choose a Photo";
 "new.empty.title" = "Choose a moment you want to remember, and use it to learn one English sentence.";
 "new.generate.action" = "Describe with Three Sentences";
+"new.brand.name" = "Sanju";
 "new.generate.auto_save_hint" = "Results are saved to Memories automatically";
 "new.generation.initial_status" = "Analyzing image content...";
 "new.generation.step.checking" = "Checking the translation...";
@@ -412,3 +413,4 @@
 "study.scene.review.pending" = "Some sentences are still awaiting review. Please try again later.";
 "study.scene.review.retry" = "Continue reviewing";
 "study.scene.review.waiting" = "Review pending";
+"speech.loading" = "Preparing audio";

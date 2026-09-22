@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 import Combine
 
-private let signInThemeAccent = Color(red: 0.98, green: 0.65, blue: 0.00)
-private let signInThemeAccentSoft = Color(.secondarySystemGroupedBackground)
+private let signInThemeAccent = AppPalette.accent
+private let signInThemeAccentSoft = AppSurfaceColor.card
 private let signInThemeAccentText = Color(.label)
 private let signInThemeMutedText = Color(.secondaryLabel)
 private let signInThemeBorder = Color(.separator)
@@ -160,14 +160,7 @@ struct SignInView: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: AppControlHeight.prominent)
                         .background(
-                            LinearGradient(
-                                colors: [
-                                    signInThemeAccent,
-                                    Color(red: 0.94, green: 0.57, blue: 0.00)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
+                            signInThemeAccent
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)

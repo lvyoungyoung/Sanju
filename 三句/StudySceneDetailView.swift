@@ -141,7 +141,7 @@ struct StudySceneDetailView: View {
                     : L10n.string("study.scene.detail.loading_subtitle", "马上就好，正在整理相关表达")
             )
             .multilineTextAlignment(.center)
-            .padding(.horizontal, AppSpacing.xLarge)
+            .padding(.horizontal, AppSpacing.section)
             .padding(.top, 170)
         }
         .task(id: detailLoadID) {
@@ -164,7 +164,7 @@ struct StudySceneDetailView: View {
                 studyOverviewBar
                 sentenceContent
             }
-            .padding(.horizontal, AppSpacing.xLarge)
+            .padding(.horizontal, AppSpacing.section)
             .padding(.top, AppSpacing.xLarge)
             .padding(.bottom, AppSpacing.xxxLarge)
         }
@@ -195,82 +195,14 @@ struct StudySceneDetailView: View {
     }
 
     private var studyOverviewBar: some View {
-        HStack(spacing: AppSpacing.medium) {
-            HStack(spacing: AppSpacing.medium) {
-                StudyTopicMetricView(
-                    value: "\(studySummary.dueCount)",
-                    label: L10n.string("study.metric.due_today", "今日待学")
-                )
-
-                Rectangle()
-                    .fill(AppStroke.subtle)
-                    .frame(width: 1, height: 34)
-
-                StudyTopicMetricView(
-                    value: "\(studySummary.reviewableTodayCount)",
-                    label: L10n.string("study.metric.studied_today", "今日已学")
-                )
-            }
-            .padding(.leading, AppSpacing.xSmall)
-
-            Spacer(minLength: 0)
-
-            Button {
-                Task { await startStudy() }
-            } label: {
-                HStack(spacing: AppSpacing.small) {
-                    if isStartingStudy {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    }
-
-                    Text(studyButtonTitle)
-                        .font(.system(size: AppFontSize.body, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, AppControlPadding.prominent)
-                .frame(height: AppControlHeight.regular)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: canStartStudy ? [
-                                    Color(red: 0.98, green: 0.67, blue: 0.18),
-                                    Color(red: 0.91, green: 0.52, blue: 0.17)
-                                ] : [
-                                    Color(red: 0.86, green: 0.79, blue: 0.72),
-                                    Color(red: 0.82, green: 0.75, blue: 0.68)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!canStartStudy || isStartingStudy)
-        }
-        .padding(.horizontal, AppSpacing.xLarge)
-        .padding(.vertical, AppSpacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AppSurfaceColor.card,
-                            AppSurfaceColor.elevated
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+        StudyOverviewCard(
+            dueCount: studySummary.dueCount,
+            studiedCount: studySummary.reviewableTodayCount,
+            buttonTitle: studyButtonTitle,
+            isPreparing: isStartingStudy,
+            canStart: canStartStudy,
+            onStart: { Task { await startStudy() } }
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .stroke(AppStroke.highlight, lineWidth: 1)
-        }
-        .appCardShadow()
     }
 
     private var errorAlertBinding: Binding<Bool> {
@@ -402,9 +334,9 @@ private struct StudySceneDetailSentenceCard: View {
                 Button {
                     appModel.speech.speak(item.english)
                 } label: {
-                    Image(systemName: "play.fill")
+                    SpeechPlaybackLabel(speech: appModel.speech, text: item.english)
                         .font(.system(size: AppIconSize.regular, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
                         .background(AppSurfaceColor.elevated, in: Circle())
                 }
@@ -434,7 +366,7 @@ private struct StudySceneDetailSentenceCard: View {
         }
         .padding(AppSpacing.xLarge)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .appCardShadow()
+        .appCardBorder()
         .contextMenu {
             if canUnfavorite {
                 Button(role: .destructive) {
@@ -487,9 +419,9 @@ private struct StudyTopicExpressionCard: View {
                 Button {
                     appModel.speech.speak(expression.english)
                 } label: {
-                    Image(systemName: "speaker.wave.2.fill")
+                    SpeechPlaybackLabel(speech: appModel.speech, text: expression.english, icon: "speaker.wave.2.fill")
                         .font(.system(size: AppIconSize.regular, weight: .semibold))
-                        .foregroundStyle(Color.orange)
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
                         .background(AppSurfaceColor.elevated, in: Circle())
                 }
@@ -522,7 +454,7 @@ private struct StudyTopicExpressionCard: View {
                     Image(systemName: showsExamples ? "chevron.up" : "chevron.down")
                 }
                 .font(.system(size: AppFontSize.body, weight: .semibold))
-                .foregroundStyle(Color.orange)
+                .foregroundStyle(AppPalette.accentText)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
@@ -551,6 +483,6 @@ private struct StudyTopicExpressionCard: View {
         }
         .padding(AppSpacing.xLarge)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .appCardShadow()
+        .appCardBorder()
     }
 }

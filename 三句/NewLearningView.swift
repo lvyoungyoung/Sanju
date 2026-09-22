@@ -91,7 +91,7 @@ struct NewLearningView: View {
                                     } label: {
                                         Text(L10n.string("new.result.choose_another", "再来一张"))
                                             .font(.system(size: AppFontSize.field, weight: .semibold))
-                                            .foregroundStyle(appModel.isNetworkAvailable ? .orange : Color(.tertiaryLabel))
+                                            .foregroundStyle(appModel.isNetworkAvailable ? AppPalette.accentText : AppTextColor.tertiary)
                                             .frame(maxWidth: .infinity)
                                             .padding(.vertical, AppSpacing.medium)
                                             .background(
@@ -130,14 +130,7 @@ struct NewLearningView: View {
                                 .background(
                                     RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                                         .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    Color(red: 1.00, green: 0.72, blue: 0.10),
-                                                    Color(red: 0.98, green: 0.56, blue: 0.00)
-                                                ],
-                                                startPoint: .leading,
-                                                endPoint: .trailing
-                                            )
+                                            AppPalette.accent
                                         )
                                 )
                             }
@@ -163,8 +156,8 @@ struct NewLearningView: View {
                     }
                 }
             }
-            .padding(AppSpacing.xLarge)
-            .padding(.bottom, 120)
+            .padding(AppSpacing.section)
+            .padding(.bottom, AppSpacing.section)
         }
         .task(id: selectedItem) {
             await loadSelectedPhoto()
@@ -207,50 +200,70 @@ struct NewLearningView: View {
     }
 
     private var newLearningEmptyState: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text(L10n.string("new.brand.name", "三句"))
+                    .font(.system(.title2, weight: .bold))
+                Spacer()
+                Text("LITTLE BY LITTLE")
+                    .font(.custom("AvenirNext-DemiBold", size: 9, relativeTo: .caption2))
+                    .tracking(1.4)
+                    .foregroundStyle(AppTextColor.secondary)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(AppTextColor.primary)
+
             Image("NewLearningEmptyCollage")
                 .resizable()
                 .scaledToFit()
+                .frame(height: 280)
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, -10)
+                .padding(.vertical, AppSpacing.large)
                 .accessibilityHidden(true)
 
             Text(L10n.string("new.empty.title", "选一张你愿意记住的画面，用它来学会一句英语。"))
                 .font(.system(size: emptyStateTitleFontSize, weight: .semibold))
-                .foregroundStyle(Color(red: 0.40, green: 0.40, blue: 0.40))
-                .multilineTextAlignment(.center)
-                .padding(.top, AppSpacing.xxxLarge - 20)
+                .foregroundStyle(AppTextColor.primary)
+                .multilineTextAlignment(.leading)
+                .lineSpacing(6)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, AppSpacing.medium)
 
             Button {
                 beginPhotoSelection()
             } label: {
-                Text(appModel.isNetworkAvailable
-                     ? L10n.string("new.empty.select_photo", "点击选择图片")
-                     : photoSelectionNetworkRequiredMessage)
-                    .font(.system(size: AppFontSize.field))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                HStack(spacing: 14) {
+                    Image(systemName: "plus")
+                    Text(appModel.isNetworkAvailable
+                         ? L10n.string("new.empty.select_photo", "点击选择图片")
+                         : photoSelectionNetworkRequiredMessage)
+                    Spacer(minLength: 4)
+                    Image(systemName: "arrow.right")
+                }
+                    .font(.system(.body, weight: .semibold))
+                    .foregroundStyle(AppPalette.onAccent)
+                    .padding(.horizontal, AppSpacing.section)
+                    .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
                     .background(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                            .fill(Color(red: 0.98, green: 0.65, blue: 0.00))
+                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                            .fill(AppPalette.accent)
                     )
             }
             .buttonStyle(.plain)
             .disabled(isPhotoSelectionDisabled)
             .opacity(appModel.isNetworkAvailable ? 1 : 0.52)
-            .padding(.top, AppSpacing.xxxLarge)
+            .padding(.top, 56)
 
             VStack(alignment: .leading, spacing: AppSpacing.medium) {
                 Text(L10n.string("new.empty.safety_hint", "图片会被发送给 AI 分析，请勿上传包含敏感信息的图片"))
-                    .font(.system(size: AppFontSize.metadata))
+                    .font(.system(size: AppFontSize.caption))
                     .foregroundStyle(AppTextColor.secondary)
 
                 agreementHint(alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, AppSpacing.xxxLarge - 5)
+            .padding(.top, AppSpacing.large)
         }
     }
 
@@ -272,14 +285,17 @@ struct NewLearningView: View {
                 }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(AppImageAspectRatio.clamped(size: image.size), contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
+                    .padding(7)
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: 32))
+                    .appCardBorder(cornerRadius: 32)
 
                 Button {
                     removeSelectedPhoto()
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                        .foregroundStyle(AppPalette.accentText)
                         .frame(width: 44, height: 44)
                         .background(AppSurfaceColor.elevated, in: Circle())
                         .appCardShadow()
@@ -290,7 +306,7 @@ struct NewLearningView: View {
                 .opacity(isGenerating || isRecoveryInteractionLocked ? 0.45 : 1)
             } else if isLoadingSelectedPhoto {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(AppSurfaceColor.card)
                     .frame(height: 266)
                     .overlay {
                         VStack(spacing: AppSpacing.large) {
@@ -299,7 +315,7 @@ struct NewLearningView: View {
 
                             Text(L10n.string("new.photo.loading", "正在读取照片..."))
                                 .font(.system(size: AppFontSize.field, weight: .semibold))
-                                .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
+                                .foregroundStyle(AppPalette.accentText)
 
                             Text(L10n.string("new.photo.icloud_hint", "如果本地没有原图，从 iCloud 获取图片会花点时间。"))
                                 .font(.system(size: AppFontSize.metadata, weight: .medium))
@@ -311,9 +327,9 @@ struct NewLearningView: View {
                     .appCardShadow()
             } else {
                 let isNetworkAvailable = appModel.isNetworkAvailable
-                let accentColor = isNetworkAvailable ? Color(red: 0.98, green: 0.65, blue: 0.00) : Color(.tertiaryLabel)
+                let accentColor = isNetworkAvailable ? AppPalette.accent : Color(.tertiaryLabel)
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                    .fill(Color(.secondarySystemGroupedBackground))
+                    .fill(AppSurfaceColor.card)
                     .frame(height: 266)
                     .overlay {
                         RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
@@ -376,14 +392,7 @@ struct NewLearningView: View {
                     .background(
                         RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
                             .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 1.00, green: 0.72, blue: 0.10),
-                                        Color(red: 0.98, green: 0.56, blue: 0.00)
-                                    ],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
+                                AppPalette.accent
                             )
                     )
             }
@@ -800,12 +809,7 @@ private struct NewLearningSentenceList: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Picker("", selection: $selectedGroup) {
-                ForEach(SentencePresentationGroup.allCases, id: \.self) { group in
-                    Text(group.localizedTabTitle).tag(group)
-                }
-            }
-            .pickerStyle(.segmented)
+            SentenceGroupPicker(selection: $selectedGroup)
             .onAppear {
                 if !memory.sentences.contains(where: { $0.presentationGroup == selectedGroup }) {
                     selectedGroup = memory.sentences.first?.presentationGroup ?? .whatISee
@@ -822,8 +826,9 @@ private struct NewLearningSentenceList: View {
             } else {
                 ForEach(displayedSentences) { sentence in
                     NewLearningSentenceRow(sentence: sentence)
-                        .padding(16)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                        .padding(20)
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                        .appCardBorder()
                 }
             }
         }
@@ -839,7 +844,8 @@ private struct NewLearningSentenceRow: View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(sentence.english)
-                    .font(.system(size: 17))
+                    .font(AppTypography.sentence)
+                    .lineSpacing(4)
                     .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -850,18 +856,13 @@ private struct NewLearningSentenceRow: View {
             }
 
             HStack(spacing: 10) {
-                sentenceActionButton(
-                    title: L10n.string("new.result.play", "播放"),
-                    icon: "play.fill"
-                ) {
-                    appModel.speech.speak(sentence.english)
-                }
+                SentencePlaybackButton(speech: appModel.speech, text: sentence.english)
 
                 sentenceActionButton(
                     title: L10n.string("new.result.favorite", "收藏"),
                     icon: sentence.isFavorite ? "star.fill" : "star",
                     iconColor: sentence.isFavorite
-                        ? Color(red: 0.98, green: 0.65, blue: 0.00)
+                        ? AppPalette.accent
                         : AppTextColor.secondary
                 ) {
                     appModel.toggleFavorite(sentenceID: sentence.id)
@@ -883,7 +884,7 @@ private struct NewLearningSentenceRow: View {
                 .foregroundStyle(iconColor)
                 .padding(.horizontal, 11)
                 .frame(height: 36)
-                .background(AppSurfaceColor.elevated, in: Capsule())
+                .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: 12))
         }
         .frame(minWidth: 44, minHeight: 44)
         .contentShape(Rectangle())

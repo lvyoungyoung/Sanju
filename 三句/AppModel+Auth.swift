@@ -466,6 +466,10 @@ extension AppModel {
         sentenceStudyTodayCount = 0
         sentenceStudyReviewableTodayCount = 0
         sentenceStudyTopicSummaries = [:]
+        userStudySceneSummaries = []
+        userStudySceneDetailSentenceCache.removeAll()
+        studyOverviewRefreshID = UUID()
+        studySceneSummariesRefreshID = UUID()
         sentenceStudyQueue = []
         isLoadingSentenceStudyQueue = false
         isShowingSentenceStudySession = false

@@ -58,6 +58,7 @@ struct ContentView: View {
                 appModel.syncOnForegroundIfNeeded()
             }
         }
+        .tint(AppPalette.accent)
     }
 
     private func refreshStudyDayIfNeeded() {
@@ -263,7 +264,7 @@ struct ThinkingIndicator: View {
         HStack(spacing: AppSpacing.xSmall) {
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .fill(Color.orange.opacity(0.82))
+                    .fill(AppPalette.accent.opacity(0.82))
                     .frame(width: 6, height: 6)
                     .scaleEffect(isAnimating ? 1 : 0.52)
                     .opacity(isAnimating ? 1 : 0.3)

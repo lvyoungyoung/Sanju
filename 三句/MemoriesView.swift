@@ -14,8 +14,8 @@ struct MemoriesView: View {
     @State private var pageTitleMinY: CGFloat = 0
 
     private let columns = [
-        GridItem(.flexible(), spacing: AppSpacing.xLarge),
-        GridItem(.flexible(), spacing: AppSpacing.xLarge)
+        GridItem(.flexible(), spacing: AppSpacing.medium),
+        GridItem(.flexible(), spacing: AppSpacing.medium)
     ]
     private let memoryPageSize = 20
     private let loadMoreFooterThreshold: CGFloat = 120
@@ -56,10 +56,10 @@ struct MemoriesView: View {
                             ForEach(memorySections) { section in
                                 VStack(alignment: .leading, spacing: AppSpacing.large) {
                                     Text(section.title)
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(.primary)
+                                        .font(.system(.subheadline, weight: .medium))
+                                        .foregroundStyle(AppTextColor.secondary)
 
-                                    LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.xLarge) {
+                                    LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.medium) {
                                         ForEach(section.items) { item in
                                             NavigationLink(value: item.memory.id) {
                                                 MemoryThumbnailTile(
@@ -90,7 +90,7 @@ struct MemoriesView: View {
                         .padding(.top, 4)
                     }
                     }
-                    .padding(.horizontal, AppSpacing.xLarge)
+                    .padding(.horizontal, AppSpacing.section)
                     .padding(.top, AppSpacing.xLarge)
                     .padding(.bottom, AppSpacing.xxxLarge)
                 }
@@ -100,7 +100,7 @@ struct MemoriesView: View {
                     await appModel.refreshRemoteContent()
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(AppSurfaceColor.page)
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
@@ -141,7 +141,7 @@ struct MemoriesView: View {
 
     private var pageHeader: some View {
         Text(L10n.string("memories.page_title", "回忆"))
-            .font(.system(size: 34, weight: .bold))
+            .font(AppTypography.pageTitle)
             .foregroundStyle(AppTextColor.primary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(pageTitleOpacity)
@@ -360,7 +360,7 @@ private struct PendingCloudSyncProgressCard: View {
             }
 
             ProgressView(value: progress)
-                .tint(Color(red: 0.98, green: 0.65, blue: 0.00))
+                .tint(AppPalette.accent)
         }
         .padding(.horizontal, AppSpacing.large)
         .padding(.vertical, AppSpacing.medium)
@@ -420,7 +420,7 @@ private struct MemoryThumbnailTile: View {
                     MemoryThumbnailSkeleton()
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
             .opacity(hasAppeared ? 1 : 0.01)
             .scaleEffect(hasAppeared ? 1 : 0.97)
             .offset(y: hasAppeared ? 0 : 8)
@@ -514,7 +514,7 @@ private struct MemoryThumbnailSkeleton: View {
     @State private var phase: CGFloat = -0.35
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
+        RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous)
             .fill(Color.gray.opacity(0.14))
             .overlay {
                 GeometryReader { proxy in

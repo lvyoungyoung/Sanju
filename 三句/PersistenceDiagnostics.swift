@@ -24,7 +24,7 @@ enum PersistenceDiagnostics {
         }
     }
 
-    static func readData(from url: URL, operation: String) -> Data? {
+    nonisolated static func readData(from url: URL, operation: String) -> Data? {
         guard FileManager.default.fileExists(atPath: url.path) else {
             return nil
         }
@@ -85,7 +85,7 @@ enum PersistenceDiagnostics {
         }
     }
 
-    private static func logFailure(_ operation: String, error: Error) {
+    nonisolated private static func logFailure(_ operation: String, error: Error) {
         #if DEBUG
         print("[Persistence] \(operation) failed: \(error.localizedDescription)")
         #endif
