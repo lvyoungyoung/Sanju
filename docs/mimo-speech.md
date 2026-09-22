@@ -9,10 +9,23 @@
 - The function verifies the JWT through internal Supabase Auth, reserves an independent
   speech budget, then streams MiMo audio back as NDJSON. It never debits generation credits
   or writes memories/study progress.
-- The model is `mimo-v2.5-tts`, English voice `Mia`, with natural conversational delivery.
+- The model is `mimo-v2.5-tts`, with natural conversational delivery. The voice defaults to
+  `Mia`; users can also select `Chloe`, `Milo` or `Dean`. The backend validates this allowlist.
   The source English text is not rewritten. Text goes in the `assistant` message;
   delivery instructions go in the `user` message, as required by the provider.
 - Audio is 24 kHz PCM16LE mono. `AVAudioEngine` plays chunks as they arrive.
+- Speech Settings is available in Profile and the study settings sheet. Voice and speed
+  are saved only in UserDefaults on this device and apply to all playback. Normal speed
+  is 1x; Slower is 0.85x using `AVAudioUnitTimePitch`, without pitch changes or another
+  synthesis request. The system fallback also respects the selected speed.
+- Previewing a voice does not select it. Every preview reads the same fixed English sample;
+  the first preview per voice uses the cloud, then the standard local cache is reused.
+  No prerecorded samples are bundled. If fallback occurs, the settings UI explicitly says
+  the listener is hearing a system voice, not the selected MiMo voice.
+- Requests may include `voice`; old clients omitting it keep Mia. The response confirms
+  `X-Speech-Voice`. A new client will not cache audio under a different voice if talking to
+  an older deployment that ignores voice selection. Deploy updated `synthesize-speech`
+  before testing the other three voices; no additional database migration is needed for settings.
 - Repeated taps during the same request are coalesced. Switching sentences, stopping,
   account changes and audio interruptions cancel pending playback. Late results cannot
   replace the currently selected sentence.

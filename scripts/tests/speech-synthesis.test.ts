@@ -1,6 +1,6 @@
 import { deepStrictEqual, strictEqual, throws, rejects, ok } from "node:assert";
 import { createSpeechHandler, type SpeechDependencies } from "../../supabase/functions/synthesize-speech/handler.ts";
-import { readMiMoAudio, speechRequest, validateSpeechText } from "../../supabase/functions/synthesize-speech/speech.ts";
+import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, SPEECH_VOICES } from "../../supabase/functions/synthesize-speech/speech.ts";
 
 const encoder = new TextEncoder();
 const audioEvent = (data = "AAABAA==") => `data: ${JSON.stringify({ choices: [{ delta: { audio: { data } } }] })}\n\n`;
@@ -44,6 +44,44 @@ Deno.test("speech text is bounded without rewriting the sentence", () => {
   for (const input of [null, {}, { text: 3 }, { text: " " }, { text: "a".repeat(501) }]) {
     throws(() => validateSpeechText(input));
   }
+});
+
+Deno.test("voice defaults preserve old clients and unsupported voices are rejected", () => {
+  strictEqual(validateSpeechVoice({ text: "Hello" }), "Mia");
+  for (const voice of SPEECH_VOICES) {
+    strictEqual(validateSpeechVoice({ voice }), voice);
+    strictEqual(speechRequest("Hello", voice).audio.voice, voice);
+  }
+  for (const voice of [null, "", "unknown", "mia", {}, 4]) {
+    throws(() => validateSpeechVoice({ voice }));
+  }
+});
+
+Deno.test("selected voice reaches MiMo and is confirmed in the response", async () => {
+  for (const voice of SPEECH_VOICES) {
+    const handler = createSpeechHandler(dependencies({ fetcher: (async (_url: string | URL | Request, init?: RequestInit) => {
+      strictEqual(JSON.parse(String(init?.body)).audio.voice, voice);
+      return new Response(body(complete));
+    }) as typeof fetch }));
+    const response = await handler(new Request("https://app.invalid/speech", {
+      method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({ text: "Hello", voice }),
+    }));
+    strictEqual(response.status, 200);
+    strictEqual(response.headers.get("X-Speech-Voice"), voice);
+    await response.text();
+  }
+});
+
+Deno.test("invalid voices do not consume budget or call MiMo", async () => {
+  const handler = createSpeechHandler(dependencies({
+    consumeBudget: () => { throw new Error("must not charge"); },
+    fetcher: (() => { throw new Error("must not call model"); }) as typeof fetch,
+  }));
+  const response = await handler(new Request("https://app.invalid/speech", {
+    method: "POST", headers: { Authorization: "Bearer token" }, body: JSON.stringify({ text: "Hello", voice: "custom" }),
+  }));
+  strictEqual(response.status, 400);
+  strictEqual((await response.json()).error, "invalid_voice");
 });
 
 Deno.test("fragmented SSE and CRLF produce complete PCM chunks", async () => {
@@ -94,6 +132,19 @@ Deno.test("partial upstream failure never advertises a complete cacheable result
   const output = await result.text();
   ok(output.includes('"type":"error"'));
   ok(!output.includes('"type":"done"'));
+  ok(output.includes("speech_provider_stream_invalid"));
+});
+
+Deno.test("diagnostics distinguish budget failures from model HTTP failures without leaking bodies", async () => {
+  const failedBudget = await createSpeechHandler(dependencies({ consumeBudget: () => {
+    throw new Error("database-secret");
+  } }))(request());
+  strictEqual((await failedBudget.json()).error, "speech_budget_unavailable");
+  const failedProvider = await createSpeechHandler(dependencies({ fetcher: (() => Promise.resolve(
+    new Response("private upstream body", { status: 401 }),
+  )) as typeof fetch }))(request());
+  strictEqual(failedProvider.status, 502);
+  deepStrictEqual(await failedProvider.json(), { error: "speech_provider_rejected", providerStatus: 401 });
 });
 
 Deno.test("deadline covers a provider stalled after response headers", async () => {

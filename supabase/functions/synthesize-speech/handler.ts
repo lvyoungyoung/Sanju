@@ -1,4 +1,4 @@
-import { readMiMoAudio, speechRequest, validateSpeechText } from "./speech.ts";
+import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, type SpeechVoice } from "./speech.ts";
 
 export interface SpeechDependencies {
   url: string;
@@ -11,7 +11,10 @@ export interface SpeechDependencies {
 
 export function createSpeechHandler(deps: SpeechDependencies) {
   return async (req: Request): Promise<Response> => {
-    const jsonError = (code: string, status: number) => Response.json({ error: code }, { status });
+    const jsonError = (code: string, status: number, providerStatus?: number) => {
+      console.warn("[synthesize-speech]", JSON.stringify({ code, status, providerStatus }));
+      return Response.json({ error: code, ...(providerStatus === undefined ? {} : { providerStatus }) }, { status });
+    };
     if (req.method !== "POST") return jsonError("method_not_allowed", 405);
     const token = req.headers.get("Authorization")?.match(/^Bearer\s+(\S+)$/i)?.[1];
     if (!token) return jsonError("unauthorized", 401);
@@ -28,6 +31,7 @@ export function createSpeechHandler(deps: SpeechDependencies) {
       controller.abort();
     };
     let streaming = false;
+    let stage = "request";
     try {
       // Bound the body even if Content-Length is missing or untrusted.
       const reader = req.body?.getReader();
@@ -51,24 +55,30 @@ export function createSpeechHandler(deps: SpeechDependencies) {
         reader.releaseLock();
       }
       let text: string;
-      try { text = validateSpeechText(JSON.parse(raw)); }
+      let input: unknown;
+      try { input = JSON.parse(raw); text = validateSpeechText(input); }
       catch { return jsonError("invalid_text", 400); }
+      let voice: SpeechVoice;
+      try { voice = validateSpeechVoice(input); }
+      catch { return jsonError("invalid_voice", 400); }
 
+      stage = "auth";
       const userID = await deps.authenticate(token);
       controller.signal.throwIfAborted();
       if (!userID) return jsonError("unauthorized", 401);
+      stage = "budget";
       if (!(await deps.consumeBudget(userID))) return jsonError("speech_rate_limited", 429);
       controller.signal.throwIfAborted();
+      stage = "provider";
       const upstream = await (deps.fetcher ?? fetch)(deps.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "api-key": deps.apiKey },
-        body: JSON.stringify(speechRequest(text)),
+        body: JSON.stringify(speechRequest(text, voice)),
         signal: controller.signal,
       });
       if (!upstream.ok || !upstream.body) {
         await upstream.body?.cancel();
-        console.warn("[synthesize-speech] provider HTTP", upstream.status);
-        return jsonError("speech_unavailable", 502);
+        return jsonError("speech_provider_rejected", 502, upstream.status);
       }
 
       const audio = readMiMoAudio(upstream.body);
@@ -89,10 +99,11 @@ export function createSpeechHandler(deps: SpeechDependencies) {
               output.enqueue(encode({ type: "audio", data: next.value }));
             }
           } catch {
-            console.warn("[synthesize-speech] incomplete provider stream");
+            const code = controller.signal.aborted ? "speech_provider_timeout" : "speech_provider_stream_invalid";
+            console.warn("[synthesize-speech]", code);
             cleanup();
             if (!cancelled) {
-              output.enqueue(encode({ type: "error", code: "speech_unavailable" }));
+              output.enqueue(encode({ type: "error", code }));
               output.close();
             }
           }
@@ -109,11 +120,11 @@ export function createSpeechHandler(deps: SpeechDependencies) {
           "Content-Type": "application/x-ndjson; charset=utf-8",
           "Cache-Control": "no-store, no-transform",
           "X-Accel-Buffering": "no",
+          "X-Speech-Voice": voice,
         },
       });
     } catch {
-      console.warn("[synthesize-speech] request failed");
-      return jsonError("speech_unavailable", 503);
+      return jsonError(controller.signal.aborted ? `speech_${stage}_timeout` : `speech_${stage}_unavailable`, 503);
     } finally {
       if (!streaming) cleanup();
     }

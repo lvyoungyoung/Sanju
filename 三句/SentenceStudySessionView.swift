@@ -139,12 +139,12 @@ struct SentenceStudySessionView: View {
             }
             .sheet(isPresented: $isShowingStudySettings) {
                 StudySettingsSheet(
+                    speech: appModel.speech,
                     isAutoSpeakingEnabled: appModel.isAutoSpeakingSolvedSentenceEnabled,
                     onToggleAutoSpeaking: { isEnabled in
                         appModel.setAutoSpeakingSolvedSentenceEnabled(isEnabled)
                     }
                 )
-                .presentationDetents([.height(230)])
                 .presentationBackground(AppSurfaceColor.page)
                 .presentationDragIndicator(.visible)
             }
@@ -223,10 +223,26 @@ struct SentenceStudySessionView: View {
 }
 
 private struct StudySettingsSheet: View {
+    let speech: SpeechService
     let isAutoSpeakingEnabled: Bool
     let onToggleAutoSpeaking: (Bool) -> Void
+    @State private var isShowingSpeechSettings = false
 
     var body: some View {
+        NavigationStack {
+            ScrollView {
+                settingsContent
+            }
+            .background(AppSurfaceColor.page)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $isShowingSpeechSettings) {
+                SpeechSettingsView(speech: speech)
+            }
+        }
+        .presentationDetents(isShowingSpeechSettings ? [.large] : [.height(330), .large])
+    }
+
+    private var settingsContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             Text(L10n.string("study.settings.title", "学习设置"))
                 .font(.system(size: AppFontSize.field, weight: .bold))
@@ -245,6 +261,21 @@ private struct StudySettingsSheet: View {
             .padding(AppSpacing.large)
             .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
             .appSurfaceShadow()
+
+            Button { isShowingSpeechSettings = true } label: {
+                HStack {
+                    Label(L10n.string("speech.settings.title", "朗读设置"), systemImage: "speaker.wave.2")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(AppTextColor.tertiary)
+                }
+                .font(.body.weight(.medium))
+                .foregroundStyle(AppTextColor.primary)
+                .padding(AppSpacing.large)
+                .frame(minHeight: 44)
+                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, AppSpacing.section)
         .padding(.top, AppSpacing.xLarge)

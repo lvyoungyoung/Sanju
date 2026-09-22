@@ -5,50 +5,88 @@ import Foundation
 @MainActor
 final class SpeechService: NSObject, ObservableObject {
     @Published private(set) var loadingText: String?
+    @Published private(set) var loadingVoice: SpeechVoice?
+    @Published private(set) var selectedVoice: SpeechVoice
+    @Published private(set) var selectedSpeed: SpeechSpeed
+    @Published private(set) var isUsingSystemVoice = false
     var sessionProvider: (() async throws -> SupabaseSession)?
     var ownerProvider: (() -> String)?
 
     private let synthesizer = AVSpeechSynthesizer()
-    private let audioSession = AVAudioSession.sharedInstance()
+    private let audioSession = SpeechAudioSession()
     private let cloud = CloudSpeechClient()
     private let cache = SpeechAudioCache()
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
+    private let timePitch = AVAudioUnitTimePitch()
+    private let defaults: UserDefaults
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private var requestTask: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
+    private var fallbackTask: Task<Void, Never>?
     private var requestID = UUID()
     private var activeText: String?
+    private var activeVoice: SpeechVoice?
     private var pendingBytes = Data()
     private var scheduledBuffers = 0
     private var sourceCompleted = false
     private var systemUtterance: AVSpeechUtterance?
 
-    override init() {
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let preferences = SpeechPreferences(defaults: defaults)
+        selectedVoice = preferences.voice
+        selectedSpeed = preferences.speed
         super.init()
         engine.attach(player)
-        engine.connect(player, to: engine.mainMixerNode, format: format)
+        engine.attach(timePitch)
+        engine.connect(player, to: timePitch, format: format)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: format)
         synthesizer.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted(_:)),
-                                               name: AVAudioSession.interruptionNotification, object: audioSession)
+                                               name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
     }
 
-    func speak(_ text: String) {
+    func setVoice(_ voice: SpeechVoice) {
+        guard voice != selectedVoice else { return }
+        stop()
+        selectedVoice = voice
+        defaults.set(voice.rawValue, forKey: SpeechPreferenceKey.voice)
+    }
+
+    func setSpeed(_ speed: SpeechSpeed) {
+        guard speed != selectedSpeed else { return }
+        stop()
+        selectedSpeed = speed
+        defaults.set(speed.rawValue, forKey: SpeechPreferenceKey.speed)
+    }
+
+    func preview(_ voice: SpeechVoice) {
+        speak(SpeechPreferences.previewText, voice: voice)
+    }
+
+    func speak(_ text: String, voice overrideVoice: SpeechVoice? = nil) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voice = overrideVoice ?? selectedVoice
         guard !text.isEmpty else { return }
-        if activeText == text, requestTask != nil { return }
+        if activeText == text, activeVoice == voice, requestTask != nil { return }
         stop()
         activeText = text
+        activeVoice = voice
         loadingText = text
+        loadingVoice = voice
+        isUsingSystemVoice = false
+        timePitch.rate = selectedSpeed.playbackRate
         let id = requestID
         let owner = ownerProvider?() ?? "local"
-        let key = cacheKey(text: text, owner: owner)
+        let key = cacheKey(text: text, owner: owner, voice: voice)
         let startedAt = Date()
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer {
                 if requestID == id {
                     loadingText = nil
+                    loadingVoice = nil
                     requestTask = nil
                     deadlineTask?.cancel()
                     deadlineTask = nil
@@ -58,22 +96,22 @@ final class SpeechService: NSObject, ObservableObject {
                 if let audio = await cache.load(key) {
                     try Task.checkCancellation()
                     guard requestID == id else { return }
-                    try play(audio, id: id)
+                    try await play(audio, id: id)
                     finishSource()
 #if DEBUG
                     print("[SpeechFlow] Playing cached MiMo audio")
 #endif
                     return
                 }
-                guard let sessionProvider else { throw CloudSpeechError.unavailable }
+                guard let sessionProvider else { throw CloudSpeechError.noSession }
                 let auth = try await sessionProvider()
                 try Task.checkCancellation()
                 guard requestID == id else { return }
                 var receivedAudio = false
-                let audio = try await cloud.stream(text: text, auth: auth) { [weak self] chunk in
+                let audio = try await cloud.stream(text: text, voice: voice, auth: auth) { [weak self] chunk in
                     try Task.checkCancellation()
                     guard let self, self.requestID == id else { throw CancellationError() }
-                    try self.play(chunk, id: id)
+                    try await self.play(chunk, id: id)
                     if !receivedAudio {
                         receivedAudio = true
 #if DEBUG
@@ -81,12 +119,13 @@ final class SpeechService: NSObject, ObservableObject {
 #endif
                     }
                     self.loadingText = nil
+                    self.loadingVoice = nil
                 }
                 try Task.checkCancellation()
                 guard requestID == id else { return }
                 finishSource()
                 deadlineTask?.cancel()
-                await cache.save(audio, key: cacheKey(text: text, owner: auth.userID))
+                await cache.save(audio, key: cacheKey(text: text, owner: auth.userID, voice: voice))
             } catch {
                 guard !Task.isCancelled, requestID == id else { return }
 #if DEBUG
@@ -109,6 +148,8 @@ final class SpeechService: NSObject, ObservableObject {
         requestTask = nil
         deadlineTask?.cancel()
         deadlineTask = nil
+        fallbackTask?.cancel()
+        fallbackTask = nil
         player.stop()
         engine.stop()
         systemUtterance = nil
@@ -117,15 +158,22 @@ final class SpeechService: NSObject, ObservableObject {
         scheduledBuffers = 0
         sourceCompleted = false
         activeText = nil
+        activeVoice = nil
         loadingText = nil
+        loadingVoice = nil
         deactivateAudioSession()
     }
 
-    private func cacheKey(text: String, owner: String) -> String {
-        SpeechAudioCache.key(text: text, scope: "\(cloud.cacheNamespace)|\(owner)")
+    private func cacheKey(text: String, owner: String, voice: SpeechVoice) -> String {
+        SpeechAudioCache.key(text: text, scope: "\(cloud.cacheNamespace)|\(owner)", voice: voice)
     }
 
-    private func play(_ chunk: Data, id: UUID) throws {
+    private func play(_ chunk: Data, id: UUID) async throws {
+        if !engine.isRunning {
+            try await audioSession.activate()
+            try Task.checkCancellation()
+            guard requestID == id else { throw CancellationError() }
+        }
         pendingBytes.append(chunk)
         let frames = pendingBytes.count / 2
         guard frames > 0 else { return }
@@ -140,7 +188,6 @@ final class SpeechService: NSObject, ObservableObject {
         }
         pendingBytes = Data(pendingBytes.suffix(pendingBytes.count % 2))
         if !engine.isRunning {
-            configureAudioSessionIfNeeded()
             try engine.start()
         }
         scheduledBuffers += 1
@@ -173,14 +220,31 @@ final class SpeechService: NSObject, ObservableObject {
         deadlineTask?.cancel()
         deadlineTask = nil
         loadingText = nil
+        loadingVoice = nil
+        isUsingSystemVoice = true
         player.stop()
         engine.stop()
         scheduledBuffers = 0
         pendingBytes.removeAll()
-        configureAudioSessionIfNeeded()
+        let id = requestID
+        fallbackTask = Task { [weak self] in
+            guard let self else { return }
+            do { try await audioSession.activate() }
+            catch {
+#if DEBUG
+                print("[SpeechFlow] System voice audio activation failed: \(error.localizedDescription)")
+#endif
+            }
+            guard !Task.isCancelled, requestID == id else { return }
+            speakWithSystemVoice(text)
+            fallbackTask = nil
+        }
+    }
+
+    private func speakWithSystemVoice(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredVoice()
-        utterance.rate = 0.42
+        utterance.rate = 0.42 * selectedSpeed.playbackRate
         utterance.pitchMultiplier = 1.02
         utterance.volume = 1
         utterance.prefersAssistiveTechnologySettings = true
@@ -197,16 +261,7 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     private func deactivateAudioSession() {
-        do { try audioSession.setActive(false, options: .notifyOthersOnDeactivation) } catch { }
-    }
-
-    private func configureAudioSessionIfNeeded() {
-        do {
-            try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-            try audioSession.setActive(true)
-        } catch {
-            // Keep speech available even if audio session configuration fails.
-        }
+        audioSession.deactivate()
     }
 
     private func preferredVoice() -> AVSpeechSynthesisVoice? {

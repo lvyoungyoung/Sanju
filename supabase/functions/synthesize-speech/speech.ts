@@ -1,9 +1,11 @@
 export const SPEECH_MODEL = "mimo-v2.5-tts";
 export const SPEECH_VOICE = "Mia";
+export const SPEECH_VOICES = ["Mia", "Chloe", "Milo", "Dean"] as const;
+export type SpeechVoice = typeof SPEECH_VOICES[number];
 export const MAX_AUDIO_BYTES = 24_000 * 2 * 60;
 const MAX_FRAME_LENGTH = 512_000;
 
-export function speechRequest(text: string) {
+export function speechRequest(text: string, voice: SpeechVoice = SPEECH_VOICE) {
   return {
     model: SPEECH_MODEL,
     messages: [
@@ -13,9 +15,19 @@ export function speechRequest(text: string) {
       },
       { role: "assistant", content: text },
     ],
-    audio: { format: "pcm16", voice: SPEECH_VOICE },
+    audio: { format: "pcm16", voice },
     stream: true,
   };
+}
+
+export function validateSpeechVoice(body: unknown): SpeechVoice {
+  const voice = (body as { voice?: unknown } | null)?.voice;
+  // Older clients omit voice and retain their original Mia voice.
+  if (voice === undefined) return SPEECH_VOICE;
+  if (typeof voice !== "string" || !SPEECH_VOICES.includes(voice as SpeechVoice)) {
+    throw new Error("invalid_voice");
+  }
+  return voice as SpeechVoice;
 }
 
 export function validateSpeechText(body: unknown): string {

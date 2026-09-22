@@ -4,6 +4,71 @@ import XCTest
 
 @MainActor
 final class SpeechAudioTests: XCTestCase {
+    func testVoiceAndSpeedDefaultsAndInvalidSavedValues() throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .mia)
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).speed, .normal)
+        defaults.set("unknown", forKey: SpeechPreferenceKey.voice)
+        defaults.set("fast", forKey: SpeechPreferenceKey.speed)
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .mia)
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).speed, .normal)
+    }
+
+    func testVoiceAndSpeedPersistAndPreviewDoesNotChangeSelection() throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let speech = SpeechService(defaults: defaults)
+        speech.setVoice(.dean)
+        speech.setSpeed(.slower)
+        let restored = SpeechService(defaults: defaults)
+        XCTAssertEqual(restored.selectedVoice, .dean)
+        XCTAssertEqual(restored.selectedSpeed, .slower)
+        speech.preview(.chloe)
+        XCTAssertEqual(speech.selectedVoice, .dean)
+        XCTAssertEqual(speech.loadingVoice, .chloe)
+        speech.stop()
+        speech.speak("Use the selected voice")
+        XCTAssertEqual(speech.loadingVoice, .dean)
+        speech.stop()
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .dean)
+    }
+
+    func testCacheSeparatesEveryVoiceAndRetainsMiaDefaultKey() {
+        let keys = SpeechVoice.allCases.map { SpeechAudioCache.key(text: "Hello", scope: "account", voice: $0) }
+        XCTAssertEqual(Set(keys).count, 4)
+        XCTAssertEqual(keys[0], SpeechAudioCache.key(text: "Hello", scope: "account"))
+        XCTAssertEqual(SpeechSpeed.normal.playbackRate, 1)
+        XCTAssertEqual(SpeechSpeed.slower.playbackRate, 0.85)
+    }
+
+    func testHTTPDiagnosticsPreserveStatusAndSafeBackendCode() {
+        let error = SpeechResponseDiagnostics.error(status: 503,
+            body: Data(#"{"error":"speech_budget_unavailable"}"#.utf8))
+        XCTAssertTrue(error.localizedDescription.contains("HTTP 503"))
+        XCTAssertTrue(error.localizedDescription.contains("speech_budget_unavailable"))
+        let provider = SpeechResponseDiagnostics.error(status: 502,
+            body: Data(#"{"error":"speech_provider_rejected","providerStatus":401}"#.utf8))
+        XCTAssertTrue(provider.localizedDescription.contains("MiMo HTTP 401"))
+    }
+
+    func testHTTPDiagnosticsNeverExposeArbitraryBodies() {
+        for body in ["<html>secret proxy details</html>", #"{"error":"Bearer secret-token"}"#,
+                     #"{"error":"eyJtoken.payload.signature","text":"private sentence"}"#] {
+            let error = SpeechResponseDiagnostics.error(status: 502, body: Data(body.utf8))
+            XCTAssertEqual(error.localizedDescription, "Speech HTTP 502; code=unknown")
+        }
+    }
+
+    func testStreamingErrorsIdentifyFailureStage() {
+        var stream = SpeechAudioStream()
+        XCTAssertThrowsError(try stream.consume(#"{"type":"error","code":"speech_provider_timeout"}"#)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("speech_provider_timeout"))
+        }
+    }
+
     func testOnlyExplicitCompletionMakesAudioCacheable() throws {
         var stream = SpeechAudioStream()
         XCTAssertEqual(try stream.consume(#"{"type":"audio","data":"AAABAA=="}"#), Data([0, 0, 1, 0]))

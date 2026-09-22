@@ -66,6 +66,8 @@ struct MainTabView: View {
                         switch route {
                         case .aboutUs:
                             AboutUsView()
+                        case .speechSettings:
+                            SpeechSettingsView(speech: appModel.speech)
                         }
                     }
             }

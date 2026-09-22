@@ -4,7 +4,10 @@ import { createSpeechHandler } from "./handler.ts";
 Deno.serve(async (req) => {
   const url = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !serviceKey) return Response.json({ error: "speech_not_configured" }, { status: 503 });
+  if (!url || !serviceKey) {
+    console.warn("[synthesize-speech] Supabase internal configuration missing");
+    return Response.json({ error: "speech_not_configured" }, { status: 503 });
+  }
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
@@ -21,7 +24,10 @@ Deno.serve(async (req) => {
     },
     async consumeBudget(userID) {
       const { data, error } = await admin.rpc("consume_speech_request", { p_user_id: userID });
-      if (error) throw new Error("speech_budget_unavailable");
+      if (error) {
+        console.warn("[synthesize-speech] consume_speech_request failed", { code: error.code });
+        throw new Error("speech_budget_unavailable");
+      }
       return data === true;
     },
   })(req);

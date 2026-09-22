@@ -89,6 +89,23 @@ struct ProfileView: View {
                     .appCardBorder()
                 }
 
+                NavigationLink(value: ProfileNavigationRoute.speechSettings) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "speaker.wave.2")
+                        Text(L10n.string("speech.settings.title", "朗读设置"))
+                            .font(.body.weight(.semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(AppTextColor.tertiary)
+                    }
+                    .foregroundStyle(AppTextColor.primary)
+                    .padding(20)
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+                    .appCardBorder()
+                }
+                .buttonStyle(.plain)
+
                 widgetSection
 
                 learningReminderSection

@@ -328,6 +328,7 @@ enum AppTab: Hashable {
 
 enum ProfileNavigationRoute: Hashable {
     case aboutUs
+    case speechSettings
 }
 
 enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
@@ -548,11 +549,11 @@ final class AppModel: ObservableObject {
         }
         speech.sessionProvider = { [weak self] in
             guard let self else { throw CancellationError() }
-            guard self.isNetworkAvailable else { throw CloudSpeechError.unavailable }
+            guard self.isNetworkAvailable else { throw CloudSpeechError.offline }
             await self.ensureRemoteSessionRestoreCompleted()
             try Task.checkCancellation()
             // Speech needs only Auth, not anonymous profile/credit reconciliation.
-            guard let session = self.supabaseSession else { throw CloudSpeechError.unavailable }
+            guard let session = self.supabaseSession else { throw CloudSpeechError.noSession }
             if session.expiresAt > Date().addingTimeInterval(60) { return session }
             let refreshed = try await self.supabaseService.refreshSession(refreshToken: session.refreshToken)
             try Task.checkCancellation()
