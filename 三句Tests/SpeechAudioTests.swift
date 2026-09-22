@@ -4,28 +4,34 @@ import XCTest
 
 @MainActor
 final class SpeechAudioTests: XCTestCase {
-    func testVoiceAndSpeedDefaultsAndInvalidSavedValues() throws {
+    func testVoiceDefaultsAndInvalidSavedValues() throws {
         let suite = "SpeechSettingsTests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .mia)
-        XCTAssertEqual(SpeechPreferences(defaults: defaults).speed, .normal)
         defaults.set("unknown", forKey: SpeechPreferenceKey.voice)
-        defaults.set("fast", forKey: SpeechPreferenceKey.speed)
         XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .mia)
-        XCTAssertEqual(SpeechPreferences(defaults: defaults).speed, .normal)
     }
 
-    func testVoiceAndSpeedPersistAndPreviewDoesNotChangeSelection() throws {
+    func testLegacySpeedIsRemovedWithoutChangingVoice() throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("slower", forKey: SpeechPreferenceKey.legacySpeed)
+        defaults.set(SpeechVoice.dean.rawValue, forKey: SpeechPreferenceKey.voice)
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .dean)
+        XCTAssertNil(defaults.object(forKey: SpeechPreferenceKey.legacySpeed))
+        XCTAssertEqual(SpeechPreferences(defaults: defaults).voice, .dean)
+    }
+
+    func testVoicePersistsAndPreviewDoesNotChangeSelection() throws {
         let suite = "SpeechSettingsTests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let speech = SpeechService(defaults: defaults)
         speech.setVoice(.dean)
-        speech.setSpeed(.slower)
         let restored = SpeechService(defaults: defaults)
         XCTAssertEqual(restored.selectedVoice, .dean)
-        XCTAssertEqual(restored.selectedSpeed, .slower)
         speech.preview(.chloe)
         XCTAssertEqual(speech.selectedVoice, .dean)
         XCTAssertEqual(speech.loadingVoice, .chloe)
@@ -40,8 +46,6 @@ final class SpeechAudioTests: XCTestCase {
         let keys = SpeechVoice.allCases.map { SpeechAudioCache.key(text: "Hello", scope: "account", voice: $0) }
         XCTAssertEqual(Set(keys).count, 4)
         XCTAssertEqual(keys[0], SpeechAudioCache.key(text: "Hello", scope: "account"))
-        XCTAssertEqual(SpeechSpeed.normal.playbackRate, 1)
-        XCTAssertEqual(SpeechSpeed.slower.playbackRate, 0.85)
     }
 
     func testHTTPDiagnosticsPreserveStatusAndSafeBackendCode() {

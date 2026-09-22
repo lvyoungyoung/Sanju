@@ -21,23 +21,9 @@ struct SpeechSettingsView: View {
                     .appCardBorder()
                 }
 
-                VStack(alignment: .leading, spacing: 12) {
-                    sectionTitle(L10n.string("speech.settings.speed", "朗读速度"))
-                    Picker(L10n.string("speech.settings.speed", "朗读速度"), selection: Binding(
-                        get: { speech.selectedSpeed }, set: { speech.setSpeed($0) }
-                    )) {
-                        ForEach(SpeechSpeed.allCases) { speed in
-                            Text(speed.displayTitle).tag(speed)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(16)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
-                    .appCardBorder()
-                }
-
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(L10n.string("speech.settings.scope", "用于所有页面的朗读与自动朗读，仅保存在这台设备上。"))
+                    Text(L10n.string("speech.settings.scope", "用于所有页面的朗读与自动朗读。登录后音色随账号同步，未登录时仅保存在本机。"))
+                    Text(syncStatusMessage)
                     Text(L10n.string("speech.settings.preview_hint", "试听使用同一句英文，首次需要联网，之后可使用缓存播放。"))
                     Text(L10n.string("speech.settings.fallback_hint", "离线或云端服务不可用时，使用系统声音，音色可能不同。"))
                 }
@@ -69,6 +55,19 @@ struct SpeechSettingsView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(AppTextColor.secondary)
             .accessibilityAddTraits(.isHeader)
+    }
+
+    private var syncStatusMessage: String {
+        switch speech.preferenceSyncStatus {
+        case .local:
+            L10n.string("speech.settings.sync.local", "音色已保存在本机")
+        case .syncing:
+            L10n.string("speech.settings.sync.syncing", "正在同步音色设置…")
+        case .synced:
+            L10n.string("speech.settings.sync.synced", "音色已同步到账号")
+        case .pending:
+            L10n.string("speech.settings.sync.pending", "暂未同步，联网后会自动重试；仍可使用当前音色。")
+        }
     }
 
     private func voiceRow(_ voice: SpeechVoice) -> some View {

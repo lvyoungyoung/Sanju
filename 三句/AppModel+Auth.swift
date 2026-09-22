@@ -666,6 +666,7 @@ extension AppModel {
                 self?.isNetworkAvailable = isSatisfied
                 self?.authDebugLog("Network path update :: \(debugDescription)")
                 if isSatisfied && !wasAvailable, let appModel = self {
+                    appModel.speechPreferenceSync?.refresh()
                     Task {
                         await appModel.retryPendingPurchasesIfNeeded()
                         await appModel.retryPendingMemoryImageUploadsIfNeeded()

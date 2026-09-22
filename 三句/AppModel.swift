@@ -501,6 +501,7 @@ final class AppModel: ObservableObject {
     @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
     let speech = SpeechService()
+    var speechPreferenceSync: SpeechPreferenceSync?
     let purchaseManager = PurchaseManager()
     let supabaseService: SupabaseServicing
     let cloudSyncManager = CloudSyncManager()
@@ -509,6 +510,8 @@ final class AppModel: ObservableObject {
     let networkStatusMonitor = NetworkStatusMonitor()
     var supabaseSession: SupabaseSession? {
         didSet {
+            let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
+            speechPreferenceSync?.activate(userID: speechOwner)
             if let previousOwner = oldValue?.userID, previousOwner != supabaseSession?.userID {
                 speech.stop()
             }
@@ -543,6 +546,7 @@ final class AppModel: ObservableObject {
 
     init(supabaseService: SupabaseServicing? = nil) {
         self.supabaseService = supabaseService ?? SupabaseService()
+        configureSpeechPreferenceSync()
         speech.ownerProvider = { [weak self] in
             guard let self else { return "local" }
             return (self.supabaseSession ?? self.loadStoredSession())?.userID ?? "local"
@@ -664,6 +668,7 @@ final class AppModel: ObservableObject {
     }
 
     func syncOnForegroundIfNeeded() {
+        speechPreferenceSync?.refresh()
         guard foregroundSyncTask == nil else { return }
 
         foregroundSyncTask = Task { @MainActor [weak self] in

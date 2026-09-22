@@ -7,7 +7,8 @@ final class SpeechService: NSObject, ObservableObject {
     @Published private(set) var loadingText: String?
     @Published private(set) var loadingVoice: SpeechVoice?
     @Published private(set) var selectedVoice: SpeechVoice
-    @Published private(set) var selectedSpeed: SpeechSpeed
+    @Published var preferenceSyncStatus: SpeechPreferenceSyncStatus = .local
+    var onVoiceSelection: ((SpeechVoice) -> Void)?
     @Published private(set) var isUsingSystemVoice = false
     var sessionProvider: (() async throws -> SupabaseSession)?
     var ownerProvider: (() -> String)?
@@ -18,7 +19,6 @@ final class SpeechService: NSObject, ObservableObject {
     private let cache = SpeechAudioCache()
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
-    private let timePitch = AVAudioUnitTimePitch()
     private let defaults: UserDefaults
     private let format = AVAudioFormat(standardFormatWithSampleRate: 24_000, channels: 1)!
     private var requestTask: Task<Void, Never>?
@@ -36,12 +36,9 @@ final class SpeechService: NSObject, ObservableObject {
         self.defaults = defaults
         let preferences = SpeechPreferences(defaults: defaults)
         selectedVoice = preferences.voice
-        selectedSpeed = preferences.speed
         super.init()
         engine.attach(player)
-        engine.attach(timePitch)
-        engine.connect(player, to: timePitch, format: format)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: format)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
         synthesizer.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted(_:)),
                                                name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
@@ -49,16 +46,18 @@ final class SpeechService: NSObject, ObservableObject {
 
     func setVoice(_ voice: SpeechVoice) {
         guard voice != selectedVoice else { return }
-        stop()
-        selectedVoice = voice
-        defaults.set(voice.rawValue, forKey: SpeechPreferenceKey.voice)
+        if let onVoiceSelection {
+            onVoiceSelection(voice)
+        } else {
+            applyVoice(voice)
+            defaults.set(voice.rawValue, forKey: SpeechPreferenceKey.voice)
+        }
     }
 
-    func setSpeed(_ speed: SpeechSpeed) {
-        guard speed != selectedSpeed else { return }
+    func applyVoice(_ voice: SpeechVoice) {
+        guard voice != selectedVoice else { return }
         stop()
-        selectedSpeed = speed
-        defaults.set(speed.rawValue, forKey: SpeechPreferenceKey.speed)
+        selectedVoice = voice
     }
 
     func preview(_ voice: SpeechVoice) {
@@ -76,7 +75,6 @@ final class SpeechService: NSObject, ObservableObject {
         loadingText = text
         loadingVoice = voice
         isUsingSystemVoice = false
-        timePitch.rate = selectedSpeed.playbackRate
         let id = requestID
         let owner = ownerProvider?() ?? "local"
         let key = cacheKey(text: text, owner: owner, voice: voice)
@@ -244,7 +242,7 @@ final class SpeechService: NSObject, ObservableObject {
     private func speakWithSystemVoice(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredVoice()
-        utterance.rate = 0.42 * selectedSpeed.playbackRate
+        utterance.rate = 0.42
         utterance.pitchMultiplier = 1.02
         utterance.volume = 1
         utterance.prefersAssistiveTechnologySettings = true

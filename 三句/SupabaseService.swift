@@ -28,6 +28,8 @@ protocol SupabaseServicing: StudyOverviewFetching {
         initialAvailableGenerations: Int?
     ) async throws -> SupabaseProfileRecord
     func fetchProfile(session: SupabaseSession) async throws -> SupabaseProfileRecord?
+    func fetchSpeechVoice(session: SupabaseSession) async throws -> SpeechVoice?
+    func updateSpeechVoice(session: SupabaseSession, voice: SpeechVoice, onlyIfUnset: Bool) async throws -> SpeechVoice
     func updateProfile(
         session: SupabaseSession,
         nickname: String?,
@@ -373,6 +375,32 @@ struct SupabaseService: SupabaseServicing {
 
         let records: [SupabaseProfileRecord] = try await perform(request)
         return records.first
+    }
+
+    func fetchSpeechVoice(session: SupabaseSession) async throws -> SpeechVoice? {
+        let request = try makeRequest(
+            path: "/rest/v1/profiles?id=eq.\(session.userID)&select=speech_voice",
+            method: "GET",
+            bearerToken: session.accessToken
+        )
+        let records: [SupabaseSpeechVoiceRecord] = try await perform(request)
+        guard let record = records.first else { throw SupabaseServiceError.invalidResponse }
+        return record.voice
+    }
+
+    func updateSpeechVoice(session: SupabaseSession, voice: SpeechVoice, onlyIfUnset: Bool) async throws -> SpeechVoice {
+        let condition = onlyIfUnset ? "&speech_voice=is.null" : ""
+        let request = try makeRequest(
+            path: "/rest/v1/profiles?id=eq.\(session.userID)&select=speech_voice\(condition)",
+            method: "PATCH",
+            bearerToken: session.accessToken,
+            additionalHeaders: ["Prefer": "return=representation"],
+            body: ["speech_voice": voice.rawValue]
+        )
+        let records: [SupabaseSpeechVoiceRecord] = try await perform(request)
+        if let saved = records.first?.voice { return saved }
+        if onlyIfUnset, let existing = try await fetchSpeechVoice(session: session) { return existing }
+        throw SupabaseServiceError.invalidResponse
     }
 
     func updateProfile(

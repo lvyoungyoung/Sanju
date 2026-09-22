@@ -75,7 +75,7 @@ final class StudioAppearanceTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let speech = SpeechService(defaults: defaults)
         for scheme in [ColorScheme.light, .dark] {
-            // ScrollView and the segmented picker need a UIKit host to render;
+            // ScrollView needs a UIKit host to render;
             // ImageRenderer alone can silently produce an empty background.
             let host = UIHostingController(rootView: NavigationStack {
                 SpeechSettingsView(speech: speech).environment(\.colorScheme, scheme)
