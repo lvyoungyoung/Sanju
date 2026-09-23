@@ -11,14 +11,17 @@ Rules:
 - Do not invent a photo, examples of sentences, a story, or facts about the user. Do not translate a narrow request into a generic lifestyle theme.
 - If the name asks for parts of speech, grammar, sentence structures or vocabulary forms (such as prepositions, past tense or passive voice), return null. Semantic search cannot reliably enforce those requirements.
 - If the intent is unclear or the input mainly contains instructions rather than a topic, return null rather than guess.
+- Also return match_scope: "broad" only for an unrestricted general life category (food, natural scenery, pets, work). Use "specific" for any narrower subject, action, attribute, location, relationship, exclusion, uncertainty, or null description. This flag permits admitting ALL sentences in a related category, so be conservative.
 
 Examples:
-"描述食物" and "描述食物的句子" -> {"search_description":"Describing food: its taste, texture, appearance, and the experience of eating it."}
-"描述甜点的味道" -> {"search_description":"Describing how desserts taste."}
-"海边度假，不要水上运动" -> {"search_description":"A holiday at the seaside, excluding water sports."}
-"练习介词使用" -> {"search_description":null}
+"描述食物" and "描述食物的句子" -> {"search_description":"Describing food: its taste, texture, appearance, and the experience of eating it.","match_scope":"broad"}
+"描述风景" -> {"search_description":"Describing natural scenery: landscapes, mountains, rivers, lakes and the sea.","match_scope":"broad"}
+"雨后的山间风景" -> {"search_description":"Mountain scenery after rain.","match_scope":"specific"}
+"描述甜点的味道" -> {"search_description":"Describing how desserts taste.","match_scope":"specific"}
+"海边度假，不要水上运动" -> {"search_description":"A holiday at the seaside, excluding water sports.","match_scope":"specific"}
+"练习介词使用" -> {"search_description":null,"match_scope":"specific"}
 
-Return only a JSON object with exactly one key, search_description, containing the description string or null. No markdown or explanation.`;
+Return only a JSON object with search_description (string or null) and match_scope ("broad" or "specific"). No markdown or explanation.`;
 
 export function sceneIntentMessages(name: string) {
   return [
@@ -34,7 +37,12 @@ export function parseSceneIntent(content: unknown): string | null {
   const value = JSON.parse(content.trim());
   if (
     !value || typeof value !== "object" || Array.isArray(value) ||
-    Object.keys(value).length !== 1 || !("search_description" in value)
+    Object.keys(value).some((key) =>
+      !["search_description", "match_scope"].includes(key)
+    ) ||
+    !("search_description" in value) ||
+    (value.match_scope !== undefined &&
+      !["broad", "specific"].includes(value.match_scope))
   ) {
     throw new Error("Invalid intent object");
   }
@@ -67,9 +75,16 @@ export async function resolveStudySceneIntent(
     fetcher?: typeof fetch;
     timeoutMs?: number;
   },
-): Promise<{ query: string; fallbackReason?: IntentFallback }> {
+): Promise<
+  {
+    query: string;
+    matchScope: "broad" | "specific";
+    fallbackReason?: IntentFallback;
+  }
+> {
   const fallback = (fallbackReason: IntentFallback) => ({
     query: name,
+    matchScope: "specific" as const,
     fallbackReason,
   });
   if (!options.url || !options.apiKey) return fallback("missing_configuration");
@@ -105,7 +120,14 @@ export async function resolveStudySceneIntent(
         payload?.choices?.[0]?.message?.content,
       );
       return description
-        ? { query: description }
+        ? {
+          query: description,
+          matchScope:
+            JSON.parse(payload.choices[0].message.content).match_scope ===
+                "broad"
+              ? "broad"
+              : "specific",
+        }
         : fallback("unsupported_or_unclear");
     } catch {
       return fallback("invalid_response");

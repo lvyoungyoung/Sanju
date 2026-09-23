@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { resolveStudySceneIntent } from "./intent.ts"
+import { CATEGORY_CATALOG_VERSION, ensureCategoryEmbeddings } from "./categories.ts"
 
 const EMBEDDING_MODEL = "qwen3.7-text-embedding"
 const EMBEDDING_DIMENSIONS = 1024
@@ -132,11 +133,35 @@ Deno.serve(async (req) => {
         console.warn("[create-study-scene] intent fallback", intent.fallbackReason)
       }
       const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [intent.query], "query")
-      const response = await adminClient.rpc("create_study_scene_with_embedding", {
+      if (!intent.fallbackReason) {
+        try {
+          await ensureCategoryEmbeddings({
+            read: async () => {
+              const result = await adminClient.from("learning_topic_embeddings")
+                .select("topic_id,embedding").eq("model", EMBEDDING_MODEL)
+                .eq("catalog_version", CATEGORY_CATALOG_VERSION)
+              if (result.error) throw result.error
+              return result.data ?? []
+            },
+            write: async (rows) => {
+              const result = await adminClient.from("learning_topic_embeddings").upsert(
+                rows.map((row) => ({ ...row, model: EMBEDDING_MODEL, catalog_version: CATEGORY_CATALOG_VERSION })),
+                { onConflict: "topic_id,model,catalog_version" },
+              )
+              if (result.error) throw result.error
+            },
+          }, (texts) => createEmbeddings(embeddingURL, embeddingAPIKey, texts, "document"))
+        } catch {
+          console.warn("[create-study-scene] category cache unavailable; using available sentence/category vectors")
+        }
+      }
+      const response = await adminClient.rpc("create_study_scene_with_matching_context", {
         p_user_id: user.id,
         p_name: name,
         p_embedding: sceneEmbedding[0],
         p_model: EMBEDDING_MODEL,
+        p_search_description: intent.query,
+        p_match_scope: intent.matchScope,
       })
       data = response.data
       error = response.error
@@ -158,7 +183,7 @@ Deno.serve(async (req) => {
           // diagnostic here avoids hiding migration or function-signature bugs.
           ...(isStagingRequest(req) ? { diagnostic } : {}),
         },
-        500
+        500,
       )
     }
 
@@ -178,65 +203,70 @@ async function createEmbeddings(
   embeddingURL: string,
   embeddingAPIKey: string,
   inputs: string[],
-  textType: "query" | "document"
+  textType: "query" | "document",
 ): Promise<number[][]> {
-  const response = await fetchWithTimeout(
-    embeddingURL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${embeddingAPIKey}`,
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: { texts: inputs },
-        parameters: {
-          dimension: EMBEDDING_DIMENSIONS,
-          output_type: "dense",
-          text_type: textType,
-        },
-      }),
-    },
-    EMBEDDING_TIMEOUT_MS
-  )
-  const rawText = await response.text()
-  if (!response.ok) {
-    throw new Error(`Embedding request failed: HTTP ${response.status}`)
-  }
-
-  let payload: any
-  try {
-    payload = JSON.parse(rawText)
-  } catch {
-    throw new Error("Embedding response was not JSON")
-  }
-  const embeddings = Array.isArray(payload?.data)
-    ? payload.data.map((item: any) => item?.embedding)
-    : Array.isArray(payload?.output?.embeddings)
-      ? payload.output.embeddings.map((item: any) => item?.embedding)
-      : []
-
-  if (embeddings.length !== inputs.length || embeddings.some((item: unknown) => !isEmbedding(item))) {
-    throw new Error("Embedding response had an invalid vector")
-  }
-  return embeddings as number[][]
-}
-
-function isEmbedding(value: unknown): value is number[] {
-  return Array.isArray(value)
-    && value.length === EMBEDDING_DIMENSIONS
-    && value.every((item) => typeof item === "number" && Number.isFinite(item))
-}
-
-async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const timeout = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS)
   try {
-    return await fetch(input, { ...init, signal: controller.signal })
+    const response = await fetch(
+      embeddingURL,
+      {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${embeddingAPIKey}`,
+        },
+        body: JSON.stringify({
+          model: EMBEDDING_MODEL,
+          input: { texts: inputs },
+          parameters: {
+            dimension: EMBEDDING_DIMENSIONS,
+            output_type: "dense",
+            text_type: textType,
+          },
+        }),
+      },
+    )
+    const rawText = await response.text()
+    if (!response.ok) {
+      throw new Error(`Embedding request failed: HTTP ${response.status}`)
+    }
+
+    let payload: any
+    try {
+      payload = JSON.parse(rawText)
+    } catch {
+      throw new Error("Embedding response was not JSON")
+    }
+    const items = payload?.data ?? payload?.output?.embeddings ?? []
+    // Providers may reorder batched results. Honor their indices when present.
+    const embeddings: unknown[] = Array(inputs.length)
+    if (!Array.isArray(items) || items.length !== inputs.length) throw new Error("Invalid embedding count")
+    const seen = new Set<number>()
+    for (let i = 0; i < items.length; i++) {
+      const index = items[i]?.text_index ?? items[i]?.index ?? i
+      if (!Number.isInteger(index) || index < 0 || index >= inputs.length || seen.has(index)) {
+        throw new Error("Invalid embedding index")
+      }
+      seen.add(index)
+      embeddings[index] = items[i]?.embedding
+    }
+
+    if (embeddings.length !== inputs.length || embeddings.some((item: unknown) => !isEmbedding(item))) {
+      throw new Error("Embedding response had an invalid vector")
+    }
+    return embeddings as number[][]
   } finally {
     clearTimeout(timeout)
   }
+}
+
+function isEmbedding(value: unknown): value is number[] {
+  return Array.isArray(value) &&
+    value.length === EMBEDDING_DIMENSIONS &&
+    value.every((item) => typeof item === "number" && Number.isFinite(item)) &&
+    value.some((item) => item !== 0)
 }
 
 function jsonResponse(data: unknown, status = 200) {

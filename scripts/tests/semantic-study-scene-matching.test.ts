@@ -1132,6 +1132,233 @@ Deno.test("semantic theme migrations preserve matching and safely pause AI revie
         strictEqual(definition.includes("pg_advisory_xact_lock"), true);
       },
     );
+    const categoryMigration = await readMigration(
+      "20260923000000_add_category_semantic_study_matching.sql",
+    );
+    await db.exec(categoryMigration);
+    await db.exec(categoryMigration);
+
+    async function category(
+      id: string,
+      score: number,
+      embeddingModel = model,
+      version = "photo-life-v1",
+    ) {
+      await db.query(
+        `insert into learning_topic_embeddings(topic_id,model,catalog_version,embedding)
+        values ($1,$2,$3,$4) on conflict(topic_id,model,catalog_version) do update set embedding=excluded.embedding`,
+        [id, embeddingModel, version, vector(score)],
+      );
+    }
+    async function setScope(id: string, scope: string) {
+      await db.query(
+        "update study_scene_embeddings set match_scope=$2 where scene_id=$1",
+        [id, scope],
+      );
+    }
+
+    await t.step(
+      "broad categories supplement concrete sentences, including missing sentence vectors",
+      async () => {
+        await reset();
+        await db.exec("truncate learning_topic_embeddings");
+        await category("natural_scenery", 0.8);
+        await category("food_and_drinks", 0.2);
+        const broad = await scene();
+        await setScope(broad, "broad");
+        const specific = await scene();
+        const concrete = await sentence(0.2, {
+          topic: "natural_scenery",
+          favorite: true,
+        });
+        const missing = await sentence(0.1, {
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        await expectLinks(broad, [concrete, missing]);
+        await expectLinks(specific, []);
+        const direct = await sentence(0.6);
+        await sentence(0.1, { topic: "food_and_drinks" });
+        await sentence(0.9, { topic: "natural_scenery", user: otherOwner });
+        await matchNew(direct);
+        await refresh(broad);
+        await refresh(specific);
+        await expectLinks(broad, [concrete, missing, direct]);
+        await expectLinks(specific, [direct]);
+        strictEqual(
+          (await db.query<any>(
+            "select match_source from study_scene_sentences where scene_id=$1 and sentence_id=$2",
+            [broad, concrete],
+          )).rows[0].match_source,
+          "category_semantic",
+        );
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,4)",
+          [owner, concrete, `scene:${broad}`],
+        );
+        // Both refresh paths must remove the same category-only match when the category changes.
+        await db.query(
+          "update memory_sentences set learning_topic_ids=array['food_and_drinks'] where id=$1",
+          [concrete],
+        );
+        await expectLinks(broad, [missing, direct]);
+        await refresh(broad);
+        await expectLinks(broad, [missing, direct]);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress where sentence_id=$1",
+            [concrete],
+          )).rows[0].correct_count,
+          4,
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select is_favorite from memory_sentences where id=$1",
+            [concrete],
+          )).rows[0].is_favorite,
+          true,
+        );
+        await refresh(broad, otherOwner);
+        await matchNew(missing, otherOwner);
+        await expectLinks(broad, [missing, direct]);
+      },
+    );
+
+    await t.step(
+      "category admission uses same model/version, score floor, near-best gap and top-two cap",
+      async () => {
+        await reset();
+        await db.exec("truncate learning_topic_embeddings");
+        const broad = await scene();
+        await setScope(broad, "broad");
+        await category("natural_scenery", 0.54);
+        await category("natural_scenery", 1, "other-model");
+        await category("natural_scenery", 1, model, "old-catalog");
+        const scenery = await sentence(0.1, { topic: "natural_scenery" });
+        await refresh(broad);
+        await expectLinks(broad, []);
+        await category("natural_scenery", 0.8);
+        await category("travel", 0.76);
+        await category("sports_and_outdoors", 0.75);
+        await category("city_life", 0.6);
+        const travel = await sentence(0.1, { topic: "travel" });
+        await sentence(0.1, { topic: "sports_and_outdoors" });
+        await sentence(0.1, { topic: "city_life" });
+        await refresh(broad);
+        await expectLinks(broad, [scenery, travel]);
+        await category("travel", 0.6);
+        await category("sports_and_outdoors", 0.6);
+        await refresh(broad);
+        await expectLinks(broad, [scenery]);
+      },
+    );
+
+    await t.step(
+      "creation is atomic, keeps IDs/SRS, leaves exact themes and legacy contracts intact",
+      async () => {
+        await reset();
+        await db.exec("truncate learning_topic_embeddings");
+        await category("natural_scenery", 0.8);
+        const concrete = await sentence(0.1, { topic: "natural_scenery" });
+        const create = async (scope = "broad", name = "Scenery") =>
+          (await db.query<any>(
+            "select * from create_study_scene_with_matching_context($1,$2,$3::jsonb,$4,$5,$6)",
+            [
+              owner,
+              name,
+              JSON.stringify(vector(1)),
+              model,
+              "Natural scenery",
+              scope,
+            ],
+          )).rows[0];
+        const created = await create();
+        strictEqual(created.total_count, 1);
+        deepStrictEqual(Object.keys(created), [
+          "id",
+          "name",
+          "cover_memory_id",
+          "total_count",
+          "due_count",
+          "studied_count",
+          "reviewable_today_count",
+          "mastery_score",
+        ]);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,3)",
+          [owner, concrete, `scene:${created.id}`],
+        );
+        strictEqual((await create()).id, created.id);
+        strictEqual((await create("specific")).total_count, 0);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress",
+          )).rows[0].correct_count,
+          3,
+        );
+        const old = (await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,'Legacy',$2::jsonb,$3)",
+          [owner, JSON.stringify(vector(1)), model],
+        )).rows[0];
+        strictEqual(old.total_count, 0);
+        const exact = (await db.query<any>(
+          "select * from create_learning_topic_study_scene($1,'Nature',$2)",
+          [owner, "natural_scenery"],
+        )).rows[0];
+        strictEqual((await create("specific", "Nature")).id, exact.id);
+        await refresh(exact.id);
+        await expectLinks(exact.id, [concrete]);
+        await rejects(
+          () => create("invalid", "Invalid"),
+          /Invalid study scene match scope/,
+        );
+        strictEqual(
+          (await db.query("select id from study_scenes where name='Invalid'"))
+            .rows.length,
+          0,
+        );
+        await rejects(
+          () =>
+            db.query(
+              "select * from create_study_scene_with_matching_context($1,'Bad',$2::jsonb,$3,'Scenery','broad')",
+              [owner, JSON.stringify(Array(1024).fill(0)), model],
+            ),
+          /Invalid study scene embedding/,
+        );
+        for (let i = 3; i < 20; i++) await scene({ embedded: false });
+        await rejects(
+          () => create("broad", "Too many"),
+          /study_scene_limit_reached/,
+        );
+        strictEqual((await create()).id, created.id);
+      },
+    );
+
+    await t.step(
+      "category cache and new matching RPCs are service-role-only",
+      async () => {
+        for (const role of ["anon", "authenticated"]) {
+          const permissions = (await db.query<any>(
+            `select
+          has_table_privilege($1,'learning_topic_embeddings','SELECT') as cache,
+          has_function_privilege($1,'semantic_study_scene_candidates(uuid,uuid,uuid,double precision)','EXECUTE') as candidates,
+          has_function_privilege($1,'create_study_scene_with_matching_context(uuid,text,jsonb,text,text,text)','EXECUTE') as creation`,
+            [role],
+          )).rows[0];
+          deepStrictEqual(permissions, {
+            cache: false,
+            candidates: false,
+            creation: false,
+          });
+        }
+        strictEqual(
+          (await db.query<any>(
+            "select relrowsecurity from pg_class where oid='learning_topic_embeddings'::regclass",
+          )).rows[0].relrowsecurity,
+          true,
+        );
+      },
+    );
   } finally {
     await db.close();
   }

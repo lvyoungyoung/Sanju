@@ -61,7 +61,7 @@ Deno.test("one MiMo call returns the description using the existing provider set
       return response(JSON.stringify({ search_description: description }));
     },
   });
-  deepStrictEqual(result, { query: description });
+  deepStrictEqual(result, { query: description, matchScope: "specific" });
   strictEqual(calls, 1);
 });
 
@@ -95,8 +95,38 @@ Deno.test("missing config, refusal, malformed and failed responses all retain th
       fetcher: async () => makeResponse(),
     });
     strictEqual(result.query, name);
+    strictEqual(result.matchScope, "specific");
     ok(result.fallbackReason);
   }
+});
+
+Deno.test("category expansion requires an explicit valid broad intent", async () => {
+  for (const scope of ["broad", "specific", undefined]) {
+    const result = await resolveStudySceneIntent("描述风景", {
+      ...options,
+      fetcher: async () =>
+        response(
+          JSON.stringify({
+            search_description: "Natural scenery.",
+            match_scope: scope,
+          }),
+        ),
+    });
+    strictEqual(result.matchScope, scope === "broad" ? "broad" : "specific");
+    strictEqual(result.query, "Natural scenery.");
+  }
+  for (const scope of [true, "any", null]) {
+    throws(() =>
+      parseSceneIntent(
+        JSON.stringify({ search_description: "Scenery", match_scope: scope }),
+      )
+    );
+  }
+  const prompt = sceneIntentMessages("x")[0].content;
+  ok(
+    prompt.includes('"Mountain scenery after rain.","match_scope":"specific"'),
+  );
+  ok(prompt.includes("exclusion, uncertainty"));
 });
 
 Deno.test("timeouts cover both connection and response-body reading, without retries", async () => {

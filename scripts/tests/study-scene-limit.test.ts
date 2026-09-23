@@ -12,7 +12,8 @@ const harness = `
   export let handler: (req: Request) => Promise<Response>;
   export const state = {
     count: 20, existing: false, raceLimit: false, embeddingCalls: 0, rpcCalls: 0,
-    intentCalls: 0, intentFails: false, embeddingInput: null, savedName: null
+    intentCalls: 0, intentFails: false, embeddingInput: null, savedName: null,
+    savedScope: null, rpcName: null, categoryCacheFails: false
   };
   const Deno = {
     env: { get: (name: string) => name === "SUPABASE_ANON_KEY" ? "anon" : "test-value" },
@@ -21,14 +22,18 @@ const harness = `
   function createClient(_url: string, key: string, _options?: unknown): any {
     if (key === "anon") return { auth: { getUser: async () => ({ data: { user: { id: "owner", is_anonymous: false } }, error: null }) } };
     return {
-      from: () => ({
+      from: (table: string) => ({
         select() { return this; }, eq() { return this; },
-        then(resolve: any, reject: any) { return Promise.resolve({count: state.count, error: null}).then(resolve,reject); },
+        then(resolve: any, reject: any) { return Promise.resolve(table === "learning_topic_embeddings"
+          ? {data: Object.keys(CATEGORY_DESCRIPTIONS).map(topic_id => ({topic_id,embedding:[1,...Array(1023).fill(0)]})), error:state.categoryCacheFails ? {message:"unavailable"} : null}
+          : {count: state.count, error: null}).then(resolve,reject); },
         maybeSingle: async () => ({data: state.existing ? {id:"existing"} : null, error: null})
       }),
       rpc: async (_name: string, args: any) => {
         state.rpcCalls++;
         state.savedName = args.p_name;
+        state.savedScope = args.p_match_scope;
+        state.rpcName = _name;
         return state.raceLimit
           ? {data:null, error:{code:"P0001",message:"study_scene_limit_reached"}}
           : {data:[{id:"scene"}], error:null};
@@ -39,7 +44,7 @@ const harness = `
     if (new Headers(init.headers).has("api-key")) {
       state.intentCalls++;
       if (state.intentFails) return new Response("Unavailable", {status:503});
-      return Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify({search_description:"Describing the taste of food."})}}]});
+      return Response.json({choices:[{finish_reason:"stop",message:{content:JSON.stringify({search_description:"Describing the taste of food.",match_scope:"specific"})}}]});
     }
     state.embeddingCalls++;
     state.embeddingInput = JSON.parse(init.body as string).input.texts;
@@ -48,15 +53,30 @@ const harness = `
 `;
 const { handler, state } = await import(
   "data:application/typescript," + encodeURIComponent(
-    harness + source.replace(/^import .*createClient.*\n/, "").replace(
-      '"./intent.ts"',
+    "import { CATEGORY_DESCRIPTIONS } from " +
       JSON.stringify(
         new URL(
-          "../../supabase/functions/create-study-scene/intent.ts",
+          "../../supabase/functions/create-study-scene/categories.ts",
           import.meta.url,
         ).href,
+      ) + ";\n" + harness +
+      source.replace(/^import .*createClient.*\n/, "").replace(
+        '"./intent.ts"',
+        JSON.stringify(
+          new URL(
+            "../../supabase/functions/create-study-scene/intent.ts",
+            import.meta.url,
+          ).href,
+        ),
+      ).replace(
+        '"./categories.ts"',
+        JSON.stringify(
+          new URL(
+            "../../supabase/functions/create-study-scene/categories.ts",
+            import.meta.url,
+          ).href,
+        ),
       ),
-    ),
   )
 );
 const request = (predefined = false) =>
@@ -100,6 +120,22 @@ Deno.test("topic capacity rejects before embedding and localizes a concurrent da
   }
 });
 
+Deno.test("category cache failure does not block sentence-only creation", async () => {
+  Object.assign(state, {
+    count: 0,
+    existing: false,
+    raceLimit: false,
+    intentFails: false,
+    categoryCacheFails: true,
+  });
+  try {
+    strictEqual((await handler(request())).status, 200);
+    strictEqual(state.savedScope, "specific");
+  } finally {
+    state.categoryCacheFails = false;
+  }
+});
+
 Deno.test("twentieth topic and same-name requests still succeed", async () => {
   for (
     const scenario of [{ count: 19, existing: false }, {
@@ -135,6 +171,8 @@ Deno.test("custom creation embeds the intent but saves the original name; predef
   strictEqual((await handler(request())).status, 200);
   strictEqual(state.embeddingInput[0], "Describing the taste of food.");
   strictEqual(state.savedName, "New theme");
+  strictEqual(state.savedScope, "specific");
+  strictEqual(state.rpcName, "create_study_scene_with_matching_context");
   strictEqual(state.intentCalls, 1);
   strictEqual((await handler(request(true))).status, 200);
   strictEqual(state.intentCalls, 1);
