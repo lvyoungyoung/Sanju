@@ -91,6 +91,7 @@ Deno.test("generation and anonymous recovery keep up to two distinct ordered sce
     type Sentence = { english: string; chinese: string; learning_topic_ids: string[]; presentation_group?: SentencePresentationGroup };
     const LEARNING_TOPIC_IDS = new Set(${JSON.stringify(expected)});
     export ${sourceFunction(generation, "normalizeLearningTopicIDs")}
+    ${sourceFunction(generation, "normalizeExpressionPurpose")}
     export ${sourceFunction(generation, "normalizeSentenceArray")}
     export ${
     sourceFunction(recovery, "normalizeLearningTopicIDs").replace(

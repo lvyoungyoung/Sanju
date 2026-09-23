@@ -1,6 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { resolveStudySceneIntent } from "./intent.ts"
-import { CATEGORY_CATALOG_VERSION, ensureCategoryEmbeddings } from "./categories.ts"
 
 const EMBEDDING_MODEL = "qwen3.7-text-embedding"
 const EMBEDDING_DIMENSIONS = 1024
@@ -94,7 +92,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
     }
 
-    // Avoid paying for intent extraction or embedding when the limit is known. The
+    // Avoid paying for embedding when the limit is known. The
     // database trigger is authoritative if concurrent requests race this check.
     const { count, error: countError } = await adminClient.from("study_scenes")
       .select("id", { count: "exact", head: true }).eq("user_id", user.id)
@@ -124,44 +122,12 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Missing semantic matching configuration" }, 500)
       }
 
-      const intent = await resolveStudySceneIntent(name, {
-        url: Deno.env.get("MIMO_BASE_URL"),
-        apiKey: Deno.env.get("MIMO_API_KEY"),
-        fetcher: fetch,
-      })
-      if (intent.fallbackReason) {
-        console.warn("[create-study-scene] intent fallback", intent.fallbackReason)
-      }
-      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [intent.query], "query")
-      if (!intent.fallbackReason) {
-        try {
-          await ensureCategoryEmbeddings({
-            read: async () => {
-              const result = await adminClient.from("learning_topic_embeddings")
-                .select("topic_id,embedding").eq("model", EMBEDDING_MODEL)
-                .eq("catalog_version", CATEGORY_CATALOG_VERSION)
-              if (result.error) throw result.error
-              return result.data ?? []
-            },
-            write: async (rows) => {
-              const result = await adminClient.from("learning_topic_embeddings").upsert(
-                rows.map((row) => ({ ...row, model: EMBEDDING_MODEL, catalog_version: CATEGORY_CATALOG_VERSION })),
-                { onConflict: "topic_id,model,catalog_version" },
-              )
-              if (result.error) throw result.error
-            },
-          }, (texts) => createEmbeddings(embeddingURL, embeddingAPIKey, texts, "document"))
-        } catch {
-          console.warn("[create-study-scene] category cache unavailable; using available sentence/category vectors")
-        }
-      }
-      const response = await adminClient.rpc("create_study_scene_with_matching_context", {
+      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
+      const response = await adminClient.rpc("create_study_scene_with_embedding", {
         p_user_id: user.id,
         p_name: name,
         p_embedding: sceneEmbedding[0],
         p_model: EMBEDDING_MODEL,
-        p_search_description: intent.query,
-        p_match_scope: intent.matchScope,
       })
       data = response.data
       error = response.error

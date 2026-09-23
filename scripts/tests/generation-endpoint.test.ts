@@ -39,7 +39,7 @@ const fetch = (async (input: any, init?: RequestInit) => {
   }
   state.modelStarted?.();
   if (state.modelWait) await state.modelWait;
-  const sentence = { english:'This is a cat.', chinese:'这是一只猫。', learning_topic_ids:['pet_life'] };
+  const sentence = { english:'This is a cat.', chinese:'这是一只猫。', learning_topic_ids:['pet_life'], expression_purpose:'Identifying a cat.' };
   const payload = state.dual
     ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence],tags:['动物']}
     : {sentences:[sentence,sentence,sentence],tags:['动物']};
@@ -52,6 +52,7 @@ class Query {
   constructor(private table: string) {}
   select() {return this;} eq(k:string,v:any) {this.filters.push([k,v]); return this;}
   update(p:any) {this.patch=p; return this;}
+  upsert(rows:any[]) {state.embeddingTable=this.table;state.embeddingRows=rows;return Promise.resolve({error:null});}
   execute() {
     if (this.table === 'profiles') return {data:{available_generations:state.balance,generation_banned_until:null},error:null};
     if (state.lookupError && this.table === 'generation_jobs' && !this.patch) {
@@ -72,7 +73,7 @@ function createClient(_url:string,key:string,_options?:unknown):any {
     upload:async()=>({error:null}), remove:async()=>{state.removed++;return {error:null};}
   })}, rpc:async(name:string,args:any)=>{
     if (name==='try_acquire_generation_slot') return {data:true,error:null};
-    if (name==='release_generation_slot') return {data:null,error:null};
+    if (name==='release_generation_slot' || name==='refresh_semantic_study_scene_matches_for_sentence') return {data:null,error:null};
     if (name==='claim_generation_job') {
       const map=args.p_is_anonymous?state.guests:state.jobs;
       const existing=map.get(args.p_request_id);
@@ -163,9 +164,19 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     }
     const completed = await first;
     strictEqual(completed.status, 200);
-    strictEqual((await completed.json()).memory.sentences.length, 6);
+    const delivered = (await completed.json()).memory.sentences;
+    strictEqual(delivered.length, 6);
+    strictEqual(
+      state.embeddingRows[0].expression_purpose,
+      "Identifying a cat.",
+    );
+    strictEqual(state.embeddingRows[0].sentence_id, delivered[0].id);
+    if (anonymous) {
+      strictEqual(state.guests.get(id).sentences[0].id, delivered[0].id);
+    }
     const replay = await handler(request());
     strictEqual(replay.status, 200);
+    strictEqual((await replay.json()).memory.sentences[0].id, delivered[0].id);
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
     strictEqual(state.balance, 9);

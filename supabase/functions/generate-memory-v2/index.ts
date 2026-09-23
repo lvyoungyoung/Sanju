@@ -5,6 +5,7 @@ interface Sentence {
   english: string
   chinese: string
   learning_topic_ids: string[]
+  expression_purpose?: string
   presentation_group?: SentencePresentationGroup
 }
 
@@ -63,6 +64,7 @@ const LEARNING_TOPICS = [
 
 const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
 const LEARNING_TOPIC_PROMPT = LEARNING_TOPICS.map(([id, title]) => `${id}（${title}）`).join("、")
+const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：为每句写一条简短的英文表达用途，说明用户可以用这句话表达什么，最多 30 个英文单词且不超过 240 个字符。依据句子本身，不是照片整体，不得加入原句没有表达的人物、关系、背景、感受或场景。保留关键对象、动作、感受及限制；不要只写宽泛分类，不要简单重复或翻译原句，不要罗列多个猜测用途。例如 The lake reflected the snow-covered mountains. 的用途是 Describing a lake reflecting snow-covered mountains.；We enjoyed a delicious meal by the lake. 的用途是 Sharing an enjoyable meal beside a lake.，不是描述山水风景。每句必须返回非空的 expression_purpose 字符串。"
 const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
   "self_and_style：自拍、个人形象、衣着、发型或配饰；只是出现人物不等于这个场景",
   "family_time：家人相伴、家庭合影、陪伴父母；重点是孩子成长选 children_growing_up",
@@ -131,14 +133,15 @@ ${englishLevel === "启蒙" ? '启蒙的生活表达也必须使用 3 到 6 个�
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
 2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
-4. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段
+4. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段
 5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 6. learning_topic_ids 是句子的分类，不是照片的分类。每句选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个必须是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。不要自创 ID，不要因为图片整体内容而机械地给所有句子相同分类。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。例如同一张生日聚餐照，单纯描述蛋糕味道的句子只选 food_and_drinks，表达庆生的句子选 festivals_and_celebrations；“We went camping with our family.” 可选 ["sports_and_outdoors","family_time"]，但没有提到家人的露营句子不要添加 family_time。对于 scene_and_feelings，也以该句实际表达的活动或关系为准；照片只能辅助消除歧义，不能用照片中未在句子表达的细节强行归类。没有合适场景的句子（如仅记录票据、证件、备忘截图或无场景指向的感叹）返回空数组 []；不要新增“实用记录”分类。每句最多 2 个分类
 7. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 8. 不要输出任何多余字段或 JSON 前后的任何字符
+9. ${EXPRESSION_PURPOSE_PROMPT}
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["self_and_style"]},{"english":"...","chinese":"...","learning_topic_ids":["natural_scenery"]},{"english":"...","chinese":"...","learning_topic_ids":["home_life"]}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["festivals_and_celebrations"]},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"]},{"english":"...","chinese":"...","learning_topic_ids":[]}],"tags":["人物","生活场景"]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["self_and_style"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["natural_scenery"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["festivals_and_celebrations"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["人物","生活场景"]}
 `.trim()
   }
 
@@ -157,7 +160,7 @@ ${languageStylePrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english、chinese 和 learning_topic_ids 三个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+8. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english、chinese 必须是字符串；learning_topic_ids 必须是数组
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
@@ -167,9 +170,10 @@ ${languageStylePrompt}
 15. learning_topic_ids 按每个句子实际表达的重点选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。第一个是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。分类对象是句子，不是照片；同一张照片可以生成不同分类的句子。例如生日聚餐照中，单纯描述蛋糕味道只选 food_and_drinks，表达庆生选 festivals_and_celebrations；“A family is camping by the lake.” 可选 ["sports_and_outdoors","family_time"]，但不要仅因背景里有湖就再加 natural_scenery。分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。无合适场景的句子（如仅记录票据、证件、备忘截图）返回 []，不要强行分类，不要自创“实用记录”等 ID。每句最多 2 个分类。
 16. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 17. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+18. ${EXPRESSION_PURPOSE_PROMPT}
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"]},{"english":"...","chinese":"...","learning_topic_ids":["home_life"]},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"]}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -395,12 +399,20 @@ function normalizeSentenceArray(
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
       learning_topic_ids: normalizeLearningTopicIDs(item?.learning_topic_ids),
+      expression_purpose: normalizeExpressionPurpose(item?.expression_purpose),
       ...(presentationGroup ? { presentation_group: presentationGroup } : {}),
     }))
     .filter(
       (item: Sentence) =>
         item.english && item.chinese
     )
+}
+
+function normalizeExpressionPurpose(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const purpose = value.trim().replace(/\s+/g, " ")
+  return purpose.length > 0 && purpose.length <= 240 && purpose.split(" ").length <= 30
+    ? purpose : undefined
 }
 
 function normalizeLearningTopicIDs(value: unknown): string[] {
@@ -953,6 +965,7 @@ Deno.serve(async (req) => {
       english: sentence.english,
       chinese: sentence.chinese,
       learning_topic_ids: sentence.learning_topic_ids,
+      expression_purpose: sentence.expression_purpose,
       presentation_group: sentence.presentation_group ?? "what_i_see",
       is_favorite: false,
     }))
@@ -1667,15 +1680,12 @@ async function indexGeneratedSentencesForStudyScenes(
   }
 
   try {
-    const embeddings = await fetchSentenceEmbeddings(sentences, fetcher)
+    const embeddingRows = await buildSentenceEmbeddingRows(sentences, fetcher)
 
     const { error: upsertError } = await adminClient.from("sentence_embeddings").upsert(
-      sentences.map((sentence, index) => ({
-        sentence_id: sentence.id,
+      embeddingRows.map((row) => ({
+        ...row,
         user_id: userID,
-        embedding: embeddings[index],
-        model: "qwen3.7-text-embedding",
-        updated_at: new Date().toISOString(),
       })),
       { onConflict: "sentence_id" }
     )
@@ -1717,15 +1727,12 @@ async function stageGuestSentenceEmbeddings(
   }
 
   try {
-    const embeddings = await fetchSentenceEmbeddings(sentences, fetcher)
+    const embeddingRows = await buildSentenceEmbeddingRows(sentences, fetcher)
     const { error } = await adminClient.from("guest_sentence_embeddings").upsert(
-      sentences.map((sentence, index) => ({
-        sentence_id: sentence.id,
+      embeddingRows.map((row) => ({
+        ...row,
         guest_user_id: userID,
         guest_job_id: guestJobID,
-        embedding: embeddings[index],
-        model: "qwen3.7-text-embedding",
-        updated_at: new Date().toISOString(),
       })),
       { onConflict: "sentence_id" }
     )
@@ -1740,7 +1747,36 @@ async function stageGuestSentenceEmbeddings(
   }
 }
 
-async function fetchSentenceEmbeddings(sentences: FinalizedSentence[], fetcher: typeof fetch): Promise<number[][]> {
+async function buildSentenceEmbeddingRows(sentences: FinalizedSentence[], fetcher: typeof fetch) {
+  const purposes = sentences.flatMap((sentence, index) => {
+    const text = normalizeExpressionPurpose(sentence.expression_purpose)
+    return text ? [{ index, text }] : []
+  })
+  if (purposes.length !== sentences.length) {
+    console.warn("[generate-memory-v2] missing expression purposes", sentences.length - purposes.length)
+  }
+  // Independent requests: one provider failure must not discard the other route.
+  const [original, purpose] = await Promise.allSettled([
+    fetchSentenceEmbeddings(sentences.map((sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`), fetcher),
+    purposes.length ? fetchSentenceEmbeddings(purposes.map((item) => item.text), fetcher) : Promise.resolve([]),
+  ])
+  for (const [route, result] of [["sentence", original], ["purpose", purpose]] as const) {
+    if (result.status === "rejected") {
+      console.error(`[generate-memory-v2] ${route} embedding failed`, result.reason instanceof Error ? result.reason.message : String(result.reason))
+    }
+  }
+  const purposeVectors = new Map(purposes.map((item, i) => [item.index, purpose.status === "fulfilled" ? purpose.value[i] : null]))
+  return sentences.map((sentence, index) => ({
+    sentence_id: sentence.id,
+    embedding: original.status === "fulfilled" ? original.value[index] : null,
+    expression_purpose: normalizeExpressionPurpose(sentence.expression_purpose) ?? null,
+    purpose_embedding: purposeVectors.get(index) ?? null,
+    model: "qwen3.7-text-embedding",
+    updated_at: new Date().toISOString(),
+  }))
+}
+
+async function fetchSentenceEmbeddings(texts: string[], fetcher: typeof fetch): Promise<number[][]> {
   const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
   const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
   if (!apiKey || !embeddingURL) {
@@ -1758,15 +1794,7 @@ async function fetchSentenceEmbeddings(sentences: FinalizedSentence[], fetcher: 
       body: JSON.stringify({
         model: "qwen3.7-text-embedding",
         input: {
-          texts: sentences.map(
-            (sentence) => {
-              return [
-                `English: ${sentence.english}`,
-                `Chinese: ${sentence.chinese}`,
-              ]
-                .join("\n")
-            }
-          ),
+          texts,
         },
         parameters: {
           dimension: 1024,
@@ -1784,19 +1812,25 @@ async function fetchSentenceEmbeddings(sentences: FinalizedSentence[], fetcher: 
   }
 
   const payload = JSON.parse(rawText)
-  const embeddings = Array.isArray(payload?.data)
-    ? payload.data.map((item: any) => item?.embedding)
-    : Array.isArray(payload?.output?.embeddings)
-      ? payload.output.embeddings.map((item: any) => item?.embedding)
-      : []
+  const items = payload?.data ?? payload?.output?.embeddings
+  if (!Array.isArray(items) || items.length !== texts.length) throw new Error("Invalid embedding count")
+  const embeddings: unknown[] = Array(texts.length)
+  const seen = new Set<number>()
+  for (let i = 0; i < items.length; i++) {
+    const index = items[i]?.text_index ?? items[i]?.index ?? i
+    if (!Number.isInteger(index) || index < 0 || index >= texts.length || seen.has(index)) throw new Error("Invalid embedding index")
+    seen.add(index)
+    embeddings[index] = items[i]?.embedding
+  }
 
   if (
-    embeddings.length !== sentences.length ||
+    embeddings.length !== texts.length ||
     embeddings.some(
       (embedding: unknown) =>
         !Array.isArray(embedding) ||
         embedding.length !== 1024 ||
-        !embedding.every((value) => typeof value === "number" && Number.isFinite(value))
+        !embedding.every((value) => typeof value === "number" && Number.isFinite(value)) ||
+        !embedding.some((value) => value !== 0)
     )
   ) {
     throw new Error("Embedding response had an invalid vector")
@@ -1981,7 +2015,7 @@ async function loadCompletedGuestGenerationResponseIfNeeded(
       createdAt: completedJob?.created_at ?? args.fallbackCreatedAt,
       provider: completedJob?.provider ?? null,
       tags: Array.isArray(completedJob?.tags) ? completedJob.tags : [],
-      sentences: toClientSentences(sentences, args.generationFormat, true),
+      sentences: toClientSentences(sentences, args.generationFormat),
     },
     remainingCredits: completedJob?.remaining_credits ?? args.fallbackRemainingCredits,
     guestJobID: args.guestJobID,
@@ -1999,14 +2033,13 @@ function isUUID(value: unknown): value is string {
 
 function toClientSentences(
   sentences: any[],
-  generationFormat: GenerationFormat,
-  replacesMissingIDs = false
+  generationFormat: GenerationFormat
 ): any[] {
   const visibleSentences = generationFormat === "legacy_v1" ? sentences.slice(0, 3) : sentences
 
   return visibleSentences.map((sentence: any) => {
     const normalized = {
-      id: replacesMissingIDs || !isUUID(sentence?.id) ? crypto.randomUUID() : sentence.id,
+      id: !isUUID(sentence?.id) ? crypto.randomUUID() : sentence.id,
       english: String(sentence?.english ?? "").trim(),
       chinese: String(sentence?.chinese ?? "").trim(),
       learning_topic_ids: normalizeLearningTopicIDs(sentence?.learning_topic_ids),

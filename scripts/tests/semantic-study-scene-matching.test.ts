@@ -1359,6 +1359,218 @@ Deno.test("semantic theme migrations preserve matching and safely pause AI revie
         );
       },
     );
+    const purposeMigration = await readMigration(
+      "20260923001000_match_sentence_or_expression_purpose.sql",
+    );
+    await db.exec(purposeMigration);
+    await db.exec(purposeMigration);
+    async function purpose(id: string, score: number) {
+      await db.query(
+        "update sentence_embeddings set expression_purpose='Describing a scene.', purpose_embedding=$2 where sentence_id=$1",
+        [id, vector(score)],
+      );
+    }
+    await t.step(
+      "either original or purpose vector independently admits a sentence, using the best score",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const original = await sentence(0.7);
+        await purpose(original, 0.1);
+        const usage = await sentence(0.1);
+        await purpose(usage, 0.8);
+        const both = await sentence(0.7);
+        await purpose(both, 0.9);
+        const neither = await sentence(0.1);
+        await purpose(neither, 0.2);
+        const legacy = await sentence(0.6);
+        for (const id of [original, usage, both, neither, legacy]) {
+          await matchNew(id);
+        }
+        await expectLinks(topic, [original, usage, both, legacy]);
+        const incremental = await db.query(
+          "select sentence_id,match_score,match_source from study_scene_sentences where scene_id=$1 order by sentence_id",
+          [topic],
+        );
+        await refresh(topic);
+        deepStrictEqual(
+          (await db.query(
+            "select sentence_id,match_score,match_source from study_scene_sentences where scene_id=$1 order by sentence_id",
+            [topic],
+          )).rows,
+          incremental.rows,
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select match_source from study_scene_sentences where scene_id=$1 and sentence_id=$2",
+            [topic, usage],
+          )).rows[0].match_source,
+          "purpose_semantic",
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select match_score from study_scene_sentences where scene_id=$1 and sentence_id=$2",
+            [topic, both],
+          )).rows[0].match_score,
+          90,
+        );
+        await db.query(
+          "update sentence_embeddings set embedding=null where sentence_id=$1",
+          [usage],
+        );
+        await matchNew(usage);
+        await expectLinks(topic, [original, usage, both, legacy]);
+        await refresh(topic, owner, 0.85);
+        await expectLinks(topic, [both]);
+      },
+    );
+    await t.step(
+      "category vectors and old broad flags no longer admit sentences; exact themes are unchanged",
+      async () => {
+        await reset();
+        await db.exec("truncate learning_topic_embeddings");
+        await category("natural_scenery", 1);
+        const topic = await scene();
+        await setScope(topic, "broad");
+        const exact = await scene({
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        const item = await sentence(0.1, { topic: "natural_scenery" });
+        await refresh(topic);
+        await expectLinks(topic, []);
+        await expectLinks(exact, [item]);
+        await purpose(item, 0.8);
+        await matchNew(item);
+        await expectLinks(topic, [item]);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,5)",
+          [owner, item, `scene:${topic}`],
+        );
+        await purpose(item, 0.1);
+        await matchNew(item);
+        await expectLinks(topic, []);
+        await expectLinks(exact, [item]);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress where sentence_id=$1",
+            [item],
+          )).rows[0].correct_count,
+          5,
+        );
+      },
+    );
+    await t.step(
+      "purpose route enforces sentence owner, embedding owner and matching model",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const other = await sentence(0.1, { user: otherOwner });
+        await purpose(other, 0.9);
+        const wrongOwner = await sentence(0.1, { embeddingOwner: otherOwner });
+        await purpose(wrongOwner, 0.9);
+        const wrongModel = await sentence(0.1, {
+          embeddingModel: "other-model",
+        });
+        await purpose(wrongModel, 0.9);
+        const valid = await sentence(0.1);
+        await purpose(valid, 0.8);
+        await refresh(topic);
+        await expectLinks(topic, [valid]);
+        await refresh(topic, otherOwner);
+        await matchNew(valid, otherOwner);
+        await expectLinks(topic, [valid]);
+        await db.query(
+          "update sentence_embeddings set expression_purpose=null where sentence_id=$1",
+          [valid],
+        );
+        await matchNew(valid);
+        await expectLinks(topic, []);
+        await rejects(
+          () =>
+            db.query(
+              "update sentence_embeddings set purpose_embedding=$2 where sentence_id=$1",
+              [valid, Array(1024).fill(0)],
+            ),
+          /check constraint/,
+        );
+      },
+    );
+    await t.step(
+      "both guest vectors and purpose survive login regardless of insertion order",
+      async () => {
+        for (const late of [false, true]) {
+          await reset();
+          const topic = await scene();
+          const id = crypto.randomUUID(), memory = crypto.randomUUID();
+          const stage = () =>
+            db.query(
+              `insert into guest_sentence_embeddings(sentence_id,guest_user_id,guest_job_id,embedding,model,expression_purpose,purpose_embedding)
+          values($1,$2,$3,$4,$5,'Sharing a quiet moment.',$6)
+          on conflict(sentence_id) do update set purpose_embedding=excluded.purpose_embedding returning sentence_id`,
+              [
+                id,
+                otherOwner,
+                crypto.randomUUID(),
+                late ? null : vector(0.1),
+                model,
+                vector(0.8),
+              ],
+            );
+          if (!late) await stage();
+          await db.query("insert into memories(id,user_id) values($1,$2)", [
+            memory,
+            owner,
+          ]);
+          await db.query(
+            "insert into memory_sentences(id,memory_id) values($1,$2)",
+            [id, memory],
+          );
+          if (late) await stage();
+          await expectLinks(topic, [id]);
+          const row = (await db.query<any>(
+            "select * from sentence_embeddings where sentence_id=$1",
+            [id],
+          )).rows[0];
+          strictEqual(row.user_id, owner);
+          strictEqual(row.expression_purpose, "Sharing a quiet moment.");
+          strictEqual(row.purpose_embedding.length, 1024);
+          strictEqual(row.embedding === null, late);
+          strictEqual(
+            (await db.query(
+              "select * from guest_sentence_embeddings where sentence_id=$1",
+              [id],
+            )).rows.length,
+            0,
+          );
+          await stage();
+          await expectLinks(topic, [id]);
+        }
+      },
+    );
+    await t.step(
+      "old creation RPC returns the same shape and promotion helpers stay private",
+      async () => {
+        await reset();
+        const item = await sentence(0.1);
+        await purpose(item, 0.8);
+        const row = (await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,'My theme',$2::jsonb,$3)",
+          [owner, JSON.stringify(vector(1)), model],
+        )).rows[0];
+        strictEqual(row.total_count, 1);
+        strictEqual(Object.keys(row).length, 8);
+        for (const role of ["anon", "authenticated"]) {
+          strictEqual(
+            (await db.query<any>(
+              "select has_function_privilege($1,'promote_guest_sentence_embedding_for_id(uuid)','EXECUTE') as allowed",
+              [role],
+            )).rows[0].allowed,
+            false,
+          );
+        }
+      },
+    );
   } finally {
     await db.close();
   }

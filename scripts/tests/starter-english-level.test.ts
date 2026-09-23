@@ -12,6 +12,7 @@ const { buildPromptText } = await import(
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   const LEARNING_TOPIC_PROMPT = "test topics";
   const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = "test boundaries";
+  ${source.match(/^const EXPRESSION_PURPOSE_PROMPT = .*$/m)?.[0]}
   export ${promptFunction}
 `)
 );
