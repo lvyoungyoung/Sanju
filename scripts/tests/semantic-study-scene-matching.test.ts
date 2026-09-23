@@ -1571,6 +1571,110 @@ Deno.test("semantic theme migrations preserve matching and safely pause AI revie
         }
       },
     );
+    const diagnosticsMigration = await readMigration(
+      "20260923002000_add_study_match_diagnostics.sql",
+    );
+    await db.exec(diagnosticsMigration);
+    await db.exec(diagnosticsMigration);
+    async function diagnostics(id: string, limit = 100) {
+      return (await db.query<any>(
+        "select get_study_scene_match_diagnostics($1,$2) as result",
+        [id, limit],
+      )).rows[0].result;
+    }
+    await t.step(
+      "diagnostics explain both routes, stale links and missing vectors without changing data",
+      async () => {
+        await reset();
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        const topic = await scene();
+        const original = await sentence(0.7);
+        const usage = await sentence(0.1);
+        await purpose(usage, 0.8);
+        const both = await sentence(0.8);
+        await purpose(both, 0.9);
+        const missing = await sentence(0.1, { embedded: false });
+        const wrongModel = await sentence(0.9, {
+          embeddingModel: "different-model",
+        });
+        const stale = await sentence(0.1);
+        await sentence(0.9, { user: otherOwner });
+        await refresh(topic);
+        await db.query(
+          "insert into study_scene_sentences values($1,$2,90,'legacy',now())",
+          [topic, stale],
+        );
+        const before = (await db.query(
+          "select * from study_scene_sentences order by scene_id,sentence_id",
+        )).rows;
+        const result = await diagnostics(topic);
+        strictEqual(result.total_sentences, 6);
+        strictEqual(result.included_count, 4);
+        strictEqual(result.threshold, 0.42);
+        strictEqual(result.query_model, model);
+        const rows = new Map<string, any>(
+          result.rows.map((r: any) => [r.sentence_id, r]),
+        );
+        strictEqual(rows.get(original).current_source, "semantic");
+        strictEqual(rows.get(usage).current_source, "purpose_semantic");
+        strictEqual(rows.get(both).current_source, "semantic_both");
+        strictEqual(
+          Math.abs(rows.get(usage).purpose_similarity - 0.8) < 0.00001,
+          true,
+        );
+        strictEqual(rows.get(missing).sentence_similarity, null);
+        strictEqual(rows.get(missing).has_sentence_vector, false);
+        strictEqual(rows.get(wrongModel).sentence_similarity, null);
+        strictEqual(rows.get(stale).included, true);
+        strictEqual(rows.get(stale).current_source, null);
+        strictEqual(rows.get(stale).stored_source, "legacy");
+        strictEqual(JSON.stringify(result).includes('"embedding"'), false);
+        strictEqual((await diagnostics(topic, 1)).rows[0].included, true);
+        strictEqual((await diagnostics(topic, 0)).rows.length, 1);
+        deepStrictEqual(
+          (await db.query(
+            "select * from study_scene_sentences order by scene_id,sentence_id",
+          )).rows,
+          before,
+        );
+      },
+    );
+    await t.step(
+      "diagnostics restrict ownership and handle empty/category topics and bounded output",
+      async () => {
+        await reset();
+        const topic = await scene({
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        strictEqual(
+          (await diagnostics(topic)).learning_topic_id,
+          "natural_scenery",
+        );
+        deepStrictEqual((await diagnostics(topic)).rows, []);
+        await db.exec(
+          `insert into memories(id,user_id) values(gen_random_uuid(),'${owner}');
+        insert into memory_sentences(id,memory_id) select gen_random_uuid(),(select id from memories limit 1) from generate_series(1,105)`,
+        );
+        strictEqual((await diagnostics(topic, 9999)).rows.length, 100);
+        await db.exec("set role authenticated");
+        strictEqual((await diagnostics(topic)).total_sentences, 105);
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          otherOwner,
+        ]);
+        await rejects(() => diagnostics(topic), /Study scene not found/);
+        await db.exec("select set_config('request.jwt.claim.sub','',false)");
+        await rejects(() => diagnostics(topic), /Study scene not found/);
+        await db.exec("reset role; set role anon");
+        await rejects(() => diagnostics(topic), /permission denied/);
+        await db.exec("reset role");
+      },
+    );
   } finally {
     await db.close();
   }

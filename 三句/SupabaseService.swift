@@ -887,6 +887,24 @@ struct SupabaseService: SupabaseServicing {
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
     }
 
+    #if DEBUG
+    private func logStudySceneMatchDiagnostics(session: SupabaseSession, sceneID: UUID) async {
+        do {
+            var request = try makeRequest(
+                path: "/rest/v1/rpc/get_study_scene_match_diagnostics",
+                method: "POST",
+                bearerToken: session.accessToken,
+                body: SupabaseStudySceneQueueRequest(sceneID: sceneID.uuidString.lowercased(), limit: 100)
+            )
+            request.timeoutInterval = 8
+            let diagnostics: StudyMatchDiagnostics = try await perform(request)
+            diagnostics.logLines.forEach { print($0) }
+        } catch {
+            print("[StudyMatch] Diagnostics unavailable for \(sceneID): \(error.localizedDescription). Check that the diagnostics migration is deployed; topic loading is unaffected.")
+        }
+    }
+    #endif
+
     func fetchSentenceStudyTodayReviewQueue(
         session: SupabaseSession,
         limit: Int
@@ -973,6 +991,10 @@ struct SupabaseService: SupabaseServicing {
             )
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        #if DEBUG
+        // Diagnostics are independent of the UI request and never change matches.
+        Task { await logStudySceneMatchDiagnostics(session: session, sceneID: sceneID) }
+        #endif
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
     }
 
