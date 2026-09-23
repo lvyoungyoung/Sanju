@@ -991,10 +991,6 @@ struct SupabaseService: SupabaseServicing {
             )
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
-        #if DEBUG
-        // Diagnostics are independent of the UI request and never change matches.
-        Task { await logStudySceneMatchDiagnostics(session: session, sceneID: sceneID) }
-        #endif
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
     }
 
@@ -1013,6 +1009,10 @@ struct SupabaseService: SupabaseServicing {
             )
         )
         let records: [SupabaseSentenceStudyQueueRecord] = try await perform(request)
+        #if DEBUG
+        // Diagnostics are independent of the UI request and never change matches.
+        Task { await logStudySceneMatchDiagnostics(session: session, sceneID: sceneID) }
+        #endif
         return records.compactMap(Self.makeSentenceStudyQueueItem(from:))
     }
 
