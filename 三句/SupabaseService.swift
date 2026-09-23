@@ -7,7 +7,7 @@
 
 import Foundation
 
-protocol SupabaseServicing: StudyOverviewFetching {
+protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServicing {
     var isConfigured: Bool { get }
 
     func signInWithEmail(email: String, password: String) async throws -> SupabaseSession
@@ -929,6 +929,33 @@ struct SupabaseService: SupabaseServicing {
         )
         let records: [SupabaseUserStudySceneSummaryRecord] = try await perform(request)
         return records.compactMap(Self.makeUserStudySceneSummary(from:))
+    }
+
+    func fetchStudySceneMatchSettings(session: SupabaseSession, sceneID: UUID) async throws -> StudySceneMatchSettings {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/get_study_scene_match_settings", method: "POST",
+            bearerToken: session.accessToken,
+            body: StudySceneMatchSettingsRequest(p_scene_id: sceneID.uuidString.lowercased(), p_threshold: nil)
+        )
+        return try await perform(request)
+    }
+
+    func prepareStudySceneMatching(session: SupabaseSession, sceneID: UUID) async throws {
+        let request = try makeRequest(
+            path: "/functions/v1/create-study-scene", method: "POST",
+            bearerToken: session.accessToken,
+            body: PrepareStudySceneMatchingRequest(scene_id: sceneID.uuidString.lowercased())
+        )
+        _ = try await performWithoutBody(request)
+    }
+
+    func updateStudySceneMatchSettings(session: SupabaseSession, sceneID: UUID, threshold: Double) async throws -> StudySceneMatchSettings {
+        let request = try makeRequest(
+            path: "/rest/v1/rpc/set_study_scene_match_settings", method: "POST",
+            bearerToken: session.accessToken,
+            body: StudySceneMatchSettingsRequest(p_scene_id: sceneID.uuidString.lowercased(), p_threshold: threshold)
+        )
+        return try await perform(request)
     }
 
     func createUserStudyScene(

@@ -1,4 +1,16 @@
 "account.delete.loading" = "Deleting account. Please keep the app open.";
+"study.match.title" = "Match range";
+"study.match.done" = "Done";
+"study.match.explanation" = "A wider range may include more sentences, but some may be less closely related to your topic.";
+"study.match.strict" = "Closer matches";
+"study.match.broad" = "More related sentences";
+"study.match.accessibility_level" = "Level %d of 7. Higher levels include a wider range.";
+"study.match.default" = "Default range";
+"study.match.custom" = "Custom range";
+"study.match.updating" = "Updating matches…";
+"study.match.count" = "%d matching sentences";
+"study.match.reset" = "Reset to default";
+"study.match.save_failed" = "Couldn't update the match range. Check your connection and try again.";
 "account.delete.alert_message" = "After deletion, your account profile, cloud data, local memories and favorites on this device, and unused credits will be permanently deleted and cannot be recovered.\nTo confirm, type \"%@\" below.";
 "account.delete.alert_title" = "Delete account?";
 "account.delete.confirm_action" = "Delete";

@@ -42,12 +42,30 @@ final class StudyMatchDiagnosticsTests: XCTestCase {
             rows: [.init(sentence_id: UUID(), english: "Good food.", expression_purpose: nil,
                          sentence_model: nil, has_sentence_vector: false, has_purpose_vector: false,
                          sentence_similarity: nil, purpose_similarity: nil, included: true,
-                         stored_source: "category", stored_score: 100, current_source: nil)]
+                         stored_source: "category", stored_score: 100, current_source: nil,
+                         category_similarity: nil, category_topic_id: nil)]
         )
         let log = result.logLines.joined(separator: "\n")
         XCTAssertTrue(log.contains("NOT the semantic threshold"))
         XCTAssertTrue(log.contains("linkMismatch=false"))
         XCTAssertFalse(log.contains("truncated=true"))
+    }
+
+    func testUnifiedRecommendedTopicLogsCategorySimilarityWithoutExactMatchWarning() {
+        let result = StudyMatchDiagnostics(
+            scene_id: UUID(), name: "Food", learning_topic_id: "food",
+            threshold: 0.38, rule: "purpose_and_sentence_or_category_v1", query_model: "test",
+            legacy_search_description: nil, total_sentences: 1, included_count: 1,
+            rows: [.init(sentence_id: UUID(), english: "Good food.", expression_purpose: "Enjoying food.",
+                         sentence_model: "test", has_sentence_vector: true, has_purpose_vector: true,
+                         sentence_similarity: 0.2, purpose_similarity: 0.5, included: true,
+                         stored_source: "purpose_category", stored_score: 60, current_source: "purpose_category",
+                         category_similarity: 0.6, category_topic_id: "food_and_drinks")]
+        )
+        let log = result.logLines.joined(separator: "\n")
+        XCTAssertTrue(log.contains("category=0.6000 categoryID=food_and_drinks"))
+        XCTAssertTrue(log.contains("purpose AND (original OR category)"))
+        XCTAssertFalse(log.contains("NOT the semantic threshold"))
     }
 }
 #endif

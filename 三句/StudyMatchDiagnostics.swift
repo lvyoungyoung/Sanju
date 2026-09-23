@@ -26,6 +26,8 @@ struct StudyMatchDiagnostics: Decodable {
         let stored_source: String?
         let stored_score: Int?
         let current_source: String?
+        let category_similarity: Double?
+        let category_topic_id: String?
     }
 
     var logLines: [String] {
@@ -34,15 +36,19 @@ struct StudyMatchDiagnostics: Decodable {
             "[StudyMatch] queryModel=\(Self.text(query_model)) legacySearchDescription=\(Self.text(legacy_search_description))",
             "[StudyMatch] included=\(included_count) total=\(total_sentences) shown=\(rows.count) truncated=\(rows.count < total_sentences); included first, then highest similarity. Scores are similarities, not probabilities."
         ]
-        if let learning_topic_id {
+        let unified = rule == "purpose_and_sentence_or_category_v1"
+        if let learning_topic_id, !unified {
             lines.append("[StudyMatch] Category topic=\(Self.text(learning_topic_id)); inclusion uses categories, NOT the semantic threshold.")
         }
         for row in rows {
-            let mismatch = learning_topic_id == nil && row.included != (row.current_source != nil)
+            let mismatch = (learning_topic_id == nil || unified) && row.included != (row.current_source != nil)
             lines.append("[StudyMatch] sentence=\(row.sentence_id) included=\(row.included) storedSource=\(Self.text(row.stored_source)) storedScore=\(row.stored_score.map(String.init) ?? "none") currentSource=\(Self.text(row.current_source)) linkMismatch=\(mismatch)")
             lines.append("[StudyMatch]   English: \(Self.text(row.english))")
             lines.append("[StudyMatch]   Purpose: \(Self.text(row.expression_purpose))")
             lines.append("[StudyMatch]   original=\(Self.score(row.sentence_similarity)) purpose=\(Self.score(row.purpose_similarity)) vectors=\(row.has_sentence_vector)/\(row.has_purpose_vector) model=\(Self.text(row.sentence_model))")
+            if unified {
+                lines.append("[StudyMatch]   category=\(Self.score(row.category_similarity)) categoryID=\(Self.text(row.category_topic_id)); purpose AND (original OR category)")
+            }
         }
         lines.append("[StudyMatch] END theme=\(scene_id)")
         return lines

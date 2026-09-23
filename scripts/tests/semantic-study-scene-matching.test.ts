@@ -1824,6 +1824,344 @@ Deno.test("semantic theme migrations preserve matching and safely pause AI revie
         await rejects(() => diagnostics(topic), /Study scene not found/);
       },
     );
+    const thresholdMigration = await readMigration(
+      "20260923004000_add_per_scene_match_threshold.sql",
+    );
+    await db.exec(thresholdMigration);
+    await db.exec(thresholdMigration);
+    async function matchSettings(id: string, threshold?: number | null) {
+      const query = threshold === undefined
+        ? "select get_study_scene_match_settings($1) as result"
+        : "select set_study_scene_match_settings($1,$2) as result";
+      return (await db.query<any>(
+        query,
+        threshold === undefined ? [id] : [id, threshold],
+      )).rows[0].result;
+    }
+    await t.step(
+      "per-topic ranges persist, default to 0.42 and apply atomically to existing and future matches",
+      async () => {
+        await reset();
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        const broad = await scene();
+        const normal = await scene();
+        const strong = await sentence(0.6);
+        await purpose(strong, 0.6);
+        const weak = await sentence(0.37);
+        await purpose(weak, 0.37);
+        await refresh(broad);
+        await refresh(normal);
+        await expectLinks(broad, [strong]);
+        strictEqual((await matchSettings(broad)).threshold, 0.42);
+        await db.exec("set role authenticated");
+        const saved = await matchSettings(broad, 0.36);
+        strictEqual(saved.threshold, 0.36);
+        strictEqual(saved.matched_count, 2);
+        await db.exec("reset role");
+        await expectLinks(broad, [strong, weak]);
+        await expectLinks(normal, [strong]);
+        const later = await sentence(0.39);
+        await purpose(later, 0.39);
+        await matchNew(later);
+        await expectLinks(broad, [strong, weak, later]);
+        await expectLinks(normal, [strong]);
+        const name =
+          (await db.query<any>("select name from study_scenes where id=$1", [
+            broad,
+          ])).rows[0].name;
+        await db.query(
+          "select * from create_study_scene_with_embedding($1,$2,$3::jsonb,$4)",
+          [owner, name, JSON.stringify(vector(1)), model],
+        );
+        strictEqual((await matchSettings(broad)).threshold, 0.36);
+        await expectLinks(broad, [strong, weak, later]);
+        const log = await diagnostics(broad);
+        strictEqual(log.threshold, 0.36);
+        strictEqual(log.included_count, 3);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,5)",
+          [owner, weak, `scene:${broad}`],
+        );
+        strictEqual((await matchSettings(broad, 0.48)).matched_count, 1);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress where sentence_id=$1",
+            [weak],
+          )).rows[0].correct_count,
+          5,
+        );
+        strictEqual((await matchSettings(broad, 0.42)).threshold, 0.42);
+        await expectLinks(broad, [strong]);
+      },
+    );
+    await t.step(
+      "range settings validate bounds and ownership, and roll back when rematching fails",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const categoryTopic = await scene({
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        const empty = await scene({ embedded: false });
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        for (const value of [null, 0.35, 0.37, 0.49, NaN, Infinity]) {
+          await rejects(
+            () => matchSettings(topic, value),
+            /Invalid match threshold/,
+          );
+        }
+        strictEqual((await matchSettings(categoryTopic)).can_adjust, false);
+        await rejects(
+          () => matchSettings(categoryTopic, 0.36),
+          /Category topics/,
+        );
+        await rejects(() => matchSettings(empty, 0.36), /embedding not found/);
+        strictEqual((await matchSettings(empty)).threshold, 0.42);
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          otherOwner,
+        ]);
+        await rejects(() => matchSettings(topic), /Study scene not found/);
+        await rejects(
+          () => matchSettings(topic, 0.36),
+          /Study scene not found/,
+        );
+        await db.exec("set role anon");
+        await rejects(() => matchSettings(topic), /permission denied/);
+        await rejects(() => matchSettings(topic, 0.36), /permission denied/);
+        await db.exec("reset role");
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        const item = await sentence(0.37);
+        await purpose(item, 0.37);
+        await db.exec(
+          `create function reject_test_match() returns trigger language plpgsql as $$ begin raise exception 'test rematch failure'; end; $$;
+        create trigger reject_test_match before insert on study_scene_sentences for each row execute function reject_test_match()`,
+        );
+        await rejects(() => matchSettings(topic, 0.36), /test rematch failure/);
+        strictEqual((await matchSettings(topic)).threshold, 0.42);
+        await expectLinks(topic, []);
+        await db.exec(
+          "drop trigger reject_test_match on study_scene_sentences; drop function reject_test_match()",
+        );
+        strictEqual((await matchSettings(topic, 0.36)).matched_count, 1);
+      },
+    );
+    const unifiedMigration = await readMigration(
+      "20260923005000_unify_study_scene_category_matching.sql",
+    );
+    await db.exec(unifiedMigration);
+    await db.exec(unifiedMigration);
+    const categoryIDs = [
+      "self_and_style",
+      "family_time",
+      "children_growing_up",
+      "friends_gatherings",
+      "romance_and_companionship",
+      "pet_life",
+      "food_and_drinks",
+      "cooking",
+      "home_life",
+      "city_life",
+      "natural_scenery",
+      "plants_and_wildlife",
+      "travel",
+      "transport",
+      "sports_and_outdoors",
+      "festivals_and_celebrations",
+      "arts_and_entertainment",
+      "school_and_study",
+      "work_life",
+      "shopping",
+      "health_and_wellness",
+    ];
+    async function completeCategoryCache() {
+      await db.exec("truncate learning_topic_embeddings");
+      for (const id of categoryIDs) {
+        await category(id, id === "natural_scenery" ? 0.6 : 0.1);
+      }
+    }
+    await t.step(
+      "all themes require purpose and either original or category at their own threshold",
+      async () => {
+        await reset();
+        await completeCategoryCache();
+        const custom = await scene();
+        const recommended = await scene({ topic: "natural_scenery" });
+        const original = await sentence(0.6);
+        await purpose(original, 0.5);
+        const viaCategory = await sentence(0.1, { topic: "natural_scenery" });
+        await purpose(viaCategory, 0.5);
+        const categoryOnly = await sentence(0.1, { topic: "natural_scenery" });
+        await purpose(categoryOnly, 0.1);
+        const originalOnly = await sentence(0.6, { topic: "natural_scenery" });
+        await purpose(originalOnly, 0.1);
+        const all = await sentence(0.6, { topic: "natural_scenery" });
+        await purpose(all, 0.6);
+        for (
+          const id of [original, viaCategory, categoryOnly, originalOnly, all]
+        ) await matchNew(id);
+        for (const id of [custom, recommended]) {
+          await expectLinks(id, [original, viaCategory, all]);
+        }
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        strictEqual((await matchSettings(recommended)).can_adjust, true);
+        const log = await diagnostics(recommended);
+        strictEqual(log.rule, "purpose_and_sentence_or_category_v1");
+        strictEqual(
+          log.rows.find((r: any) => r.sentence_id === viaCategory)
+            .current_source,
+          "purpose_category",
+        );
+        strictEqual(
+          log.rows.find((r: any) => r.sentence_id === all).current_source,
+          "semantic_all",
+        );
+        strictEqual(
+          log.rows.find((r: any) => r.sentence_id === original).current_source,
+          "semantic_both",
+        );
+        strictEqual(
+          log.rows.find((r: any) => r.sentence_id === viaCategory)
+            .category_topic_id,
+          "natural_scenery",
+        );
+        const weakPurpose = await sentence(0.1, { topic: "natural_scenery" });
+        await purpose(weakPurpose, 0.38);
+        await matchNew(weakPurpose);
+        await matchSettings(recommended, 0.36);
+        await expectLinks(recommended, [
+          original,
+          viaCategory,
+          all,
+          weakPurpose,
+        ]);
+        await expectLinks(custom, [original, viaCategory, all]);
+        // The removed exact-category trigger cannot admit a new sentence without purpose.
+        const unembedded = await sentence(0.1, {
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        await expectLinks(recommended, [
+          original,
+          viaCategory,
+          all,
+          weakPurpose,
+        ]);
+        strictEqual(
+          (await db.query(
+            "select * from study_scene_sentences where sentence_id=$1",
+            [unembedded],
+          )).rows.length,
+          0,
+        );
+        // Changing categories removes the supplemental route, retaining study progress.
+        await db.query(
+          "update memory_sentences set learning_topic_ids='{}' where id=$1",
+          [viaCategory],
+        );
+        await expectLinks(custom, [original, all]);
+      },
+    );
+    await t.step(
+      "preparing old recommended themes preserves identity and threshold and does not resurrect deleted scenes",
+      async () => {
+        await reset();
+        await completeCategoryCache();
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        const old = await scene({ topic: "natural_scenery", embedded: false });
+        const item = await sentence(0.1, {
+          topic: "natural_scenery",
+          favorite: true,
+        });
+        await purpose(item, 0.5);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,3)",
+          [owner, item, `scene:${old}`],
+        );
+        strictEqual((await matchSettings(old)).needs_preparation, true);
+        const prepare = (
+          id: string,
+          user = owner,
+          embedding: string | null = JSON.stringify(vector(1)),
+        ) =>
+          db.query<any>(
+            "select * from prepare_study_scene_matching($1,$2,$3::jsonb,$4)",
+            [user, id, embedding, model],
+          );
+        strictEqual((await prepare(old)).rows[0].id, old);
+        strictEqual((await matchSettings(old)).needs_preparation, false);
+        await expectLinks(old, [item]);
+        await matchSettings(old, 0.36);
+        await prepare(old, owner, null);
+        strictEqual((await matchSettings(old)).threshold, 0.36);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress where sentence_id=$1",
+            [item],
+          )).rows[0].correct_count,
+          3,
+        );
+        await rejects(() => prepare(old, otherOwner), /Study scene not found/);
+        await rejects(
+          () => prepare(crypto.randomUUID()),
+          /Study scene not found/,
+        );
+        for (const role of ["anon", "authenticated"]) {
+          strictEqual(
+            (await db.query<any>(
+              "select has_function_privilege($1,'prepare_study_scene_matching(uuid,uuid,jsonb,text)','EXECUTE') as allowed",
+              [role],
+            )).rows[0].allowed,
+            false,
+          );
+        }
+        await db.exec("truncate learning_topic_embeddings");
+        strictEqual((await matchSettings(old)).needs_preparation, true);
+      },
+    );
+    await t.step(
+      "category matching enforces model/version and owner, and original plus purpose still works without categories",
+      async () => {
+        await reset();
+        await db.exec("truncate learning_topic_embeddings");
+        const topic = await scene();
+        const original = await sentence(0.6);
+        await purpose(original, 0.6);
+        const categoryCandidate = await sentence(0.1, {
+          topic: "natural_scenery",
+        });
+        await purpose(categoryCandidate, 0.6);
+        await category("natural_scenery", 0.9, "wrong-model");
+        await category("natural_scenery", 0.9, model, "old-version");
+        await refresh(topic);
+        await expectLinks(topic, [original]);
+        await category("natural_scenery", 0.6);
+        const other = await sentence(0.6, {
+          user: otherOwner,
+          topic: "natural_scenery",
+        });
+        await purpose(other, 0.6);
+        await refresh(topic);
+        await expectLinks(topic, [original, categoryCandidate]);
+        const wrongOwner = await sentence(0.6, {
+          embeddingOwner: otherOwner,
+          topic: "natural_scenery",
+        });
+        await purpose(wrongOwner, 0.6);
+        await matchNew(wrongOwner);
+        await expectLinks(topic, [original, categoryCandidate]);
+      },
+    );
   } finally {
     await db.close();
   }

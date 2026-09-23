@@ -12,6 +12,8 @@ struct StudySceneDetailView: View {
     @State private var refreshedSceneSummary: SentenceStudyTopicSummary?
     @State private var detailLoadID = UUID()
     @State private var showsSlowLoadingHint = false
+    @State private var matchSettings: StudySceneMatchSettings?
+    @State private var showsMatchSettings = false
 
     private var title: String {
         switch route {
@@ -29,7 +31,7 @@ struct StudySceneDetailView: View {
 
     private var shouldShowInitialLoading: Bool {
         guard case .userScene = route else { return false }
-        return isLoading && (cachedSceneItems?.isEmpty ?? true)
+        return isLoading && sceneItems.isEmpty && (cachedSceneItems?.isEmpty ?? true)
     }
 
     private var items: [StudySceneDetailSentence] {
@@ -100,6 +102,30 @@ struct StudySceneDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if matchSettings?.canAdjust == true {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showsMatchSettings = true } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel(L10n.string("study.match.title", "匹配范围"))
+                    .disabled(isLoading || isStartingStudy)
+                }
+            }
+        }
+        .sheet(isPresented: $showsMatchSettings) {
+            if let settings = matchSettings {
+                StudyMatchSettingsSheet(settings: settings, save: { threshold in
+                    detailLoadID = UUID()
+                    let updated = try await appModel.saveStudySceneMatchSettings(sceneID: settings.sceneID, threshold: threshold)
+                    matchSettings = updated
+                    return updated
+                }, didSave: {
+                    await loadDetail(forceRefresh: true)
+                })
+            }
+        }
         .task(id: route) {
             await loadDetail()
         }
@@ -234,7 +260,12 @@ struct StudySceneDetailView: View {
                 sceneItems = cachedSceneItems
             }
             do {
-                let refreshedItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene)
+                let settings = try await appModel.loadStudySceneMatchSettings(sceneID: scene.id)
+                guard detailLoadID == loadID, !Task.isCancelled else { return }
+                matchSettings = settings
+                let refreshedItems = try await appModel.refreshUserStudySceneDetailSentences(for: scene, ifCurrent: {
+                    detailLoadID == loadID
+                })
                 guard detailLoadID == loadID, !Task.isCancelled else { return }
                 sceneItems = refreshedItems
                 isLoading = false

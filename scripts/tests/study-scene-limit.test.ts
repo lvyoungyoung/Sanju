@@ -6,6 +6,12 @@ const source = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const categories = await Deno.readTextFile(
+  new URL(
+    "../../supabase/functions/create-study-scene/categories.ts",
+    import.meta.url,
+  ),
+);
 const harness = `
   export let handler: (req: Request) => Promise<Response>;
   export const state: any = {count:0,existing:false,raceLimit:false,calls:0,rpcs:0,anonymous:false};
@@ -17,24 +23,31 @@ const harness = `
     if(key==='anon')return {auth:{getUser:async()=>({data:{user:{id:'owner',is_anonymous:state.anonymous}},error:null})}};
     return {
       from:(table:string)=>{
-        if(table!=='study_scenes')throw new Error('Unexpected category/intent lookup');
-        return {select(){return this;},eq(){return this;},
-          then(resolve:any,reject:any){return Promise.resolve({count:state.count,error:null}).then(resolve,reject);},
-          maybeSingle:async()=>({data:state.existing?{id:'existing'}:null,error:null})};
+        if(!['study_scenes','study_scene_embeddings','learning_topic_embeddings'].includes(table))throw new Error('Unexpected lookup');
+        return {select(){return this;},eq(column:string,value:unknown){(state.filters??=[]).push([table,column,value]);return this;},
+          then(resolve:any,reject:any){return Promise.resolve(table==='learning_topic_embeddings'
+            ? {data:state.cacheComplete?Object.keys(CATEGORY_DESCRIPTIONS).map(topic_id=>({topic_id,embedding:[1,...Array(1023).fill(0)]})):[],error:null}
+            : {count:state.count,error:null}).then(resolve,reject);},
+          upsert:async(rows:any[])=>{state.writes+=rows.length;return {error:state.cacheFail?{message:'cache unavailable'}:null};},
+          maybeSingle:async()=>({data:table==='study_scene_embeddings'
+            ?(state.queryExists?{scene_id:'existing'}:null)
+            :(state.existing?{id:'existing',name:'Stored theme'}:null),error:null})};
       },
-      rpc:async(name:string,args:any)=>{state.rpcs++;state.rpcName=name;state.savedName=args.p_name;return state.raceLimit
+      rpc:async(name:string,args:any)=>{state.rpcs++;state.rpcName=name;state.savedName=args.p_name;state.rpcArgs=args;return state.raceLimit
         ?{data:null,error:{message:'study_scene_limit_reached'}}:{data:[{id:'scene'}],error:null};}
     };
   }
   const fetch=async(_url:string,init:RequestInit)=>{
     if(new Headers(init.headers).has('api-key'))throw new Error('MiMo must not be called');
     state.calls++;const body=JSON.parse(init.body as string);state.input=body.input.texts;state.textType=body.parameters.text_type;
-    return Response.json({output:{embeddings:[{embedding:[1,...Array(1023).fill(0)]}]}});
+    return Response.json({output:{embeddings:body.input.texts.map((_text:string,index:number)=>({text_index:index,embedding:[1,...Array(1023).fill(0)]}))}});
   };
 `;
 const { handler, state } = await import(
   "data:application/typescript," +
-    encodeURIComponent(harness + source.replace(/^import .*\n/gm, ""))
+    encodeURIComponent(
+      harness + categories + source.replace(/^import .*\n/gm, ""),
+    )
 );
 const request = (name = "  描述风景的句子  ", predefined = false) =>
   new Request("https://example.invalid/create-study-scene", {
@@ -56,9 +69,14 @@ const reset = () =>
     calls: 0,
     rpcs: 0,
     anonymous: false,
+    cacheComplete: true,
+    cacheFail: false,
+    queryExists: true,
+    writes: 0,
+    filters: [],
   });
 
-Deno.test("custom topics embed user text directly without MiMo or category vectors", async () => {
+Deno.test("custom topics embed user text directly without MiMo and reuse category vectors", async () => {
   for (
     const name of [
       "描述风景的句子",
@@ -76,11 +94,12 @@ Deno.test("custom topics embed user text directly without MiMo or category vecto
     strictEqual(state.rpcName, "create_study_scene_with_embedding");
   }
 });
-Deno.test("predefined topics still use exact categories with no embedding calls", async () => {
+Deno.test("predefined topics use the same name embedding and creation RPC", async () => {
   reset();
   strictEqual((await handler(request("自然风景", true))).status, 200);
-  strictEqual(state.calls, 0);
-  strictEqual(state.rpcName, "create_learning_topic_study_scene");
+  strictEqual(state.calls, 1);
+  strictEqual(state.input[0], "自然风景");
+  strictEqual(state.rpcName, "create_study_scene_with_embedding");
 });
 Deno.test("capacity and concurrent rejections preserve the existing message", async () => {
   for (const predefined of [false, true]) {
@@ -112,4 +131,50 @@ Deno.test("anonymous users cannot create topics or spend embedding tokens", asyn
   state.anonymous = true;
   strictEqual((await handler(request())).status, 401);
   strictEqual(state.calls, 0);
+});
+
+Deno.test("category cache initializes once and fails closed rather than silently changing matching", async () => {
+  reset();
+  state.cacheComplete = false;
+  strictEqual((await handler(request())).status, 200);
+  strictEqual(state.writes, 21);
+  strictEqual(state.calls, 4);
+  reset();
+  state.cacheComplete = false;
+  state.cacheFail = true;
+  strictEqual((await handler(request())).status, 500);
+  strictEqual(state.rpcs, 0);
+});
+
+Deno.test("existing themes prepare by owned ID, reuse query vectors and cannot recreate missing themes", async () => {
+  const id = "10000000-0000-0000-0000-000000000001";
+  const prepare = () =>
+    new Request("https://example.invalid/create-study-scene", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prepare_only: true, scene_id: id }),
+    });
+  reset();
+  strictEqual((await handler(prepare())).status, 404);
+  strictEqual(state.calls, 0);
+  state.existing = true;
+  state.count = 20;
+  strictEqual((await handler(prepare())).status, 200);
+  strictEqual(state.calls, 0);
+  strictEqual(state.rpcName, "prepare_study_scene_matching");
+  strictEqual(state.rpcArgs.p_scene_id, id);
+  strictEqual(state.rpcArgs.p_embedding, null);
+  strictEqual(
+    state.filters.some((f: string[]) =>
+      f[0] === "study_scenes" && f[1] === "user_id" && f[2] === "owner"
+    ),
+    true,
+  );
+  state.queryExists = false;
+  strictEqual((await handler(prepare())).status, 200);
+  strictEqual(state.calls, 1);
+  strictEqual(state.input[0], "Stored theme");
 });

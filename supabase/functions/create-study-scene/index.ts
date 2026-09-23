@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { CATEGORY_CATALOG_VERSION, ensureCategoryEmbeddings } from "./categories.ts"
 
 const EMBEDDING_MODEL = "qwen3.7-text-embedding"
 const EMBEDDING_DIMENSIONS = 1024
@@ -12,6 +13,8 @@ function sceneLimitResponse() {
 interface CreateStudySceneRequest {
   name?: string
   learning_topic_id?: string
+  scene_id?: string
+  prepare_only?: boolean
 }
 
 const LEARNING_TOPIC_IDS = new Set([
@@ -60,9 +63,11 @@ Deno.serve(async (req) => {
     }
 
     const body = (await req.json()) as CreateStudySceneRequest
-    const name = body.name?.trim() ?? ""
+    let name = body.name?.trim() ?? ""
+    const preparing = body.prepare_only === true
+    const sceneID = body.scene_id
     const learningTopicID = body.learning_topic_id?.trim() || null
-    if (name.length < 2 || name.length > 24) {
+    if (!preparing && (name.length < 2 || name.length > 24)) {
       return jsonResponse({ error: "Study scene name must be between 2 and 24 characters" }, 400)
     }
     if (learningTopicID && !LEARNING_TOPIC_IDS.has(learningTopicID)) {
@@ -92,6 +97,17 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
     }
 
+    if (preparing) {
+      if (typeof sceneID !== "string" || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sceneID)) {
+        return jsonResponse({ error: "Invalid study scene" }, 400)
+      }
+      const existing = await adminClient.from("study_scenes").select("id,name")
+        .eq("id", sceneID).eq("user_id", user.id).maybeSingle()
+      if (existing.error) throw existing.error
+      if (!existing.data) return jsonResponse({ error: "Study scene not found" }, 404)
+      name = existing.data.name
+    }
+
     // Avoid paying for embedding when the limit is known. The
     // database trigger is authoritative if concurrent requests race this check.
     const { count, error: countError } = await adminClient.from("study_scenes")
@@ -99,7 +115,7 @@ Deno.serve(async (req) => {
     if (countError || count === null) {
       throw new Error("Unable to check study scene limit")
     }
-    if (count >= MAX_STUDY_SCENES) {
+    if (!preparing && count >= MAX_STUDY_SCENES) {
       const { data: existing, error: existingError } = await adminClient.from("study_scenes")
         .select("id").eq("user_id", user.id).eq("name", name).maybeSingle()
       if (existingError) throw existingError
@@ -109,24 +125,48 @@ Deno.serve(async (req) => {
     let data: unknown
     let error: { code?: string; message: string; details?: string; hint?: string } | null
 
-    if (learningTopicID) {
-      const response = await adminClient.rpc("create_learning_topic_study_scene", {
-        p_user_id: user.id,
-        p_name: name,
-        p_learning_topic_id: learningTopicID,
+    if (!embeddingAPIKey || !embeddingURL) {
+      return jsonResponse({ error: "Missing semantic matching configuration" }, 500)
+    }
+    // Recommended names and typed names use the same raw-name query vector.
+    // Category vectors are shared, cached documents, not per-user model calls.
+    await ensureCategoryEmbeddings({
+      read: async () => {
+        const result = await adminClient.from("learning_topic_embeddings")
+          .select("topic_id,embedding").eq("model", EMBEDDING_MODEL)
+          .eq("catalog_version", CATEGORY_CATALOG_VERSION)
+        if (result.error) throw result.error
+        return result.data ?? []
+      },
+      write: async (rows) => {
+        const result = await adminClient.from("learning_topic_embeddings").upsert(
+          rows.map((row) => ({ ...row, model: EMBEDDING_MODEL, catalog_version: CATEGORY_CATALOG_VERSION })),
+          { onConflict: "topic_id,model,catalog_version" },
+        )
+        if (result.error) throw result.error
+      },
+    }, (texts) => createEmbeddings(embeddingURL, embeddingAPIKey, texts, "document"))
+
+    let needsQueryVector = true
+    if (preparing) {
+      const existing = await adminClient.from("study_scene_embeddings").select("scene_id,search_description")
+        .eq("scene_id", sceneID!).eq("user_id", user.id).eq("model", EMBEDDING_MODEL).maybeSingle()
+      if (existing.error) throw existing.error
+      needsQueryVector = !existing.data || Boolean(existing.data.search_description?.trim())
+    }
+    const sceneEmbedding = needsQueryVector
+      ? (await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query"))[0] : null
+    if (preparing) {
+      const response = await adminClient.rpc("prepare_study_scene_matching", {
+        p_user_id: user.id, p_scene_id: sceneID, p_embedding: sceneEmbedding, p_model: EMBEDDING_MODEL,
       })
       data = response.data
       error = response.error
     } else {
-      if (!embeddingAPIKey || !embeddingURL) {
-        return jsonResponse({ error: "Missing semantic matching configuration" }, 500)
-      }
-
-      const sceneEmbedding = await createEmbeddings(embeddingURL, embeddingAPIKey, [name], "query")
       const response = await adminClient.rpc("create_study_scene_with_embedding", {
         p_user_id: user.id,
         p_name: name,
-        p_embedding: sceneEmbedding[0],
+        p_embedding: sceneEmbedding,
         p_model: EMBEDDING_MODEL,
       })
       data = response.data

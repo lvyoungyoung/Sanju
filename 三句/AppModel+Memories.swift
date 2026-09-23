@@ -1641,7 +1641,8 @@ extension AppModel {
     }
 
     func refreshUserStudySceneDetailSentences(
-        for scene: UserStudySceneSummary
+        for scene: UserStudySceneSummary,
+        ifCurrent: () -> Bool = { true }
     ) async throws -> [SentenceStudyQueueItem] {
         guard isNetworkAvailable else {
             throw SentenceStudyTopicLoadingError.networkUnavailable
@@ -1657,6 +1658,8 @@ extension AppModel {
             sceneID: scene.id,
             limit: 1000
         )
+        guard isSignedIn, supabaseSession?.userID == session.userID,
+              !Task.isCancelled, ifCurrent() else { throw CancellationError() }
         userStudySceneDetailSentenceCache[scene.id] = sentences
         return sentences
     }

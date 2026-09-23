@@ -1,4 +1,16 @@
 "account.delete.loading" = "正在删除账号，请勿关闭应用";
+"study.match.title" = "匹配范围";
+"study.match.done" = "完成";
+"study.match.explanation" = "范围越宽，句子可能越多，但与主题的关联也可能更弱。";
+"study.match.strict" = "更贴合主题";
+"study.match.broad" = "包含更多相关句子";
+"study.match.accessibility_level" = "第 %d 档，共 7 档；档位越高，范围越宽";
+"study.match.default" = "默认范围";
+"study.match.custom" = "自定义范围";
+"study.match.updating" = "正在更新匹配结果…";
+"study.match.count" = "匹配到 %d 个句子";
+"study.match.reset" = "恢复默认";
+"study.match.save_failed" = "暂时无法更新匹配范围，请检查网络后重试。";
 "account.delete.alert_message" = "删除后，你的账号资料、云端数据、当前设备上的本地回忆与收藏，以及未使用次数都会被永久删除且无法恢复。\n如果确定删除，请在下方输入框中输入“%@”。";
 "account.delete.alert_title" = "确认删除账号？";
 "account.delete.confirm_action" = "确定删除";
