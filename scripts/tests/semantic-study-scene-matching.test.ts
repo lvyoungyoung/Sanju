@@ -1675,6 +1675,155 @@ Deno.test("semantic theme migrations preserve matching and safely pause AI revie
         await db.exec("reset role");
       },
     );
+    const bothVectorsMigration = await readMigration(
+      "20260923003000_require_both_study_match_vectors.sql",
+    );
+    await t.step(
+      "requiring both vectors reconciles old links but preserves sentences, favorites and study history",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const exact = await scene({
+          topic: "natural_scenery",
+          embedded: false,
+        });
+        const originalOnly = await sentence(0.8, {
+          topic: "natural_scenery",
+          favorite: true,
+        });
+        await purpose(originalOnly, 0.1);
+        const purposeOnly = await sentence(0.1);
+        await purpose(purposeOnly, 0.8);
+        const both = await sentence(0.7);
+        await purpose(both, 0.8);
+        await refresh(topic);
+        await expectLinks(topic, [originalOnly, purposeOnly, both]);
+        await db.query(
+          "insert into sentence_study_progress(user_id,sentence_id,study_scope,correct_count) values($1,$2,$3,5)",
+          [owner, originalOnly, `scene:${topic}`],
+        );
+        await db.exec(bothVectorsMigration);
+        await db.exec(bothVectorsMigration);
+        await expectLinks(topic, [both]);
+        await expectLinks(exact, [originalOnly]);
+        strictEqual(
+          (await db.query<any>(
+            "select correct_count from sentence_study_progress where sentence_id=$1",
+            [originalOnly],
+          )).rows[0].correct_count,
+          5,
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select is_favorite from memory_sentences where id=$1",
+            [originalOnly],
+          )).rows[0].is_favorite,
+          true,
+        );
+        strictEqual(
+          (await db.query("select * from memory_sentences")).rows.length,
+          3,
+        );
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          owner,
+        ]);
+        const result = await diagnostics(topic);
+        strictEqual(result.rule, "sentence_and_purpose_v1");
+        strictEqual(result.included_count, 1);
+        strictEqual(
+          result.rows.find((row: any) => row.sentence_id === both)
+            .current_source,
+          "semantic_both",
+        );
+      },
+    );
+    await t.step(
+      "both-vector admission rejects missing routes and uses the same rule for creation and incremental matching",
+      async () => {
+        await reset();
+        const topic = await scene();
+        const keep: string[] = [];
+        for (
+          const [original, usage] of [
+            [0.4284, 0.3281],
+            [0.4443, 0.4755],
+            [0.4580, 0.4124],
+            [0.4325, 0.3943],
+            [0.4812, 0.4383],
+            [0.4201, 0.4201],
+            [0.4199, 0.9],
+            [0.9, 0.4199],
+          ]
+        ) {
+          const item = await sentence(original);
+          await purpose(item, usage);
+          await matchNew(item);
+          if (original >= 0.42 && usage >= 0.42) keep.push(item);
+        }
+        const missingPurpose = await sentence(0.9);
+        const missingOriginal = await sentence(0.9);
+        await purpose(missingOriginal, 0.9);
+        await db.query(
+          "update sentence_embeddings set embedding=null where sentence_id=$1",
+          [missingOriginal],
+        );
+        const missingText = await sentence(0.9);
+        await purpose(missingText, 0.9);
+        await db.query(
+          "update sentence_embeddings set expression_purpose=null where sentence_id=$1",
+          [missingText],
+        );
+        const foreign = await sentence(0.9, { user: otherOwner });
+        const wrongOwner = await sentence(0.9, { embeddingOwner: otherOwner });
+        const wrongModel = await sentence(0.9, {
+          embeddingModel: "wrong-model",
+        });
+        for (const item of [foreign, wrongOwner, wrongModel]) {
+          await purpose(item, 0.9);
+        }
+        for (
+          const item of [
+            missingPurpose,
+            missingOriginal,
+            missingText,
+            foreign,
+            wrongOwner,
+            wrongModel,
+          ]
+        ) await matchNew(item);
+        await expectLinks(topic, keep);
+        await refresh(topic, owner, 0.1);
+        await expectLinks(topic, keep);
+        await refresh(topic, owner, 0.5);
+        await expectLinks(topic, []);
+        await refresh(topic);
+        await expectLinks(topic, keep);
+        const created = (await db.query<any>(
+          "select * from create_study_scene_with_embedding($1,'Both routes',$2::jsonb,$3)",
+          [owner, JSON.stringify(vector(1)), model],
+        )).rows[0];
+        strictEqual(created.total_count, keep.length);
+        strictEqual(Object.keys(created).length, 8);
+        await expectLinks(created.id, keep);
+        await purpose(keep[0], 0.1);
+        await matchNew(keep[0]);
+        await expectLinks(topic, keep.slice(1));
+        await expectLinks(created.id, keep.slice(1));
+        for (const role of ["anon", "authenticated"]) {
+          strictEqual(
+            (await db.query<any>(
+              "select has_function_privilege($1,'semantic_study_scene_candidates(uuid,uuid,uuid,double precision)','EXECUTE') as allowed",
+              [role],
+            )).rows[0].allowed,
+            false,
+          );
+        }
+        await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+          otherOwner,
+        ]);
+        await rejects(() => diagnostics(topic), /Study scene not found/);
+      },
+    );
   } finally {
     await db.close();
   }
