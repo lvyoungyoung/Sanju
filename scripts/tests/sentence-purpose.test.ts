@@ -85,6 +85,44 @@ Deno.test("both generation formats request grounded short expression purposes", 
     ok(items.every((item: any) => typeof item.expression_purpose === "string"));
   }
 });
+Deno.test("scene expressions end with one hypothetical conversational line at every difficulty", () => {
+  for (const level of ["启蒙", "简单", "中等", "高级"]) {
+    for (const style of ["平铺直叙", "抒情优美"]) {
+      const prompt = api.buildPromptText(level, style, "dual_tabs_v1");
+      const eventIndex = prompt.indexOf("1. 发生了什么：");
+      const feelingIndex = prompt.indexOf("2. 我当时的感受：");
+      const conversationIndex = prompt.indexOf("3. 当时会对别人说什么：");
+      ok(eventIndex >= 0 && feelingIndex > eventIndex);
+      ok(conversationIndex > feelingIndex);
+      ok(prompt.includes("直接输出用户会说的那一句"));
+      ok(prompt.includes("不要输出双方对话"));
+      ok(prompt.includes("不要使用 I would say 等解释性开头"));
+      ok(prompt.includes("不能把假设的对话写成真实发生过的事实"));
+      ok(prompt.includes("第三句不受前面“不要虚构对话”的限制"));
+      ok(prompt.includes("第三句可自然使用 you、we、祈使句或疑问句"));
+      ok(!prompt.includes("3. 我想记住的话："));
+    }
+  }
+});
+Deno.test("starter conversational examples remain short and respect difficulty over style", () => {
+  const prompt = api.buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
+  ok(prompt.includes("Come and sit with me."));
+  ok(prompt.includes("启蒙的生活表达也必须使用 3 到 6 个单词"));
+  ok(!prompt.includes("I like this day."));
+  strictEqual(prompt, api.buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
+});
+Deno.test("legacy image descriptions do not gain the hypothetical dialogue instruction", () => {
+  for (const level of ["启蒙", "简单", "中等", "高级"]) {
+    for (const style of ["平铺直叙", "抒情优美"]) {
+      const prompt = api.buildPromptText(level, style, "legacy_v1");
+      ok(!prompt.includes("当时会对别人说什么"));
+      ok(prompt.includes("最直接可见的内容"));
+      const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+      deepStrictEqual(Object.keys(payload).sort(), ["sentences", "tags"]);
+      strictEqual(payload.sentences.length, 3);
+    }
+  }
+});
 Deno.test("purpose parsing is bounded and missing purposes do not discard valid legacy sentences", () => {
   strictEqual(
     api.normalizeExpressionPurpose("  Describe\n a lake. "),
