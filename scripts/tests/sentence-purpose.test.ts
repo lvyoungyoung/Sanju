@@ -101,12 +101,25 @@ Deno.test("scene expressions end with one hypothetical conversational line at ev
       ok(prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(prompt.includes("第三句可自然使用 you、we、祈使句或疑问句"));
       ok(!prompt.includes("3. 我想记住的话："));
+      ok(prompt.includes("不必总是问句或请求"));
+      ok(prompt.includes("不要因为输入是一张照片就默认请求别人帮忙拍照"));
+      for (const example of [
+        "I had such a lovely time with my friends.",
+        "This little moment made my whole day.",
+        "Would you like to try a sip of my coffee?",
+        "Could you take a photo of me with this view?",
+        "I am at a party.",
+        "I am happy.",
+        "Come and sit with me.",
+      ]) {
+        ok(!prompt.includes(example));
+      }
     }
   }
 });
-Deno.test("starter conversational examples remain short and respect difficulty over style", () => {
+Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
   const prompt = api.buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
-  ok(prompt.includes("Come and sit with me."));
+  ok(prompt.includes("每句只表达一个意思，使用极常见的具体词和简单句型"));
   ok(prompt.includes("启蒙的生活表达也必须使用 3 到 6 个单词"));
   ok(!prompt.includes("I like this day."));
   strictEqual(prompt, api.buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
