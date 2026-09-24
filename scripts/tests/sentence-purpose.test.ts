@@ -85,21 +85,24 @@ Deno.test("both generation formats request grounded short expression purposes", 
     ok(items.every((item: any) => typeof item.expression_purpose === "string"));
   }
 });
-Deno.test("scene expressions end with one hypothetical conversational line at every difficulty", () => {
+Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"]) {
     for (const style of ["平铺直叙", "抒情优美"]) {
       const prompt = api.buildPromptText(level, style, "dual_tabs_v1");
-      const eventIndex = prompt.indexOf("1. 发生了什么：");
-      const feelingIndex = prompt.indexOf("2. 我当时的感受：");
-      const conversationIndex = prompt.indexOf("3. 当时会对别人说什么：");
-      ok(eventIndex >= 0 && feelingIndex > eventIndex);
-      ok(conversationIndex > feelingIndex);
+      const feelingIndex = prompt.indexOf("1. 我当时的感受：");
+      const conversationIndex = prompt.indexOf("2. 当时会对别人说什么：");
+      const eventIndex = prompt.indexOf("3. 发生了什么：");
+      ok(feelingIndex >= 0 && conversationIndex > feelingIndex);
+      ok(eventIndex > conversationIndex);
       ok(prompt.includes("直接输出用户会说的那一句"));
       ok(prompt.includes("不要输出双方对话"));
       ok(prompt.includes("不要使用 I would say 等解释性开头"));
       ok(prompt.includes("不能把假设的对话写成真实发生过的事实"));
-      ok(prompt.includes("第三句不受前面“不要虚构对话”的限制"));
-      ok(prompt.includes("第三句可自然使用 you、we、祈使句或疑问句"));
+      ok(prompt.includes("第二句不受前面“不要虚构对话”的限制"));
+      ok(prompt.includes("第一句和第三句优先使用 I 或 we"));
+      ok(prompt.includes("第二句可自然使用 you、we、祈使句或疑问句"));
+      ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
+      ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
       ok(prompt.includes("不必总是问句或请求"));
       ok(prompt.includes("不要因为输入是一张照片就默认请求别人帮忙拍照"));
