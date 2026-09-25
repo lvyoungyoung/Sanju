@@ -11,6 +11,7 @@ private struct GenerationRequestContext {
     let existingMemoryIDs: Set<UUID>
     let guestJobID: String?
     let clientRequestID: String?
+    let timing: GenerationTiming
 }
 
 private enum GenerationRequestOutcome {
@@ -53,17 +54,23 @@ extension AppModel {
     }
 
     func generateMemory(from imageData: Data) async throws -> MemoryEntry {
+        let timing = GenerationTiming()
+        var outcome = "failed"
+        defer { timing.finish(outcome: outcome) }
         guard remainingCredits > 0 else {
             throw KimiServiceError.noCredits
         }
 
         try consumeGenerationAttemptIfAllowed()
 
+        timing.start("client_compress")
         let images = try prepareGenerationImages(from: imageData)
-        let context = try await prepareGenerationRequestContext(memoryImageData: images.memoryImageData)
+        let context = try await prepareGenerationRequestContext(memoryImageData: images.memoryImageData, timing: timing)
 
+        timing.start("client_generate_request")
         switch try await performGenerationRequest(images: images, context: context) {
         case let .generated(result, session):
+            timing.start("client_local_save")
             let memory = makeGeneratedMemory(
                 from: result,
                 memoryImageData: images.memoryImageData,
@@ -73,11 +80,14 @@ extension AppModel {
                 memory,
                 originalImageData: images.originalImageData,
                 remainingCredits: result.remainingCredits,
-                session: session
+                session: session,
+                timing: timing
             )
+            outcome = "success"
             return memory
 
         case let .recovered(memory, _):
+            outcome = "recovered"
             return memory
         }
     }
@@ -90,11 +100,13 @@ extension AppModel {
         )
     }
 
-    private func prepareGenerationRequestContext(memoryImageData: Data) async throws -> GenerationRequestContext {
+    private func prepareGenerationRequestContext(memoryImageData: Data, timing: GenerationTiming) async throws -> GenerationRequestContext {
+        timing.start("client_session")
         let session = try await ensureValidSession()
+        timing.start("client_pending_save")
         let existingMemoryIDs = Set(memories.map(\.id))
         let guestJobID = session.isAnonymous ? UUID().uuidString.lowercased() : nil
-        let clientRequestID = UUID().uuidString.lowercased()
+        let clientRequestID = timing.requestID
 
         pendingGeneratedMemoryImage = PendingGeneratedMemoryImage(
             startedAt: .now,
@@ -109,7 +121,8 @@ extension AppModel {
             session: session,
             existingMemoryIDs: existingMemoryIDs,
             guestJobID: guestJobID,
-            clientRequestID: clientRequestID
+            clientRequestID: clientRequestID,
+            timing: timing
         )
     }
 
@@ -133,6 +146,7 @@ extension AppModel {
                 )
             }
 
+            context.timing.start("client_recovery")
             if let recoveredMemory = await recoverGeneratedMemoryIfNeeded(
                 after: error,
                 previousMemoryIDs: context.existingMemoryIDs,
@@ -142,7 +156,8 @@ extension AppModel {
                     recoveredMemory,
                     originalImageData: images.originalImageData,
                     memoryImageData: images.memoryImageData,
-                    session: context.session
+                    session: context.session,
+                    timing: context.timing
                 )
                 return .recovered(reconciledMemory, context.session)
             }
@@ -156,9 +171,11 @@ extension AppModel {
         images: PreparedGenerationImages,
         context: GenerationRequestContext
     ) async throws -> GenerationRequestOutcome {
+        context.timing.start("client_refresh_session")
         let refreshedSession = try await forceRefreshSession()
 
         do {
+            context.timing.start("client_generate_request")
             let result = try await requestGeneratedMemorySentences(
                 session: refreshedSession,
                 imageData: images.analysisImageData,
@@ -213,8 +230,10 @@ extension AppModel {
         _ recoveredMemory: MemoryEntry,
         originalImageData: Data,
         memoryImageData: Data,
-        session: SupabaseSession
+        session: SupabaseSession,
+        timing: GenerationTiming
     ) async -> MemoryEntry {
+        timing.start("client_recovered_save")
         let reconciledMemory = MemoryEntry(
             id: recoveredMemory.id,
             createdAt: recoveredMemory.createdAt,
@@ -235,6 +254,7 @@ extension AppModel {
             remoteImagePath: reconciledMemory.remoteImagePath,
             imageData: memoryImageData
         )
+        timing.start("client_photo_upload")
         await uploadMemoryImageIfNeeded(
             memoryID: reconciledMemory.id,
             remoteImagePath: reconciledMemory.remoteImagePath,
@@ -242,6 +262,7 @@ extension AppModel {
             session: session
         )
 
+        timing.start("client_recovered_finish")
         draftLearningImageData = originalImageData
         draftGeneratedMemory = reconciledMemory
         draftGeneratedMemoryID = reconciledMemory.id
@@ -294,7 +315,8 @@ extension AppModel {
         _ memory: MemoryEntry,
         originalImageData: Data,
         remainingCredits updatedRemainingCredits: Int,
-        session: SupabaseSession
+        session: SupabaseSession,
+        timing: GenerationTiming
     ) async {
         memories.removeAll { $0.id == memory.id }
         memories.insert(memory, at: 0)
@@ -317,6 +339,7 @@ extension AppModel {
             remoteImagePath: memory.remoteImagePath,
             imageData: memory.imageData
         )
+        timing.start("client_photo_upload")
         await uploadMemoryImageIfNeeded(
             memoryID: memory.id,
             remoteImagePath: memory.remoteImagePath,

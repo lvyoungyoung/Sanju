@@ -500,7 +500,7 @@ struct SupabaseService: SupabaseServicing {
         guestJobID: String?,
         clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult {
-        let request = try makeRequest(
+        var request = try makeRequest(
             path: "/functions/v1/generate-memory-v2",
             method: "POST",
             bearerToken: session.accessToken,
@@ -514,6 +514,10 @@ struct SupabaseService: SupabaseServicing {
             )
         )
 
+        #if DEBUG
+        request.setValue("1", forHTTPHeaderField: "X-Sanju-Generation-Timing")
+        request.setValue(clientRequestID ?? guestJobID, forHTTPHeaderField: "X-Sanju-Generation-Trace-ID")
+        #endif
         let response: SupabaseGenerateMemoryResponse = try await perform(request)
         guard isSupportedGeneratedSentenceCount(response.memory.sentences.count),
               let memoryID = UUID(uuidString: response.memory.id) else {
@@ -1430,9 +1434,18 @@ struct SupabaseService: SupabaseServicing {
     }
 
     private func data(for request: URLRequest, retryOnTimeout: Int) async throws -> (Data, URLResponse) {
+        let startedAt = ContinuousClock.now
+        let timingID = request.value(forHTTPHeaderField: "X-Sanju-Generation-Trace-ID")
         do {
-            return try await session.data(for: request)
+            let result = try await session.data(for: request)
+            if let timingID {
+                GenerationTiming.logResponse(result.1, requestID: timingID, elapsed: startedAt.duration(to: .now))
+            }
+            return result
         } catch let urlError as URLError where urlError.code == .timedOut {
+            if let timingID {
+                GenerationTiming.log(requestID: timingID, "http_timeout ms=\(GenerationTiming.milliseconds(startedAt.duration(to: .now)))")
+            }
             debugLog("Request timed out -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>")")
             if retryOnTimeout > 0 {
                 debugLog("Retrying request after timeout -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: remaining_retries=\(retryOnTimeout)")
@@ -1440,6 +1453,9 @@ struct SupabaseService: SupabaseServicing {
             }
             throw SupabaseServiceError.apiError("request timed out")
         } catch {
+            if let timingID {
+                GenerationTiming.log(requestID: timingID, "http_transport_failed ms=\(GenerationTiming.milliseconds(startedAt.duration(to: .now)))")
+            }
             debugLog("Transport error -> \(request.httpMethod ?? "REQUEST") \(request.url?.absoluteString ?? "<missing-url>") :: \(error.localizedDescription)")
             throw error
         }

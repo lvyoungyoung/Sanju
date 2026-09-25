@@ -1,6 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
 import { scheduleGenerationEnrichment } from "../_shared/generation-enrichment.ts"
+import { GenerationTiming, withGenerationTiming } from "../_shared/generation-timing.ts"
 
 interface Sentence {
   english: string
@@ -588,7 +589,9 @@ const GENERATION_VIOLATION_BAN_SECONDS = 24 * 60 * 60
 const IMAGE_MODERATION_FUNCTION_TIMEOUT_MS = 10000
 const GENERATION_REQUEST_BUDGET_MS = 90000
 
-Deno.serve(async (req) => {
+Deno.serve((req) => withGenerationTiming(req, handleGenerationRequest))
+
+async function handleGenerationRequest(req: Request, timing: GenerationTiming): Promise<Response> {
   let adminClient: any = null
   let generationSlotRequestID: string | null = null
   let generationSlotAcquired = false
@@ -641,6 +644,7 @@ Deno.serve(async (req) => {
       global: { fetch: (input, init) => fetchWithTimeout(input, init, 5000) },
     })
 
+    timing.start("auth")
     const {
       data: { user },
       error: userError,
@@ -658,6 +662,7 @@ Deno.serve(async (req) => {
     }
 
     generationUserID = user.id
+    timing.start("profile")
     const { data: profile, error: profileError } = await adminClient
       .from("profiles")
       .select("available_generations, generation_banned_until")
@@ -669,6 +674,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Profile not found" }, 404)
     }
 
+    timing.start("request_decode")
     const body = (await req.json()) as RequestBody
     const imageBase64 = body.imageBase64?.replace(/\s+/g, "").trim()
 
@@ -695,6 +701,7 @@ Deno.serve(async (req) => {
     const createdAt = new Date().toISOString()
     let existingGuestJob: { id: string; status: string; provider?: string | null } | null = null
 
+    timing.start("existing_result")
     if (!isAnonymous && authenticatedClientRequestID) {
       const completedResponse = await loadCompletedAuthenticatedGenerationResponseIfNeeded(
         adminClient,
@@ -789,6 +796,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    timing.start("concurrency_slot")
     generationSlotRequestID = crypto.randomUUID()
     generationSlotAcquired = await tryAcquireGenerationSlot(adminClient, {
       requestID: generationSlotRequestID,
@@ -810,6 +818,7 @@ Deno.serve(async (req) => {
     let guestImageUploaded = false
     const requestID = isAnonymous ? guestJobID! : authenticatedClientRequestID
     if (requestID) {
+      timing.start("job_claim")
       const { data: claim, error: claimError } = await adminClient.rpc("claim_generation_job", {
         p_user_id: user.id,
         p_request_id: requestID,
@@ -839,6 +848,7 @@ Deno.serve(async (req) => {
     }
 
     if (isAnonymous && guestImagePath) {
+      timing.start("guest_image_upload")
       const { error: uploadError } = await adminClient.storage
         .from("memories")
         .upload(guestImagePath, imageBytes, {
@@ -861,6 +871,7 @@ Deno.serve(async (req) => {
       guestImageUploaded = true
     }
 
+    timing.start("moderation")
     const moderationResult = await moderateImageBeforeGeneration({
       userID: user.id,
       imageBase64,
@@ -870,6 +881,7 @@ Deno.serve(async (req) => {
     })
 
     if (!moderationResult.allowed) {
+      timing.start("error_handling")
       const serializedError = serializeGenerationError({
         code: moderationResult.code,
         statusCode: moderationResult.statusCode,
@@ -908,6 +920,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    timing.start("prompt")
     const promptText = buildPromptText(englishLevel, languageStyle, generationFormat)
 
     const completionResult = await requestWithFallback({
@@ -919,9 +932,11 @@ Deno.serve(async (req) => {
       kimiApiKey,
       generationFormat,
       fetcher: generationFetch,
+      timing,
     })
 
     if (!completionResult.ok) {
+      timing.start("error_handling")
       const serializedError = serializeGenerationError({
         provider: completionResult.provider,
         code: completionResult.code,
@@ -960,6 +975,7 @@ Deno.serve(async (req) => {
       return jsonResponse(completionResult.publicError, completionResult.statusCode)
     }
 
+    timing.start("result_prepare")
     const { sentences, tags, provider, mimoFailureReason } = completionResult
     const finalizedSentences: FinalizedSentence[] = sentences.map((sentence) => ({
       id: crypto.randomUUID(),
@@ -972,6 +988,7 @@ Deno.serve(async (req) => {
     }))
 
     if (isAnonymous) {
+      timing.start("finalize")
       finalizationStarted = true
       const finalizeResult = await finalizeGuestGeneration(adminClient, {
         guestJobID: guestJobID!,
@@ -983,6 +1000,7 @@ Deno.serve(async (req) => {
       })
 
       if (!finalizeResult.ok) {
+        timing.start("error_handling")
         if (finalizeResult.outcomeUnknown) return generationPendingResponse(true)
         const serializedError = serializeGenerationError({
           provider,
@@ -1002,12 +1020,14 @@ Deno.serve(async (req) => {
         return jsonResponse(finalizeResult.publicError, finalizeResult.statusCode)
       }
 
+      timing.start("diagnostics")
       await updateGuestGenerationDiagnostics(adminClient, {
         guestJobID: guestJobID!,
         provider,
         mimoFailureReason,
       })
 
+      timing.start("read_result")
       return await loadCompletedGuestGenerationResponseIfNeeded(adminClient, {
         guestJobID: guestJobID!, userID: user.id, fallbackCreatedAt: createdAt,
         fallbackRemainingCredits: finalizeResult.remainingCredits, generationFormat,
@@ -1017,6 +1037,7 @@ Deno.serve(async (req) => {
     const memoryID = crypto.randomUUID()
     const imagePath = `${user.id}/${crypto.randomUUID().toLowerCase()}.jpg`
 
+    timing.start("image_upload")
     const { error: uploadError } = await adminClient.storage
       .from("memories")
       .upload(imagePath, imageBytes, {
@@ -1025,6 +1046,7 @@ Deno.serve(async (req) => {
       })
 
     if (uploadError) {
+      timing.start("error_handling")
       if (authenticatedClientRequestID) {
         await markAuthenticatedGenerationJobFailed(
           cleanupClient,
@@ -1043,6 +1065,7 @@ Deno.serve(async (req) => {
       )
     }
 
+    timing.start("finalize")
     finalizationStarted = true
     const finalizeResult = await finalizeAuthenticatedGeneration(adminClient, {
       memoryID,
@@ -1056,6 +1079,7 @@ Deno.serve(async (req) => {
     })
 
     if (!finalizeResult.ok) {
+      timing.start("error_handling")
       if (finalizeResult.outcomeUnknown) return generationPendingResponse(true)
       const serializedError = serializeGenerationError({
         provider,
@@ -1079,6 +1103,7 @@ Deno.serve(async (req) => {
       return jsonResponse(finalizeResult.publicError, finalizeResult.statusCode)
     }
 
+    timing.start("diagnostics")
     await updateMemoryGenerationDiagnostics(adminClient, {
       memoryID,
       userID: user.id,
@@ -1094,6 +1119,7 @@ Deno.serve(async (req) => {
         mimoFailureReason,
       })
       // The transaction owns the canonical memory ID and response, not this worker.
+      timing.start("read_result")
       return await loadCompletedAuthenticatedGenerationResponseIfNeeded(adminClient, {
         clientRequestID: authenticatedClientRequestID, userID: user.id,
         fallbackRemainingCredits: finalizeResult.remainingCredits, generationFormat,
@@ -1113,6 +1139,7 @@ Deno.serve(async (req) => {
       clientRequestID: authenticatedClientRequestID,
     })
   } catch (error) {
+    timing.start("error_handling")
     // A transport failure during finalization cannot prove that the DB rolled back.
     if (cleanupClient && generationUserID && !finalizationStarted) {
       const message = error instanceof Error ? error.message : String(error)
@@ -1141,6 +1168,7 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "生成失败，请稍后再试" }, 500)
   } finally {
     if (generationSlotAcquired && generationSlotRequestID && adminClient) {
+      timing.start("release_slot")
       try {
         await releaseGenerationSlot(cleanupClient ?? adminClient, generationSlotRequestID)
       } catch (error) {
@@ -1158,12 +1186,13 @@ Deno.serve(async (req) => {
     // Finalization queued the indexing payload in the same transaction as the
     // result and debit. Never wait for embeddings before delivering the result.
     if (generationUserID) {
+      timing.start("background_dispatch")
       try { scheduleGenerationEnrichment(generationUserID) } catch (error) {
         console.error("[generate-memory-v2] could not start background indexing", String(error))
       }
     }
   }
-})
+}
 
 async function requestWithFallback(args: {
   imageBase64: string
@@ -1174,6 +1203,7 @@ async function requestWithFallback(args: {
   kimiBaseURL: string
   kimiApiKey: string
   fetcher: typeof fetch
+  timing?: GenerationTiming
 }): Promise<
   | {
       ok: true
@@ -1221,6 +1251,7 @@ async function requestWithFallback(args: {
     max_completion_tokens: 4096,
   }
 
+  args.timing?.start("mimo")
   const mimoResult = await requestMimoOnce(
     args.mimoBaseURL,
     args.mimoApiKey,
@@ -1229,6 +1260,7 @@ async function requestWithFallback(args: {
     args.fetcher
   )
 
+  args.timing?.start("model_result")
   if (mimoResult.ok) {
     return {
       ...mimoResult,
@@ -1288,6 +1320,7 @@ async function requestWithFallback(args: {
     },
   }
 
+  args.timing?.start("kimi")
   const kimiResult = await requestKimiOnce(
     args.kimiBaseURL,
     args.kimiApiKey,
@@ -1296,6 +1329,7 @@ async function requestWithFallback(args: {
     args.fetcher
   )
 
+  args.timing?.start("model_result")
   if (kimiResult.ok) {
     return {
       ...kimiResult,

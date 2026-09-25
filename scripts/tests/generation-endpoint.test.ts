@@ -12,7 +12,12 @@ const httpHelper = new URL(
   "../../supabase/functions/_shared/fetch-with-timeout.ts",
   import.meta.url,
 ).href;
+const timingHelper = new URL(
+  "../../supabase/functions/_shared/generation-timing.ts",
+  import.meta.url,
+).href;
 const harness = `
+import { GenerationTiming, withGenerationTiming } from ${JSON.stringify(timingHelper)};
 import { fetchWithTimeout as boundedFetch, fetchWithinDeadline as deadlineFetch } from ${
   JSON.stringify(httpHelper)
 };
@@ -132,10 +137,13 @@ function reset(options: Record<string, unknown> = {}) {
     embeddingRows: undefined,
   }, options);
 }
-function request(token = "owner", legacy = false) {
+function request(token = "owner", legacy = false, timing = false) {
   return new Request("https://example.invalid/generate", {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(timing ? { "X-Sanju-Generation-Timing": "1", "X-Sanju-Generation-Trace-ID": id } : {}),
+    },
     body: JSON.stringify({
       imageBase64: "AA==",
       ...(legacy
@@ -181,6 +189,45 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(state.debits, 1);
     strictEqual(state.balance, 9);
   }
+});
+
+Deno.test("generation timing covers both account types without changing responses or debit", async () => {
+  for (const anonymous of [false, true]) {
+    reset({ anonymous });
+    const response = await handler(request("owner", false, true));
+    strictEqual(response.status, 200);
+    strictEqual(response.headers.get("X-Sanju-Generation-Trace-ID"), id);
+    const timing = response.headers.get("Server-Timing") ?? "";
+    for (const stage of ["auth", "profile", "job_claim", "moderation", "mimo", "finalize", "diagnostics", "read_result", "release_slot", "background_dispatch", "total"]) {
+      strictEqual(timing.includes(`${stage};dur=`), true, stage);
+    }
+    strictEqual(timing.includes(anonymous ? "guest_image_upload;dur=" : ", image_upload;dur="), true);
+    strictEqual(timing.includes("kimi;dur="), false);
+    strictEqual(timing.includes("embedding"), false);
+    strictEqual((await response.json()).memory.sentences.length, 6);
+    strictEqual(state.debits, 1);
+    strictEqual(state.embeddingRows, undefined);
+  }
+});
+
+Deno.test("rejection and fallback return timings; legacy clients do not receive them", async () => {
+  reset({ blocked: true });
+  const rejection = await handler(request("owner", false, true));
+  strictEqual(rejection.status, 403);
+  strictEqual(rejection.headers.get("Server-Timing")?.includes("moderation;dur="), true);
+  strictEqual(rejection.headers.get("Server-Timing")?.includes("error_handling;dur="), true);
+  strictEqual(rejection.headers.get("Server-Timing")?.includes("mimo;dur="), false);
+  strictEqual((await rejection.json()).code, "generation_policy_violation");
+  strictEqual(state.debits, 0);
+  reset({ stallMimo: true });
+  const fallback = await handler(request("owner", false, true));
+  strictEqual(fallback.headers.get("Server-Timing")?.includes("mimo;dur="), true);
+  strictEqual(fallback.headers.get("Server-Timing")?.includes("kimi;dur="), true);
+  strictEqual((await fallback.json()).memory.provider, "kimi");
+  reset({ dual: false });
+  const legacy = await handler(request("owner", true));
+  strictEqual(legacy.headers.get("Server-Timing"), null);
+  strictEqual((await legacy.json()).memory.sentences.length, 3);
 });
 
 Deno.test("completed canonical memory is returned and lookup errors cannot restart generation", async () => {
