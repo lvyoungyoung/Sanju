@@ -440,3 +440,19 @@
 "speech.settings.preview_hint" = "试听使用同一句英文，首次需要联网，之后可使用缓存播放。";
 "speech.settings.fallback_hint" = "离线或云端服务不可用时，使用系统声音，音色可能不同。";
 "speech.settings.fallback_active" = "本次使用的是系统声音，并非所选音色。";
+
+"album_flip.open" = "翻一翻";
+"album_flip.open_hint" = "随机翻看照片，听一句英语";
+"album_flip.title" = "我的英语相册";
+"album_flip.count" = "已翻看 %d 句";
+"album_flip.empty" = "还没有可以翻看的句子";
+"album_flip.again" = "再看看";
+"album_flip.familiar" = "熟悉了";
+"album_flip.hint" = "左滑再看看，右滑熟悉了";
+"album_flip.replay" = "再听一遍";
+"album_flip.mute" = "关闭自动朗读";
+"album_flip.unmute" = "开启自动朗读";
+"album_flip.photo" = "这句话对应的照片";
+"album_flip.photo_unavailable" = "照片暂时无法加载";
+"album_flip.show_translation" = "查看翻译";
+"album_flip.hide_translation" = "收起翻译";

@@ -320,6 +320,9 @@ extension AppModel {
     }
 
     private func completeLocalDeleteAccountClear() {
+        if let owner = loadPendingLocalAccountTransition()?.userID {
+            AlbumFlipHistoryStore(defaults: defaults, ownerID: owner).clear()
+        }
         resetLocalAccountState(resetCredits: false)
         clearLearningDraft()
         clearPersistedMemories()

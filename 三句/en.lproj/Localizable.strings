@@ -440,3 +440,19 @@
 "speech.settings.preview_hint" = "Every voice reads the same sample. The first preview needs a connection; later previews can play from cache.";
 "speech.settings.fallback_hint" = "When offline or cloud speech is unavailable, a system voice is used and may sound different.";
 "speech.settings.fallback_active" = "You are hearing a system voice, not the selected voice.";
+
+"album_flip.open" = "Flip through";
+"album_flip.open_hint" = "Browse your photos and hear a sentence in English";
+"album_flip.title" = "My English album";
+"album_flip.count" = "Sentences viewed: %d";
+"album_flip.empty" = "No sentences to browse yet";
+"album_flip.again" = "See again";
+"album_flip.familiar" = "Feels familiar";
+"album_flip.hint" = "Swipe left to revisit, right if it feels familiar";
+"album_flip.replay" = "Listen again";
+"album_flip.mute" = "Turn off automatic playback";
+"album_flip.unmute" = "Turn on automatic playback";
+"album_flip.photo" = "The photo for this sentence";
+"album_flip.photo_unavailable" = "Photo unavailable right now";
+"album_flip.show_translation" = "Show translation";
+"album_flip.hide_translation" = "Hide translation";

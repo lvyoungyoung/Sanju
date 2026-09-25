@@ -16,7 +16,25 @@ final class SpeechService: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
     private let audioSession = SpeechAudioSession()
     private let cloud = CloudSpeechClient()
-    private let cache = SpeechAudioCache()
+    private let cache: SpeechAudioCache
+    private let albumFetchOverride: AlbumSpeechPrefetcher.Fetch?
+    private var albumPrefetchID: UUID?
+    private var albumPrefetchWindow: (current: String, upcoming: [String], enabled: Bool)?
+    private lazy var albumPrefetcher = AlbumSpeechPrefetcher(cache: cache, namespace: cloud.cacheNamespace) { [weak self] request, onAudio in
+        guard let self else { throw CancellationError() }
+        if let albumFetchOverride { return try await albumFetchOverride(request, onAudio) }
+        guard ownerProvider?() == request.owner, let sessionProvider else { throw CloudSpeechError.noSession }
+        let auth = try await sessionProvider()
+        try Task.checkCancellation()
+        guard auth.userID == request.owner, ownerProvider?() == request.owner else { throw CancellationError() }
+        let audio = try await cloud.stream(text: request.text, voice: request.voice, auth: auth) { chunk in
+            try Task.checkCancellation()
+            guard self.ownerProvider?() == request.owner else { throw CancellationError() }
+            onAudio(chunk)
+        }
+        guard ownerProvider?() == request.owner else { throw CancellationError() }
+        return audio
+    }
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let defaults: UserDefaults
@@ -25,15 +43,18 @@ final class SpeechService: NSObject, ObservableObject {
     private var deadlineTask: Task<Void, Never>?
     private var fallbackTask: Task<Void, Never>?
     private var requestID = UUID()
-    private var activeText: String?
+    @Published private(set) var activeText: String?
     private var activeVoice: SpeechVoice?
     private var pendingBytes = Data()
     private var scheduledBuffers = 0
     private var sourceCompleted = false
     private var systemUtterance: AVSpeechUtterance?
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, cache: SpeechAudioCache = SpeechAudioCache(),
+         albumPrefetchFetch: AlbumSpeechPrefetcher.Fetch? = nil) {
         self.defaults = defaults
+        self.cache = cache
+        self.albumFetchOverride = albumPrefetchFetch
         let preferences = SpeechPreferences(defaults: defaults)
         selectedVoice = preferences.voice
         super.init()
@@ -42,6 +63,47 @@ final class SpeechService: NSObject, ObservableObject {
         synthesizer.delegate = self
         NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted(_:)),
                                                name: AVAudioSession.interruptionNotification, object: AVAudioSession.sharedInstance())
+    }
+
+    func beginAlbumSpeechPrefetch() -> UUID {
+        cancelAlbumSpeechPrefetch()
+        let id = UUID()
+        albumPrefetchID = id
+        return id
+    }
+
+    func updateAlbumSpeechPrefetch(id: UUID, current: String, upcoming: [String], enabled: Bool) {
+        guard albumPrefetchID == id else { return }
+        albumPrefetchWindow = (current, upcoming, enabled)
+        refreshAlbumSpeechPrefetch()
+    }
+
+    func prioritizeAlbumCurrentSentence(id: UUID) {
+        guard albumPrefetchID == id else { return }
+        albumPrefetcher.setForegroundBusy(true)
+    }
+
+    func pauseAlbumSpeechPrefetch(id: UUID) {
+        guard albumPrefetchID == id else { return }
+        albumPrefetchWindow?.enabled = false
+        albumPrefetcher.setEnabled(false)
+    }
+
+    func endAlbumSpeechPrefetch(id: UUID) {
+        guard albumPrefetchID == id else { return }
+        cancelAlbumSpeechPrefetch()
+    }
+
+    func cancelAlbumSpeechPrefetch() {
+        albumPrefetchID = nil
+        albumPrefetchWindow = nil
+        albumPrefetcher.cancelAll()
+    }
+
+    private func refreshAlbumSpeechPrefetch() {
+        guard albumPrefetchID != nil, let window = albumPrefetchWindow, let owner = ownerProvider?() else { return }
+        albumPrefetcher.updateWindow(currentText: window.current, upcoming: window.upcoming,
+                                    voice: selectedVoice, owner: owner, enabled: window.enabled)
     }
 
     func setVoice(_ voice: SpeechVoice) {
@@ -56,8 +118,10 @@ final class SpeechService: NSObject, ObservableObject {
 
     func applyVoice(_ voice: SpeechVoice) {
         guard voice != selectedVoice else { return }
+        albumPrefetcher.cancelAll()
         stop()
         selectedVoice = voice
+        refreshAlbumSpeechPrefetch()
     }
 
     func preview(_ voice: SpeechVoice) {
@@ -69,7 +133,8 @@ final class SpeechService: NSObject, ObservableObject {
         let voice = overrideVoice ?? selectedVoice
         guard !text.isEmpty else { return }
         if activeText == text, activeVoice == voice, requestTask != nil { return }
-        stop()
+        stopPlayback()
+        albumPrefetcher.setForegroundBusy(true)
         activeText = text
         activeVoice = voice
         loadingText = text
@@ -78,6 +143,7 @@ final class SpeechService: NSObject, ObservableObject {
         let id = requestID
         let owner = ownerProvider?() ?? "local"
         let key = cacheKey(text: text, owner: owner, voice: voice)
+        let prefetchedStream = albumPrefetcher.takeOver(text: text, voice: voice, owner: owner)
         let startedAt = Date()
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -88,6 +154,7 @@ final class SpeechService: NSObject, ObservableObject {
                     requestTask = nil
                     deadlineTask?.cancel()
                     deadlineTask = nil
+                    albumPrefetcher.setForegroundBusy(false)
                 }
             }
             do {
@@ -98,6 +165,22 @@ final class SpeechService: NSObject, ObservableObject {
                     finishSource()
 #if DEBUG
                     print("[SpeechFlow] Playing cached MiMo audio")
+#endif
+                    return
+                }
+                if let prefetchedStream {
+                    for try await chunk in prefetchedStream {
+                        try Task.checkCancellation()
+                        guard requestID == id else { return }
+                        try await play(chunk, id: id)
+                        loadingText = nil
+                        loadingVoice = nil
+                    }
+                    try Task.checkCancellation()
+                    guard requestID == id else { return }
+                    finishSource()
+#if DEBUG
+                    print("[SpeechFlow] Playback adopted album lookahead request")
 #endif
                     return
                 }
@@ -135,13 +218,19 @@ final class SpeechService: NSObject, ObservableObject {
         deadlineTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(18)) } catch { return }
             guard let self, self.requestID == id else { return }
-            self.stop()
+            self.stopPlayback()
             self.playSystemSpeech(text)
         }
     }
 
     func stop() {
+        stopPlayback()
+        albumPrefetcher.setForegroundBusy(false)
+    }
+
+    private func stopPlayback() {
         requestID = UUID()
+        albumPrefetcher.cancelPlayback()
         requestTask?.cancel()
         requestTask = nil
         deadlineTask?.cancel()
@@ -208,11 +297,14 @@ final class SpeechService: NSObject, ObservableObject {
         guard sourceCompleted, scheduledBuffers == 0 else { return }
         player.stop()
         engine.stop()
+        activeText = nil
         deactivateAudioSession()
     }
 
     private func playSystemSpeech(_ text: String) {
         // Invalidate callbacks for partial cloud audio before starting the fallback.
+        albumPrefetcher.cancelPlayback()
+        albumPrefetcher.setForegroundBusy(false)
         requestID = UUID()
         requestTask = nil
         deadlineTask?.cancel()
@@ -220,6 +312,7 @@ final class SpeechService: NSObject, ObservableObject {
         loadingText = nil
         loadingVoice = nil
         isUsingSystemVoice = true
+        activeText = text
         player.stop()
         engine.stop()
         scheduledBuffers = 0
@@ -282,10 +375,19 @@ final class SpeechService: NSObject, ObservableObject {
 
 extension SpeechService: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        finishSystemSpeech(utterance)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        finishSystemSpeech(utterance)
+    }
+
+    private nonisolated func finishSystemSpeech(_ utterance: AVSpeechUtterance) {
         let completedID = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
             guard let self, self.systemUtterance.map(ObjectIdentifier.init) == completedID else { return }
             self.systemUtterance = nil
+            self.activeText = nil
             self.deactivateAudioSession()
         }
     }

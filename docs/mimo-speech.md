@@ -47,7 +47,8 @@ This is per-user cost containment, not a global spending cap. Configure provider
 alerts as well if exposing the service broadly.
 
 Input is limited to 500 characters, output to 60 seconds of PCM. Disk cache is capped at
-64 MiB and expires after 30 days. It lives in the app's disposable Caches directory,
+512 MiB with no time-based expiration. When over capacity, the oldest saved recordings
+are removed first. It lives in the app's disposable Caches directory,
 outside cloud backup, with file protection. Cache keys hash environment, user ID, text,
 model, voice and prompt version. Bump `prompt2` in `SpeechAudioCache` when changing voice
 or delivery instructions so old recordings are not reused.

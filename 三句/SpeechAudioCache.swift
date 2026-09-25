@@ -3,8 +3,7 @@ import Foundation
 
 actor SpeechAudioCache {
     private let directory: URL
-    private let maximumBytes = 64 * 1024 * 1024
-    private let maximumAge: TimeInterval = 30 * 24 * 60 * 60
+    private let maximumBytes = 512 * 1024 * 1024
 
     init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
@@ -18,9 +17,8 @@ actor SpeechAudioCache {
 
     func load(_ key: String) -> Data? {
         let url = directory.appendingPathComponent(key).appendingPathExtension("pcm")
-        guard let info = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+        guard let info = try? url.resourceValues(forKeys: [.fileSizeKey]),
               let size = info.fileSize, size > 0, size <= SpeechAudioStream.maximumBytes,
-              let date = info.contentModificationDate, Date().timeIntervalSince(date) < maximumAge,
               let data = try? Data(contentsOf: url), data.count.isMultiple(of: 2) else { return nil }
         return data
     }
@@ -49,7 +47,8 @@ actor SpeechAudioCache {
                 return (url, size, date)
             }.sorted { $0.2 < $1.2 }
         var total = files.reduce(0) { $0 + $1.1 }
-        for (url, size, date) in files where total > maximumBytes || Date().timeIntervalSince(date) > maximumAge {
+        for (url, size, _) in files {
+            guard total > maximumBytes else { break }
             try FileManager.default.removeItem(at: url)
             total -= size
         }

@@ -502,6 +502,8 @@ final class AppModel: ObservableObject {
 
     let speech = SpeechService()
     var speechPreferenceSync: SpeechPreferenceSync?
+    var albumFlipHistorySync: AlbumFlipHistorySync?
+    @Published var albumFlipHistoryRevision = 0
     let purchaseManager = PurchaseManager()
     let supabaseService: SupabaseServicing
     let cloudSyncManager = CloudSyncManager()
@@ -512,7 +514,9 @@ final class AppModel: ObservableObject {
         didSet {
             let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
             speechPreferenceSync?.activate(userID: speechOwner)
+            albumFlipHistorySync?.activate(userID: speechOwner)
             if let previousOwner = oldValue?.userID, previousOwner != supabaseSession?.userID {
+                speech.cancelAlbumSpeechPrefetch()
                 speech.stop()
             }
         }
@@ -546,6 +550,7 @@ final class AppModel: ObservableObject {
 
     init(supabaseService: SupabaseServicing? = nil) {
         self.supabaseService = supabaseService ?? SupabaseService()
+        configureAlbumFlipHistorySync()
         configureSpeechPreferenceSync()
         speech.ownerProvider = { [weak self] in
             guard let self else { return "local" }
@@ -668,6 +673,7 @@ final class AppModel: ObservableObject {
     }
 
     func syncOnForegroundIfNeeded() {
+        albumFlipHistorySync?.refresh()
         speechPreferenceSync?.refresh()
         guard foregroundSyncTask == nil else { return }
 

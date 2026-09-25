@@ -145,6 +145,43 @@ final class SpeechAudioTests: XCTestCase {
         XCTAssertNil(invalid)
     }
 
+    func testCacheLoadsAudioOlderThanThirtyDays() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SpeechAudioCache(directory: directory)
+        let audio = Data([0, 0, 1, 0])
+        await cache.save(audio, key: "old")
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-365 * 24 * 60 * 60)],
+            ofItemAtPath: directory.appendingPathComponent("old.pcm").path
+        )
+
+        let loaded = await cache.load("old")
+        XCTAssertEqual(loaded, audio)
+    }
+
+    func testSavingAudioRetainsOldRecordingsBelowCapacity() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = SpeechAudioCache(directory: directory)
+        let oldAudio = Data([0, 0, 1, 0])
+        await cache.save(oldAudio, key: "old")
+        let oldURL = directory.appendingPathComponent("old.pcm")
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-365 * 24 * 60 * 60)],
+            ofItemAtPath: oldURL.path
+        )
+
+        let newAudio = Data([2, 0, 3, 0])
+        await cache.save(newAudio, key: "new")
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldURL.path))
+        let loadedOld = await cache.load("old")
+        let loadedNew = await cache.load("new")
+        XCTAssertEqual(loadedOld, oldAudio)
+        XCTAssertEqual(loadedNew, newAudio)
+    }
+
     func testRepeatedTapDoesNotStartAnotherRequestAndStopCancelsPendingWork() async {
         let speech = SpeechService()
         let started = expectation(description: "Preparing session")

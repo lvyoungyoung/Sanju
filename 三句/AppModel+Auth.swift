@@ -667,6 +667,7 @@ extension AppModel {
                 self?.authDebugLog("Network path update :: \(debugDescription)")
                 if isSatisfied && !wasAvailable, let appModel = self {
                     appModel.speechPreferenceSync?.refresh()
+                    appModel.albumFlipHistorySync?.refresh()
                     Task {
                         await appModel.retryPendingPurchasesIfNeeded()
                         await appModel.retryPendingMemoryImageUploadsIfNeeded()
@@ -916,6 +917,9 @@ extension AppModel {
     func handleDeletedAuthenticatedAccountLocally() {
         guard !completePendingDeleteAccountLocalClearIfNeeded() else { return }
 
+        if let owner = supabaseSession?.userID {
+            AlbumFlipHistoryStore(defaults: defaults, ownerID: owner).clear()
+        }
         resetLocalAccountState(resetCredits: false)
         clearLearningDraft()
         clearPersistedMemories()
@@ -1361,6 +1365,7 @@ extension AppModel {
             defer { advancePendingCloudSyncProgress() }
 
             if let remoteMatch = remoteMemories.first(where: { matchesMemoryIdentity($0, guestMemory) }) {
+                transferGuestAlbumFeedback(from: guestMemory, to: remoteMatch, owner: session.userID)
                 if let existingIndex = migratedMemories.firstIndex(where: { $0.id == guestMemory.id }) {
                     migratedMemories[existingIndex] = remoteMatch
                 }
@@ -1372,6 +1377,7 @@ extension AppModel {
 
             do {
                 let migratedMemory = try await supabaseService.createMemoryCopy(session: session, memory: guestMemory)
+                transferGuestAlbumFeedback(from: guestMemory, to: migratedMemory, owner: session.userID)
                 if let existingIndex = migratedMemories.firstIndex(where: { $0.id == guestMemory.id }) {
                     migratedMemories[existingIndex] = migratedMemory
                 } else {
@@ -1559,6 +1565,10 @@ extension AppModel {
                 pendingCloudSyncTotalCount = 0
             }
             return
+        }
+
+        defer {
+            if !Task.isCancelled, supabaseSession?.userID == session.userID { albumFlipHistorySync?.uploadPending() }
         }
 
         let queuedGuestMemories = pendingGuestMemoriesToMigrate()

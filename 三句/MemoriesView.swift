@@ -12,6 +12,7 @@ struct MemoriesView: View {
     @State private var memorySections: [MemorySection] = []
     @State private var pageTitleOriginY: CGFloat?
     @State private var pageTitleMinY: CGFloat = 0
+    @State private var albumFlipSession: AlbumFlipPresentation?
 
     private let columns = [
         GridItem(.flexible(), spacing: AppSpacing.medium),
@@ -99,8 +100,39 @@ struct MemoriesView: View {
                     guard appModel.isSignedIn else { return }
                     await appModel.refreshRemoteContent()
                 }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if hasFlippableSentences {
+                        Button {
+                            albumFlipSession = AlbumFlipPresentation(
+                                items: AlbumFlipItem.makeItems(from: appModel.memories),
+                                ownerID: appModel.albumFlipOwnerID
+                            )
+                        } label: {
+                            Label(L10n.string("album_flip.open", "翻一翻"), systemImage: "rectangle.on.rectangle.angled")
+                                .font(.system(.body, weight: .semibold))
+                                .foregroundStyle(AppPalette.onAccent)
+                                .padding(.horizontal, 26)
+                                .frame(minHeight: 52)
+                                .background(AppPalette.accent, in: Capsule())
+                                .appAccentShadow(AppPalette.accent)
+                        }
+                        .buttonStyle(StudioPressStyle())
+                        .accessibilityHint(L10n.string("album_flip.open_hint", "随机翻看照片，听一句英语"))
+                        .padding(.top, 10)
+                        .padding(.bottom, 12)
+                        .frame(maxWidth: .infinity)
+                        .background {
+                            LinearGradient(colors: [AppSurfaceColor.page.opacity(0), AppSurfaceColor.page], startPoint: .top, endPoint: .bottom)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                }
             }
             .background(AppSurfaceColor.page)
+            .fullScreenCover(item: $albumFlipSession) { session in
+                AlbumFlipView(items: session.items, ownerID: session.ownerID)
+                    .environmentObject(appModel)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
@@ -153,6 +185,12 @@ struct MemoriesView: View {
                     )
                 }
             }
+    }
+
+    private var hasFlippableSentences: Bool {
+        appModel.memories.contains { memory in
+            memory.sentences.contains { !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
     }
 
     private var pageTitleOpacity: Double {
@@ -311,6 +349,12 @@ struct MemoriesView: View {
         await appModel.loadMoreRemoteMemoriesIfNeeded(through: remoteLoadTarget)
         isLoadingMoreMemories = false
     }
+}
+
+private struct AlbumFlipPresentation: Identifiable {
+    let id = UUID()
+    let items: [AlbumFlipItem]
+    let ownerID: String
 }
 
 private enum MemoryScrollMetrics {

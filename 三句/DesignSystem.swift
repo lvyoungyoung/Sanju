@@ -31,6 +31,7 @@ enum AppCornerRadius {
     static let small: CGFloat = 8
     static let medium: CGFloat = 19
     static let large: CGFloat = 28
+    static let card: CGFloat = 18
     static let photo: CGFloat = 25
     static let pill: CGFloat = 999
 }

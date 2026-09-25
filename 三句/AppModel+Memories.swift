@@ -566,6 +566,9 @@ extension AppModel {
         }
 
         isSyncingRemoteMemories = true
+        defer {
+            if isSessionStillCurrent(session) { albumFlipHistorySync?.uploadPending() }
+        }
         defer { isSyncingRemoteMemories = false }
 
         do {

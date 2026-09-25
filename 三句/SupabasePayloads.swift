@@ -418,6 +418,22 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let presentationGroup: String
     let isFavorite: Bool
 
+    static func memoryCopy(for memory: MemoryEntry) -> [Self] {
+        memory.sentences.enumerated().map { index, sentence in
+            Self(
+                id: sentence.id.uuidString.lowercased(),
+                memoryID: memory.id.uuidString.lowercased(),
+                // Match generation's zero-based positions and the database's 0...5 constraint.
+                sortOrder: index,
+                english: sentence.english,
+                chinese: sentence.chinese,
+                learningTopicIDs: sentence.learningTopicIDs,
+                presentationGroup: sentence.presentationGroup.rawValue,
+                isFavorite: sentence.isFavorite
+            )
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case memoryID = "memory_id"

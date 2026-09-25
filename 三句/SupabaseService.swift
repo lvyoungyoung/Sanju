@@ -10,6 +10,9 @@ import Foundation
 protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServicing {
     var isConfigured: Bool { get }
 
+    func fetchAlbumFlipProgress(session: SupabaseSession) async throws -> [AlbumFlipProgress]
+    func syncAlbumFlipFeedback(session: SupabaseSession, events: [AlbumFlipEvent]) async throws -> [AlbumFlipProgress]
+
     func signInWithEmail(email: String, password: String) async throws -> SupabaseSession
     func signUpWithEmail(email: String, password: String, nickname: String) async throws -> SupabaseEmailSignUpResult
     func requestPasswordReset(email: String) async throws
@@ -695,6 +698,34 @@ struct SupabaseService: SupabaseServicing {
         _ = try await performWithoutBody(request)
     }
 
+    func fetchAlbumFlipProgress(session: SupabaseSession) async throws -> [AlbumFlipProgress] {
+        var records: [AlbumFlipProgress] = []
+        while true {
+            let request = try makeRequest(
+                path: "/rest/v1/album_flip_progress?select=memory_id,sentence_id,last_event_id,last_feedback,last_feedback_at,familiarity_level,last_familiar_at&order=sentence_id.asc",
+                method: "GET", bearerToken: session.accessToken,
+                additionalHeaders: ["Range-Unit": "items", "Range": "\(records.count)-\(records.count + 99)"]
+            )
+            let page: [AlbumFlipProgress] = try await perform(request)
+            records.append(contentsOf: page)
+            if page.count < 100 { return records }
+            try Task.checkCancellation()
+        }
+    }
+
+    func syncAlbumFlipFeedback(session: SupabaseSession, events: [AlbumFlipEvent]) async throws -> [AlbumFlipProgress] {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let payload = events.map { event in
+            ["id": event.id.uuidString, "memory_id": event.memoryID.uuidString,
+             "sentence_id": event.sentenceID.uuidString, "feedback": event.feedback.rawValue,
+             "occurred_at": formatter.string(from: event.occurredAt), "time_zone": event.timeZoneID]
+        }
+        let request = try makeRequest(path: "/rest/v1/rpc/sync_album_flip_feedback", method: "POST",
+                                      bearerToken: session.accessToken, body: ["p_events": payload])
+        return try await perform(request)
+    }
+
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
         let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,learning_topic_ids,presentation_group,is_favorite)"
         let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
@@ -756,18 +787,7 @@ struct SupabaseService: SupabaseServicing {
             throw SupabaseServiceError.invalidResponse
         }
 
-        let sentencePayloads = memory.sentences.enumerated().map { index, sentence in
-            SupabaseMemorySentenceInsertPayload(
-                id: sentence.id.uuidString.lowercased(),
-                memoryID: memoryID.uuidString.lowercased(),
-                sortOrder: index + 1,
-                english: sentence.english,
-                chinese: sentence.chinese,
-                learningTopicIDs: sentence.learningTopicIDs,
-                presentationGroup: sentence.presentationGroup.rawValue,
-                isFavorite: sentence.isFavorite
-            )
-        }
+        let sentencePayloads = SupabaseMemorySentenceInsertPayload.memoryCopy(for: memory)
 
         let insertSentenceRequest = try makeRequest(
             path: "/rest/v1/memory_sentences",
