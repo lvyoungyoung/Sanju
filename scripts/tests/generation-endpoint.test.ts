@@ -18,6 +18,7 @@ import { fetchWithTimeout as boundedFetch, fetchWithinDeadline as deadlineFetch 
 };
 export let handler: (req: Request) => Promise<Response>;
 export const state: any = { jobs: new Map(), guests: new Map(), memories: new Map(), balance: 10, calls: 0, removed: 0, debits: 0 };
+function scheduleGenerationEnrichment(owner: string) { state.backgroundOwners.push(owner); }
 const Deno = {
   env: { get(name: string) {
     const values: any = { SUPABASE_ANON_KEY:'anon', SUPABASE_SERVICE_ROLE_KEY:'service', SUPABASE_URL:'https://db.invalid',
@@ -127,6 +128,8 @@ function reset(options: Record<string, unknown> = {}) {
     finalizeResponseLost: false,
     stallMimo: false,
     stallKimi: false,
+    backgroundOwners: [],
+    embeddingRows: undefined,
   }, options);
 }
 function request(token = "owner", legacy = false) {
@@ -166,11 +169,8 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(completed.status, 200);
     const delivered = (await completed.json()).memory.sentences;
     strictEqual(delivered.length, 6);
-    strictEqual(
-      state.embeddingRows[0].expression_purpose,
-      "Identifying a cat.",
-    );
-    strictEqual(state.embeddingRows[0].sentence_id, delivered[0].id);
+    strictEqual(state.embeddingRows, undefined, "response must not await indexing");
+    strictEqual(state.backgroundOwners.includes("owner"), true);
     if (anonymous) {
       strictEqual(state.guests.get(id).sentences[0].id, delivered[0].id);
     }

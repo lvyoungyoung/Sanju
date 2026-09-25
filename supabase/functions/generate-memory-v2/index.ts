@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
+import { scheduleGenerationEnrichment } from "../_shared/generation-enrichment.ts"
 
 interface Sentence {
   english: string
@@ -1007,11 +1008,6 @@ Deno.serve(async (req) => {
         mimoFailureReason,
       })
 
-      // Anonymous memories do not have memory_sentences rows until they are
-      // copied into an account. Keep vectors by their stable sentence IDs now;
-      // the database promotes them automatically when that copy is inserted.
-      await stageGuestSentenceEmbeddings(adminClient, user.id, guestJobID!, finalizedSentences, generationFetch)
-
       return await loadCompletedGuestGenerationResponseIfNeeded(adminClient, {
         guestJobID: guestJobID!, userID: user.id, fallbackCreatedAt: createdAt,
         fallbackRemainingCredits: finalizeResult.remainingCredits, generationFormat,
@@ -1090,10 +1086,6 @@ Deno.serve(async (req) => {
       mimoFailureReason,
     })
 
-    // Search indexing is intentionally best-effort. The atomic generation
-    // transaction has already persisted the memory and deducted one credit.
-    await indexGeneratedSentencesForStudyScenes(adminClient, user.id, finalizedSentences, generationFetch)
-
     if (authenticatedClientRequestID) {
       await updateAuthenticatedGenerationDiagnostics(adminClient, {
         clientRequestID: authenticatedClientRequestID,
@@ -1161,6 +1153,13 @@ Deno.serve(async (req) => {
             at: new Date().toISOString(),
           })
         )
+      }
+    }
+    // Finalization queued the indexing payload in the same transaction as the
+    // result and debit. Never wait for embeddings before delivering the result.
+    if (generationUserID) {
+      try { scheduleGenerationEnrichment(generationUserID) } catch (error) {
+        console.error("[generate-memory-v2] could not start background indexing", String(error))
       }
     }
   }
@@ -1667,176 +1666,6 @@ async function finalizeGuestGeneration(
     ok: true,
     remainingCredits: normalizeRPCInteger(data),
   }
-}
-
-async function indexGeneratedSentencesForStudyScenes(
-  adminClient: any,
-  userID: string,
-  sentences: FinalizedSentence[],
-  fetcher: typeof fetch
-): Promise<void> {
-  if (sentences.length === 0) {
-    return
-  }
-
-  try {
-    const embeddingRows = await buildSentenceEmbeddingRows(sentences, fetcher)
-
-    const { error: upsertError } = await adminClient.from("sentence_embeddings").upsert(
-      embeddingRows.map((row) => ({
-        ...row,
-        user_id: userID,
-      })),
-      { onConflict: "sentence_id" }
-    )
-    if (upsertError) {
-      throw new Error(`Embedding storage failed: ${upsertError.message}`)
-    }
-
-    await Promise.all(
-      sentences.map(async (sentence) => {
-        const { error } = await adminClient.rpc(
-          "refresh_semantic_study_scene_matches_for_sentence",
-          {
-            p_sentence_id: sentence.id,
-            p_user_id: userID,
-          }
-        )
-        if (error) {
-          throw new Error(`Scene matching failed: ${error.message}`)
-        }
-      })
-    )
-  } catch (error) {
-    console.error(
-      "[generate-memory-v2] semantic sentence indexing failed",
-      error instanceof Error ? error.message : String(error)
-    )
-  }
-}
-
-async function stageGuestSentenceEmbeddings(
-  adminClient: any,
-  userID: string,
-  guestJobID: string,
-  sentences: FinalizedSentence[],
-  fetcher: typeof fetch
-): Promise<void> {
-  if (sentences.length === 0) {
-    return
-  }
-
-  try {
-    const embeddingRows = await buildSentenceEmbeddingRows(sentences, fetcher)
-    const { error } = await adminClient.from("guest_sentence_embeddings").upsert(
-      embeddingRows.map((row) => ({
-        ...row,
-        guest_user_id: userID,
-        guest_job_id: guestJobID,
-      })),
-      { onConflict: "sentence_id" }
-    )
-    if (error) {
-      throw new Error(`Guest embedding storage failed: ${error.message}`)
-    }
-  } catch (error) {
-    console.error(
-      "[generate-memory-v2] anonymous semantic sentence staging failed",
-      error instanceof Error ? error.message : String(error)
-    )
-  }
-}
-
-async function buildSentenceEmbeddingRows(sentences: FinalizedSentence[], fetcher: typeof fetch) {
-  const purposes = sentences.flatMap((sentence, index) => {
-    const text = normalizeExpressionPurpose(sentence.expression_purpose)
-    return text ? [{ index, text }] : []
-  })
-  if (purposes.length !== sentences.length) {
-    console.warn("[generate-memory-v2] missing expression purposes", sentences.length - purposes.length)
-  }
-  // Independent requests: one provider failure must not discard the other route.
-  const [original, purpose] = await Promise.allSettled([
-    fetchSentenceEmbeddings(sentences.map((sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`), fetcher),
-    purposes.length ? fetchSentenceEmbeddings(purposes.map((item) => item.text), fetcher) : Promise.resolve([]),
-  ])
-  for (const [route, result] of [["sentence", original], ["purpose", purpose]] as const) {
-    if (result.status === "rejected") {
-      console.error(`[generate-memory-v2] ${route} embedding failed`, result.reason instanceof Error ? result.reason.message : String(result.reason))
-    }
-  }
-  const purposeVectors = new Map(purposes.map((item, i) => [item.index, purpose.status === "fulfilled" ? purpose.value[i] : null]))
-  return sentences.map((sentence, index) => ({
-    sentence_id: sentence.id,
-    embedding: original.status === "fulfilled" ? original.value[index] : null,
-    expression_purpose: normalizeExpressionPurpose(sentence.expression_purpose) ?? null,
-    purpose_embedding: purposeVectors.get(index) ?? null,
-    model: "qwen3.7-text-embedding",
-    updated_at: new Date().toISOString(),
-  }))
-}
-
-async function fetchSentenceEmbeddings(texts: string[], fetcher: typeof fetch): Promise<number[][]> {
-  const apiKey = Deno.env.get("DASHSCOPE_API_KEY")
-  const embeddingURL = Deno.env.get("DASHSCOPE_EMBEDDING_URL")
-  if (!apiKey || !embeddingURL) {
-    throw new Error("Missing DashScope embedding configuration")
-  }
-
-  const response = await fetchWithTimeout(
-    embeddingURL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "qwen3.7-text-embedding",
-        input: {
-          texts,
-        },
-        parameters: {
-          dimension: 1024,
-          output_type: "dense",
-          text_type: "document",
-        },
-      }),
-    },
-    8_000,
-    fetcher
-  )
-  const rawText = await response.text()
-  if (!response.ok) {
-    throw new Error(`Embedding request failed: HTTP ${response.status}`)
-  }
-
-  const payload = JSON.parse(rawText)
-  const items = payload?.data ?? payload?.output?.embeddings
-  if (!Array.isArray(items) || items.length !== texts.length) throw new Error("Invalid embedding count")
-  const embeddings: unknown[] = Array(texts.length)
-  const seen = new Set<number>()
-  for (let i = 0; i < items.length; i++) {
-    const index = items[i]?.text_index ?? items[i]?.index ?? i
-    if (!Number.isInteger(index) || index < 0 || index >= texts.length || seen.has(index)) throw new Error("Invalid embedding index")
-    seen.add(index)
-    embeddings[index] = items[i]?.embedding
-  }
-
-  if (
-    embeddings.length !== texts.length ||
-    embeddings.some(
-      (embedding: unknown) =>
-        !Array.isArray(embedding) ||
-        embedding.length !== 1024 ||
-        !embedding.every((value) => typeof value === "number" && Number.isFinite(value)) ||
-        !embedding.some((value) => value !== 0)
-    )
-  ) {
-    throw new Error("Embedding response had an invalid vector")
-  }
-
-  return embeddings as number[][]
 }
 
 async function updateMemoryGenerationDiagnostics(

@@ -17,8 +17,9 @@
 → MiMo → 失败时 Kimi → 解析和规范化
 → 登录：上传图片 → 事务保存回忆、句子、扣次、完成任务
 → 匿名：事务保存可恢复任务结果、扣次、完成任务
-→ 写诊断信息 → 句子向量化/匹配已有主题
+→ 同事务登记后台向量任务 → 写诊断信息
 → 返回 JSON → 手机保存回忆、余额并展示
+→ 后台独立执行向量化/匹配已有主题（失败可重试）
 → 登录用户另行用较清晰的回忆图覆盖云端分析图
 ```
 
@@ -72,7 +73,7 @@
 
 内部 Supabase 调用优先用系统提供的 `SUPABASE_LOCAL_URL`，缺失才退回 `SUPABASE_URL`，避免绕公网回源。模型地址和密钥来自各自环境变量。
 
-并发名额覆盖审核、模型生成、保存、向量处理等已获名额后的处理阶段，不只是模型请求。正常结束或异常进入 `finally` 时尝试释放；运行时被终止等情况依靠租约失效后的清理兜底。鉴权和前置查询发生在取名额之前，所以“50”不是全部 HTTP 请求数量上限。
+并发名额覆盖审核、模型生成、保存等已获名额后的处理阶段，不只是模型请求。向量处理已移到后台，有独立并发上限。正常结束或异常进入 `finally` 时尝试释放；运行时被终止等情况依靠租约失效后的清理兜底。鉴权和前置查询发生在取名额之前，所以“50”不是全部 HTTP 请求数量上限。
 
 ## 6. 图片审核
 
@@ -113,7 +114,7 @@ MiMo 成功则 `provider=mimo`、`mimo_failure_reason=null`；MiMo 失败而 Kim
 
 生成函数先将分析图上传到 `memories` Storage 的正式路径。上传失败直接返回，不扣次。上传成功才调用 `finalize_authenticated_generation`。
 
-finalize 定义来自 `20260901000000_replace_scene_hint_with_learning_topics.sql`，并由 `20260921005000_claim_generation_jobs_atomically.sql` 的触发器保护终态，在同一数据库事务中：
+finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，并由 `20260921005000_claim_generation_jobs_atomically.sql` 的触发器保护终态，在同一数据库事务中保存结果、扣次并写入向量任务：
 
 1. 检查句数为 3 或 6；锁定同用户同请求的任务，已完成则复用结果。
 2. 锁定 profile 并重新检查余额，处理已有 memory 的幂等情况。
@@ -138,13 +139,14 @@ finalize 定义来自 `20260901000000_replace_scene_hint_with_learning_topics.sq
 
 ## 10. 返回前还有哪些工作
 
-提交事务后，生成函数会更新 provider/MiMo 失败原因诊断，然后等待句子向量处理完成或报错：
+提交事务后，生成函数更新 provider/MiMo 失败原因诊断并读取最终结果，不再等待句子向量处理。后台独立执行：
 
-- 百炼 `qwen3.7-text-embedding`，输入为每句的英文和中文，批量生成 1024 维 dense 向量，不传照片、不再用 `scene_hint`。
-- 登录用户写 `sentence_embeddings`，再刷新每句与已有自定义语义主题的关系。当前阈值默认/最低 0.42，AI 逐句复核已暂停；预定义主题按分类匹配。
+- 百炼 `qwen3.7-text-embedding`，为原句英文/中文和表达用途分别批量生成 1024 维 dense 向量，不传照片、不再用 `scene_hint`。
+- 登录用户写 `sentence_embeddings`，再刷新主题关系。维持当前统一规则：用途必须达标，原句或分类至少一路达标，使用每个主题自己的阈值；不恢复 AI 复核。
 - 匿名用户写 `guest_sentence_embeddings`，以后登录迁移时凭稳定句子 UUID 提升为正式向量，不在此处创建匿名自定义主题。
 
-这些工作是 best-effort：失败捕获后记日志，不撤回生成、不返还次数。但是当前使用 `await`，仍在 HTTP 返回前执行，并非完全放到后台，因此向量或主题查询慢会拉长用户等待。向量失败也意味着相关句子可能暂时不能进入语义主题，不能视为索引必然成功。
+这些工作通过持久化任务和 `EdgeRuntime.waitUntil` 后台执行，不阻塞返回、不撤回生成、也不重复扣次数。
+失败或运行时终止会保留待办，后续生成和独立定时补偿可重试。部署和补偿开关见 [后台向量任务](generation-enrichment.md)。
 
 最后返回 JSON：`memory`（ID、图片路径、创建时间、provider、tags、句子）及 `remainingCredits`，另含相应请求/job ID。旧格式会裁剪到三句，双组格式保留分组信息。
 
@@ -213,11 +215,13 @@ finalize 定义来自 `20260901000000_replace_scene_hint_with_learning_topics.sq
 - `三句/AppModel+Memories.swift`：图片准备、请求标识、生成请求、结果持久化、恢复、图片补传。
 - `三句/ImageCompressor.swift`：分析图和回忆图压缩参数。
 - `三句/SupabaseService.swift`、`三句/SupabaseModels.swift`：请求/解码/错误分类。
-- `supabase/functions/generate-memory-v2/index.ts`：前置检查、审核、模型切换、提交、向量和响应。
+- `supabase/functions/generate-memory-v2/index.ts`：前置检查、审核、模型切换、提交和响应。
+- `supabase/functions/_shared/generation-enrichment.ts`：后台向量处理、领取任务和重试。
+- `supabase/functions/process-generation-enrichment/index.ts`：定时补偿入口。
 - `supabase/functions/moderate-image-v1/index.ts`：阿里云 OSS 上传和审核风险判断。
 - `supabase/functions/recover-guest-generation/index.ts`：匿名已完成结果读取。
 - `supabase/functions/cleanup-guest-generation-jobs/index.ts`：匿名结果保留期清理。
-- `supabase/migrations/20260901000000_replace_scene_hint_with_learning_topics.sql`：当前带分类/分组的两种 finalize 事务。
+- `supabase/migrations/20260925001000_defer_generation_enrichment.sql`：带持久化向量任务的两种 finalize 事务。
 - `supabase/migrations/20260921002000_pause_study_scene_ai_review.sql`：当前生成后自定义主题语义匹配、不再逐句复核。
 - `supabase/migrations/20260921005000_claim_generation_jobs_atomically.sql`：原子执行权、账号隔离和终态保护。
 - `supabase/functions/_shared/fetch-with-timeout.ts`：完整响应读取超时、父请求取消与共享网络预算。

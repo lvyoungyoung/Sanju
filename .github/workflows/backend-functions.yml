@@ -56,6 +56,7 @@ on:
           - delete-account
           - extract-study-topic-expressions
           - generate-memory-v2
+          - process-generation-enrichment
           - migrate-guest-credits
           - moderate-image-v1
           - recover-guest-generation
@@ -89,7 +90,7 @@ jobs:
         run: deno test --no-lock --allow-read scripts/tests/study-scene-limit.test.ts scripts/tests/sentence-purpose.test.ts
 
       - name: Test generation retries and full-response deadlines
-        run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-timeouts.test.ts
+        run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-timeouts.test.ts scripts/tests/generation-enrichment-worker.test.ts
 
       - name: Test speech streaming and request limits
         run: deno test --no-lock --allow-read scripts/tests/speech-synthesis.test.ts

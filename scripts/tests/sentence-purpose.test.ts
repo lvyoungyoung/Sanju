@@ -6,8 +6,14 @@ const source = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const indexingSource = await Deno.readTextFile(
+  new URL(
+    "../../supabase/functions/_shared/generation-enrichment.ts",
+    import.meta.url,
+  ),
+);
 function fn(name: string) {
-  const match = source.match(
+  const match = (source + "\n" + indexingSource).match(
     new RegExp(`(?:async )?function ${name}\\([\\s\\S]*?\\n}`),
   );
   if (!match) throw new Error(name);
@@ -20,7 +26,7 @@ const helper = new URL(
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
-  type Sentence = any; type FinalizedSentence = any;
+  type Sentence = any; type FinalizedSentence = any; type IndexableSentence = any;
   type SentencePresentationGroup = "what_i_see" | "what_i_say";
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   const Deno = {env:{get:()=>"test"}};
@@ -38,8 +44,6 @@ const api = await import(
       "isUUID",
       "toClientSentences",
       "buildPromptText",
-      "indexGeneratedSentencesForStudyScenes",
-      "stageGuestSentenceEmbeddings",
     ].map((name) => `export ${fn(name)}`).join("\n")
   }
 `)
@@ -106,15 +110,17 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
       ok(!prompt.includes("3. 我想记住的话："));
       ok(prompt.includes("不必总是问句或请求"));
       ok(prompt.includes("不要因为输入是一张照片就默认请求别人帮忙拍照"));
-      for (const example of [
-        "I had such a lovely time with my friends.",
-        "This little moment made my whole day.",
-        "Would you like to try a sip of my coffee?",
-        "Could you take a photo of me with this view?",
-        "I am at a party.",
-        "I am happy.",
-        "Come and sit with me.",
-      ]) {
+      for (
+        const example of [
+          "I had such a lovely time with my friends.",
+          "This little moment made my whole day.",
+          "Would you like to try a sip of my coffee?",
+          "Could you take a photo of me with this view?",
+          "I am at a party.",
+          "I am happy.",
+          "Come and sit with me.",
+        ]
+      ) {
         ok(!prompt.includes(example));
       }
     }
@@ -198,46 +204,10 @@ Deno.test("missing purposes are skipped without shifting other sentences' vector
   );
   strictEqual(calls, 1);
 });
-Deno.test("authenticated and anonymous indexing persist both vectors under the stable sentence IDs", async () => {
-  for (const guest of [false, true]) {
-    let table = "", rows: any[] = [];
-    let matches = 0;
-    const admin = {
-      from: (name: string) => ({
-        upsert: async (data: any[]) => {
-          table = name;
-          rows = data;
-          return { error: null };
-        },
-      }),
-      rpc: async () => {
-        matches++;
-        return { error: null };
-      },
-    };
-    if (guest) {
-      await api.stageGuestSentenceEmbeddings(
-        admin,
-        "owner",
-        "job",
-        sentences,
-        makeFetcher(),
-      );
-    } else {await api.indexGeneratedSentencesForStudyScenes(
-        admin,
-        "owner",
-        sentences,
-        makeFetcher(),
-      );}
-    strictEqual(
-      table,
-      guest ? "guest_sentence_embeddings" : "sentence_embeddings",
-    );
-    strictEqual(rows[0].sentence_id, sentences[0].id);
-    strictEqual(rows[0].purpose_embedding[0], 10);
-    strictEqual(rows[0][guest ? "guest_user_id" : "user_id"], "owner");
-    strictEqual(matches, guest ? 0 : 3);
-  }
+Deno.test("background indexing preserves stable sentence IDs", async () => {
+  const rows = await api.buildSentenceEmbeddingRows(sentences, makeFetcher());
+  strictEqual(rows[0].sentence_id, sentences[0].id);
+  strictEqual(rows[0].purpose_embedding[0], 10);
 });
 Deno.test("client responses keep old fields and stable IDs without exposing indexing metadata", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"]) {
