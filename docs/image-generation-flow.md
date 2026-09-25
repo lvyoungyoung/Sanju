@@ -146,7 +146,8 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 - 匿名用户写 `guest_sentence_embeddings`，以后登录迁移时凭稳定句子 UUID 提升为正式向量，不在此处创建匿名自定义主题。
 
 这些工作通过持久化任务和 `EdgeRuntime.waitUntil` 后台执行，不阻塞返回、不撤回生成、也不重复扣次数。
-失败或运行时终止会保留待办，后续生成和独立定时补偿可重试。部署和补偿开关见 [后台向量任务](generation-enrichment.md)。
+失败或运行时终止会保留待办，后续生成可顺带重试。定时补偿暂缓，没有后续请求时可能持续待处理。
+部署与限制见 [后台向量任务](generation-enrichment.md)。
 
 最后返回 JSON：`memory`（ID、图片路径、创建时间、provider、tags、句子）及 `remainingCredits`，另含相应请求/job ID。旧格式会裁剪到三句，双组格式保留分组信息。
 
@@ -217,7 +218,7 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 - `三句/SupabaseService.swift`、`三句/SupabaseModels.swift`：请求/解码/错误分类。
 - `supabase/functions/generate-memory-v2/index.ts`：前置检查、审核、模型切换、提交和响应。
 - `supabase/functions/_shared/generation-enrichment.ts`：后台向量处理、领取任务和重试。
-- `supabase/functions/process-generation-enrichment/index.ts`：定时补偿入口。
+- `supabase/functions/process-generation-enrichment/index.ts`：预留的管理补偿入口，当前没有定时调用。
 - `supabase/functions/moderate-image-v1/index.ts`：阿里云 OSS 上传和审核风险判断。
 - `supabase/functions/recover-guest-generation/index.ts`：匿名已完成结果读取。
 - `supabase/functions/cleanup-guest-generation-jobs/index.ts`：匿名结果保留期清理。
