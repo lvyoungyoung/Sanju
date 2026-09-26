@@ -66,7 +66,7 @@ jobs:
         run: deno test --no-lock --allow-read scripts/tests/study-scene-limit.test.ts
 
       - name: Test generation job ownership and atomic completion
-        run: deno test --no-lock --allow-read --allow-env scripts/tests/generation-jobs.test.ts scripts/tests/generation-enrichment-db.test.ts
+        run: deno test --no-lock --allow-read --allow-env scripts/tests/generation-jobs.test.ts scripts/tests/generation-enrichment-db.test.ts scripts/tests/generation-enrichment-timing-db.test.ts
 
   migrate:
     name: SQL Migrations

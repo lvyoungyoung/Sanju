@@ -266,6 +266,7 @@ Deno.test("worker bounds drain batches and refuses to start a batch with an exha
 });
 
 Deno.test("background registration returns immediately while slow work is still running", async () => {
+  let rpcCalls = 0;
   let release!: () => void;
   const slow = new Promise<void>((resolve) => {
     release = resolve;
@@ -274,6 +275,7 @@ Deno.test("background registration returns immediately while slow work is still 
   api.state.clientCalls = 0;
   api.state.client = {
     rpc: async () => {
+      rpcCalls++;
       await slow;
       return { data: [], error: null };
     },
@@ -285,6 +287,7 @@ Deno.test("background registration returns immediately while slow work is still 
   strictEqual(api.state.clientCalls, 1);
   release();
   await Promise.all(api.state.tasks);
+  strictEqual(rpcCalls, 1);
 });
 
 Deno.test("unsupported background runtime leaves durable work for topic creation rather than blocking response", () => {
@@ -297,15 +300,18 @@ Deno.test("unsupported background runtime leaves durable work for topic creation
 });
 
 Deno.test("failed background startup is contained, not an unhandled rejection", async () => {
+  let rpcCalls = 0;
   api.runtime(true);
   api.state.tasks = [];
   api.state.client = {
     rpc: async () => {
+      rpcCalls++;
       throw new Error("gateway unavailable");
     },
   };
   api.scheduleGenerationEnrichment(initialScope);
   await Promise.all(api.state.tasks);
+  strictEqual(rpcCalls, 1);
 });
 
 Deno.test("retired retry endpoint rejects users and no longer processes work even for administrators", async () => {

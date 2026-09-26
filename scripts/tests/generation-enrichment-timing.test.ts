@@ -10,6 +10,27 @@ Deno.test("enrichment timing only enables for trusted staging configuration, not
   }
 });
 
+Deno.test({
+  name: "denied environment access disables optional diagnostics without interrupting work",
+  permissions: { env: false },
+  async fn() {
+    strictEqual(isStagingEnrichmentEnvironment(), false);
+    const events: Record<string, unknown>[] = [];
+    const timing = new EnrichmentTiming({}, () => 0, (event) => events.push(event));
+    strictEqual(timing.enabled, false);
+    const child = timing.forJob("10000000-0000-0000-0000-000000000001", 1);
+    strictEqual(child.enabled, false);
+    let calls = 0;
+    strictEqual(await child.measure("metadata_generate", async () => ++calls), 1);
+    strictEqual(calls, 1);
+    child.finish("completed");
+    timing.finish("completed");
+    deepStrictEqual(events, []);
+    deepStrictEqual(child.report().stages, []);
+    deepStrictEqual(timing.report().stages, []);
+  },
+});
+
 Deno.test("parallel branch durations are independent and report wall time rather than their sum", async () => {
   let now = 0;
   const events: any[] = [];

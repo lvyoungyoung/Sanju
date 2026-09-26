@@ -20,10 +20,12 @@ type Context = {
   attempt?: number
 }
 
-export function isStagingEnrichmentEnvironment(url = Deno.env.get("SUPABASE_URL")): boolean {
+export function isStagingEnrichmentEnvironment(url?: string): boolean {
   try {
-    return ["spb-bp1364k407p37qn7.supabase.opentrust.net", "api-staging.sanju.cc"].includes(new URL(url ?? "").hostname)
+    const configuredURL = url ?? Deno.env.get("SUPABASE_URL")
+    return ["spb-bp1364k407p37qn7.supabase.opentrust.net", "api-staging.sanju.cc"].includes(new URL(configuredURL ?? "").hostname)
   } catch {
+    // Optional diagnostics must not interrupt work when environment access is denied.
     return false
   }
 }
