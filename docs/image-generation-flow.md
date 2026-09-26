@@ -218,7 +218,7 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 - `三句/SupabaseService.swift`、`三句/SupabaseModels.swift`：请求/解码/错误分类。
 - `supabase/functions/generate-memory-v2/index.ts`：前置检查、审核、模型切换、提交和响应。
 - `supabase/functions/_shared/generation-enrichment.ts`：后台向量处理、领取任务和重试。
-- `supabase/functions/process-generation-enrichment/index.ts`：预留的管理补偿入口，当前没有定时调用。
+- `supabase/functions/process-generation-enrichment/index.ts`：已停用的管理补偿入口（HTTP 410）。失败补偿仅在创建学习主题时登记，由主题详情页延续本次查找；生成后仅尝试本次结果的首次后台补全。详见 `docs/generation-enrichment.md`。
 - `supabase/functions/moderate-image-v1/index.ts`：阿里云 OSS 上传和审核风险判断。
 - `supabase/functions/recover-guest-generation/index.ts`：匿名已完成结果读取。
 - `supabase/functions/cleanup-guest-generation-jobs/index.ts`：匿名结果保留期清理。

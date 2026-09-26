@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
-import { scheduleGenerationEnrichment } from "../_shared/generation-enrichment.ts"
+import { scheduleGenerationEnrichment, type EnrichmentScope } from "../_shared/generation-enrichment.ts"
 import { GenerationTiming, withGenerationTiming } from "../_shared/generation-timing.ts"
 
 interface Sentence {
@@ -573,6 +573,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
   let authenticatedClientRequestID: string | null = null
   let ownedGuestJobID: string | null = null
   let generationUserID: string | null = null
+  let enrichmentScope: EnrichmentScope | null = null
   let ownsAuthenticatedJob = false
   let finalizationStarted = false
   let cleanupClient: any = null
@@ -965,6 +966,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
     if (isAnonymous) {
       timing.start("finalize")
       finalizationStarted = true
+      enrichmentScope = { userID: user.id, guestJobID: guestJobID! }
       const finalizeResult = await finalizeGuestGeneration(adminClient, {
         guestJobID: guestJobID!,
         userID: user.id,
@@ -1042,6 +1044,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
 
     timing.start("finalize")
     finalizationStarted = true
+    enrichmentScope = { userID: user.id, memoryID }
     const finalizeResult = await finalizeAuthenticatedGeneration(adminClient, {
       memoryID,
       userID: user.id,
@@ -1160,9 +1163,10 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
     }
     // Finalization queued the indexing payload in the same transaction as the
     // result and debit. Never wait for embeddings before delivering the result.
-    if (generationUserID) {
+    // Only this result's first attempt; failures wait for topic creation.
+    if (enrichmentScope) {
       timing.start("background_dispatch")
-      try { scheduleGenerationEnrichment(generationUserID) } catch (error) {
+      try { scheduleGenerationEnrichment(enrichmentScope) } catch (error) {
         console.error("[generate-memory-v2] could not start background indexing", String(error))
       }
     }

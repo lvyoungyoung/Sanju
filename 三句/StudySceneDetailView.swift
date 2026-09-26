@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StudySceneDetailView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     let route: StudySceneDetailRoute
 
     @State private var sceneItems: [SentenceStudyQueueItem] = []
@@ -14,6 +15,19 @@ struct StudySceneDetailView: View {
     @State private var showsSlowLoadingHint = false
     @State private var matchSettings: StudySceneMatchSettings?
     @State private var showsMatchSettings = false
+    @State private var enrichmentStatus: StudySceneEnrichmentStatus?
+    @State private var enrichmentCheckFailed = false
+    @State private var enrichmentPollID = UUID()
+
+    private struct LoadContext: Equatable {
+        let route: StudySceneDetailRoute
+        let userID: String?
+        let isActive: Bool
+    }
+
+    private var isDeepSearching: Bool {
+        !route.isFavorites && !enrichmentCheckFailed && enrichmentStatus?.isPending == true
+    }
 
     private var title: String {
         switch route {
@@ -126,13 +140,21 @@ struct StudySceneDetailView: View {
                 })
             }
         }
-        .task(id: route) {
+        .task(id: LoadContext(route: route, userID: appModel.supabaseSession?.userID, isActive: scenePhase == .active)) {
+            enrichmentPollID = UUID()
+            guard scenePhase == .active else { return }
             await loadDetail()
+        }
+        .task(id: enrichmentPollID) {
+            await monitorEnrichment()
         }
         .refreshable {
             await loadDetail(forceRefresh: true)
         }
-        .onDisappear { detailLoadID = UUID() }
+        .onDisappear {
+            detailLoadID = UUID()
+            enrichmentPollID = UUID()
+        }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: errorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
                 errorMessage = nil
@@ -187,6 +209,7 @@ struct StudySceneDetailView: View {
     private var detailContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
+                enrichmentNotice
                 studyOverviewBar
                 sentenceContent
             }
@@ -198,7 +221,9 @@ struct StudySceneDetailView: View {
 
     @ViewBuilder
     private var sentenceContent: some View {
-        if items.isEmpty {
+        if items.isEmpty && (isDeepSearching || enrichmentCheckFailed || (enrichmentStatus?.failedCount ?? 0) > 0) {
+            Color.clear.frame(height: 60)
+        } else if items.isEmpty {
             EmptyStateView(
                 title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
                 subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
@@ -217,6 +242,24 @@ struct StudySceneDetailView: View {
                 ContentFooterHint(isLoading: false)
                     .padding(.top, AppSpacing.small)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var enrichmentNotice: some View {
+        if isDeepSearching {
+            HStack(alignment: .top, spacing: AppSpacing.medium) {
+                ProgressView().controlSize(.small)
+                Text(L10n.string("study.scene.detail.deep_search", "正在深度查找句子，结果将陆续更新。"))
+                    .font(.system(size: AppFontSize.caption))
+                    .foregroundStyle(AppTextColor.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if !route.isFavorites && (enrichmentCheckFailed || (enrichmentStatus?.failedCount ?? 0) > 0) {
+            Text(L10n.string("study.scene.detail.deep_search_incomplete", "部分句子暂未完成查找，当前结果可能不完整。"))
+                .font(.system(size: AppFontSize.caption))
+                .foregroundStyle(AppTextColor.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -242,6 +285,7 @@ struct StudySceneDetailView: View {
 
     @MainActor
     private func loadDetail(forceRefresh: Bool = false) async {
+        enrichmentPollID = UUID()
         let loadID = UUID()
         detailLoadID = loadID
         let hasCachedItems = cachedSceneItems != nil
@@ -249,6 +293,7 @@ struct StudySceneDetailView: View {
         defer {
             if detailLoadID == loadID {
                 isLoading = false
+                enrichmentPollID = UUID()
             }
         }
 
@@ -260,6 +305,15 @@ struct StudySceneDetailView: View {
                 sceneItems = cachedSceneItems
             }
             do {
+                do {
+                    let status = try await appModel.continueStudySceneEnrichment(sceneID: scene.id)
+                    guard detailLoadID == loadID, !Task.isCancelled else { return }
+                    enrichmentStatus = status
+                    enrichmentCheckFailed = false
+                } catch {
+                    guard detailLoadID == loadID, !Task.isCancelled, !(error is CancellationError) else { return }
+                    enrichmentCheckFailed = true
+                }
                 let settings = try await appModel.loadStudySceneMatchSettings(sceneID: scene.id)
                 guard detailLoadID == loadID, !Task.isCancelled else { return }
                 matchSettings = settings
@@ -283,6 +337,36 @@ struct StudySceneDetailView: View {
             }
         }
 
+    }
+
+    @MainActor
+    private func monitorEnrichment() async {
+        guard case let .userScene(scene) = route, !isLoading, scenePhase == .active else { return }
+        let loadID = detailLoadID
+        let userID = appModel.supabaseSession?.userID
+        while isDeepSearching && !Task.isCancelled && scenePhase == .active {
+            do {
+                try await Task.sleep(for: .seconds(enrichmentStatus?.pollingDelay ?? 5))
+                let status = try await appModel.continueStudySceneEnrichment(sceneID: scene.id)
+                guard detailLoadID == loadID, appModel.supabaseSession?.userID == userID, !Task.isCancelled else { return }
+                if status.completedCount != enrichmentStatus?.completedCount || !status.isPending {
+                    let updated = try await appModel.refreshUserStudySceneDetailSentences(for: scene, ifCurrent: {
+                        detailLoadID == loadID && appModel.supabaseSession?.userID == userID
+                    })
+                    guard detailLoadID == loadID, !Task.isCancelled else { return }
+                    sceneItems = updated
+                    await appModel.refreshUserStudySceneSummaries()
+                    guard detailLoadID == loadID, appModel.supabaseSession?.userID == userID, !Task.isCancelled else { return }
+                    refreshedSceneSummary = appModel.userStudySceneSummaries.first(where: { $0.id == scene.id })?.summary
+                }
+                enrichmentStatus = status
+            } catch {
+                guard detailLoadID == loadID, appModel.supabaseSession?.userID == userID,
+                      !Task.isCancelled, !(error is CancellationError) else { return }
+                enrichmentCheckFailed = true
+                return
+            }
+        }
     }
 
     @MainActor

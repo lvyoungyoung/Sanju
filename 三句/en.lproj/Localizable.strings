@@ -373,6 +373,8 @@
 "study.scene.detail.empty_title" = "No matching sentences yet";
 "study.scene.detail.loading_subtitle" = "Just a moment while we organize related expressions.";
 "study.scene.detail.loading_slow_subtitle" = "Finding sentences for this topic for the first time may take a little longer. Please wait.";
+"study.scene.detail.deep_search" = "Searching more deeply for sentences. Results will appear as they're found.";
+"study.scene.detail.deep_search_incomplete" = "Some sentences haven't been checked yet. These results may be incomplete.";
 "study.scene.detail.loading_title" = "Finding sentences for this topic";
 "study.scene.detail.sentence_count" = "%d sentences";
 "study.scene.detail.start" = "Start Studying";

@@ -1,6 +1,15 @@
 import Foundation
 
 extension AppModel {
+    func continueStudySceneEnrichment(sceneID: UUID) async throws -> StudySceneEnrichmentStatus {
+        let session = try await studyMatchSettingsSession()
+        let result = try await supabaseService.continueStudySceneEnrichment(session: session, sceneID: sceneID)
+        guard isSignedIn, supabaseSession?.userID == session.userID, !Task.isCancelled else {
+            throw CancellationError()
+        }
+        return result
+    }
+
     func loadStudySceneMatchSettings(sceneID: UUID) async throws -> StudySceneMatchSettings {
         let session = try await studyMatchSettingsSession()
         var result = try await supabaseService.fetchStudySceneMatchSettings(session: session, sceneID: sceneID)

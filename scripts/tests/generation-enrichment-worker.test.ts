@@ -32,6 +32,8 @@ const api = await import(
 `)
 );
 const vector = [1, ...Array(1023).fill(0)];
+const initialScope = { userID: "owner", memoryID: "memory" };
+const sceneScope = { userID: "owner", sceneID: "scene" };
 const sentences = [{
   id: "sentence",
   english: "This is a cat.",
@@ -61,7 +63,14 @@ function fixture(
   const client = {
     rpc: async (name: string, args: any) => {
       calls.push(name);
-      if (name === "claim_generation_enrichment") {
+      if (name === "claim_scoped_generation_enrichment") {
+        strictEqual(args.p_user_id, "owner");
+        strictEqual(
+          [args.p_memory_id, args.p_guest_job_id, args.p_scene_id].filter(
+            Boolean,
+          ).length,
+          1,
+        );
         return {
           data: claims++ < total
             ? [{
@@ -128,7 +137,7 @@ function fixture(
 Deno.test("worker uses leased persisted payload and atomically completes both vectors", async () => {
   const f = fixture();
   deepStrictEqual(
-    await api.processGenerationEnrichment(f.client, "owner", f.fetcher),
+    await api.processGenerationEnrichment(f.client, initialScope, f.fetcher),
     { completed: 1, failed: 0 },
   );
   strictEqual(f.finished[0].p_lease_token, "lease");
@@ -151,7 +160,7 @@ Deno.test("incomplete vectors and database failure remain retryable without fina
   ) {
     const f = fixture(failure);
     deepStrictEqual(
-      await api.processGenerationEnrichment(f.client, "owner", f.fetcher),
+      await api.processGenerationEnrichment(f.client, initialScope, f.fetcher),
       { completed: 0, failed: 1 },
     );
     strictEqual(f.retried.length, 1);
@@ -166,7 +175,7 @@ Deno.test("checkpointed metadata is reused on retries; lost leases do not start 
   deepStrictEqual(
     await api.processGenerationEnrichment(
       cached.client,
-      "owner",
+      initialScope,
       cached.fetcher,
     ),
     { completed: 1, failed: 0 },
@@ -178,7 +187,11 @@ Deno.test("checkpointed metadata is reused on retries; lost leases do not start 
   );
   const stale = fixture("stale");
   deepStrictEqual(
-    await api.processGenerationEnrichment(stale.client, "owner", stale.fetcher),
+    await api.processGenerationEnrichment(
+      stale.client,
+      initialScope,
+      stale.fetcher,
+    ),
     { completed: 0, failed: 0 },
   );
   deepStrictEqual(stale.modelCalls, ["metadata"]);
@@ -188,13 +201,25 @@ Deno.test("checkpointed metadata is reused on retries; lost leases do not start 
 Deno.test("worker bounds drain batches and refuses to start a batch with an exhausted budget", async () => {
   const f = fixture(null, 100);
   deepStrictEqual(
-    await api.processGenerationEnrichment(f.client, null, f.fetcher),
+    await api.processGenerationEnrichment(f.client, sceneScope, f.fetcher),
     { completed: 3, failed: 0 },
   );
   strictEqual(f.finished.length, 3);
   const g = fixture();
-  await api.processGenerationEnrichment(g.client, null, g.fetcher, Date.now());
+  await api.processGenerationEnrichment(
+    g.client,
+    sceneScope,
+    g.fetcher,
+    Date.now(),
+  );
   strictEqual(g.calls.length, 0);
+  const initial = fixture(null, 100);
+  await api.processGenerationEnrichment(
+    initial.client,
+    initialScope,
+    initial.fetcher,
+  );
+  strictEqual(initial.finished.length, 1);
 });
 
 Deno.test("background registration returns immediately while slow work is still running", async () => {
@@ -211,7 +236,7 @@ Deno.test("background registration returns immediately while slow work is still 
     },
   };
   api.runtime(true);
-  strictEqual(api.scheduleGenerationEnrichment("owner"), undefined);
+  strictEqual(api.scheduleGenerationEnrichment(initialScope), undefined);
   strictEqual(api.state.tasks.length, 1);
   await Promise.resolve();
   strictEqual(api.state.clientCalls, 1);
@@ -219,11 +244,11 @@ Deno.test("background registration returns immediately while slow work is still 
   await Promise.all(api.state.tasks);
 });
 
-Deno.test("unsupported background runtime leaves durable work for sweeper rather than blocking response", () => {
+Deno.test("unsupported background runtime leaves durable work for topic creation rather than blocking response", () => {
   api.state.tasks = [];
   api.state.clientCalls = 0;
   api.runtime(false);
-  api.scheduleGenerationEnrichment("owner");
+  api.scheduleGenerationEnrichment(initialScope);
   strictEqual(api.state.tasks.length, 0);
   strictEqual(api.state.clientCalls, 0);
 });
@@ -236,11 +261,11 @@ Deno.test("failed background startup is contained, not an unhandled rejection", 
       throw new Error("gateway unavailable");
     },
   };
-  api.scheduleGenerationEnrichment("owner");
+  api.scheduleGenerationEnrichment(initialScope);
   await Promise.all(api.state.tasks);
 });
 
-Deno.test("administrative retry endpoint rejects user credentials and non-POST requests", async () => {
+Deno.test("retired retry endpoint rejects users and no longer processes work even for administrators", async () => {
   const endpoint = await Deno.readTextFile(
     new URL(
       "../../supabase/functions/process-generation-enrichment/index.ts",
@@ -278,7 +303,7 @@ Deno.test("administrative retry endpoint rejects user credentials and non-POST r
         headers: { Authorization: "Bearer service-secret" },
       }),
     )).status,
-    200,
+    410,
   );
-  strictEqual(test.calls, 1);
+  strictEqual(test.calls, 0);
 });

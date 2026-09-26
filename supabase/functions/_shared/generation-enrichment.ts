@@ -10,41 +10,51 @@ export interface IndexableSentence {
   learning_topic_ids?: string[]
 }
 
+export type EnrichmentScope = { userID: string } & (
+  | { memoryID: string; guestJobID?: never; sceneID?: never }
+  | { guestJobID: string; memoryID?: never; sceneID?: never }
+  | { sceneID: string; memoryID?: never; guestJobID?: never }
+)
+
 // A separate deadline/client is essential: returning the generation response
 // must not cancel indexing or leave it using the generation's exhausted budget.
-export function scheduleGenerationEnrichment(userID: string): void {
+export function scheduleGenerationEnrichment(scope: EnrichmentScope): void {
   const runtime = (globalThis as typeof globalThis & {
     EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void }
   }).EdgeRuntime
   if (!runtime?.waitUntil) {
-    console.warn("[generation-enrichment] background runtime unavailable; durable jobs await worker")
+    console.warn("[generation-enrichment] background runtime unavailable; missing work awaits topic creation")
     return
   }
-  const task = Promise.resolve().then(() => runGenerationEnrichment(userID)).catch((error) => {
+  const task = Promise.resolve().then(() => runGenerationEnrichment(scope)).catch((error) => {
     console.error("[generation-enrichment] background worker failed", error instanceof Error ? error.message : String(error))
   })
   runtime.waitUntil(task)
 }
 
-export async function runGenerationEnrichment(userID: string | null = null) {
+async function runGenerationEnrichment(scope: EnrichmentScope) {
   const url = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
   if (!url || !key) throw new Error("Missing server configuration")
   const deadline = Date.now() + 45_000
   const fetcher = fetchWithinDeadline(deadline)
   const client = createClient(url, key, { global: { fetch: fetcher } })
-  return await processGenerationEnrichment(client, userID, fetcher, deadline)
+  return await processGenerationEnrichment(client, scope, fetcher, deadline)
 }
 
 // Claim only one batch at a time; leases allow a later worker to resume after
 // process termination. Finishing persists vectors, matches and completion atomically.
 export async function processGenerationEnrichment(
-  client: any, userID: string | null, fetcher: typeof fetch, deadline = Date.now() + 45_000,
+  client: any, scope: EnrichmentScope, fetcher: typeof fetch, deadline = Date.now() + 45_000,
 ) {
   let completed = 0
   let failed = 0
-  for (let batch = 0; batch < 3 && Date.now() < deadline - 32_000; batch++) {
-    const claim = await client.rpc("claim_generation_enrichment", { p_user_id: userID })
+  const batchLimit = scope.sceneID ? 3 : 1
+  for (let batch = 0; batch < batchLimit && Date.now() < deadline - 32_000; batch++) {
+    const claim = await client.rpc("claim_scoped_generation_enrichment", {
+      p_user_id: scope.userID, p_memory_id: scope.memoryID ?? null,
+      p_guest_job_id: scope.guestJobID ?? null, p_scene_id: scope.sceneID ?? null,
+    })
     if (claim.error) throw new Error(`Index claim failed: ${claim.error.message}`)
     const job = claim.data?.[0]
     if (!job) break

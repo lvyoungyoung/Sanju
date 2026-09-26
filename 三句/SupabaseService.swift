@@ -100,6 +100,7 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
         name: String,
         learningTopicID: String?
     ) async throws -> UserStudySceneSummary
+    func continueStudySceneEnrichment(session: SupabaseSession, sceneID: UUID) async throws -> StudySceneEnrichmentStatus
     func deleteUserStudyScene(
         session: SupabaseSession,
         sceneID: UUID
@@ -1012,6 +1013,16 @@ struct SupabaseService: SupabaseServicing {
         )
         request.timeoutInterval = 30
         return try await perform(request)
+    }
+
+    func continueStudySceneEnrichment(session: SupabaseSession, sceneID: UUID) async throws -> StudySceneEnrichmentStatus {
+        let request = try makeRequest(
+            path: "/functions/v1/create-study-scene", method: "POST",
+            bearerToken: session.accessToken,
+            body: StudySceneEnrichmentRequest(scene_id: sceneID.uuidString.lowercased())
+        )
+        let response: StudySceneEnrichmentResponse = try await perform(request)
+        return response.enrichment
     }
 
     func deleteUserStudyScene(

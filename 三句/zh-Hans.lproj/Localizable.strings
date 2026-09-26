@@ -373,6 +373,8 @@
 "study.scene.detail.empty_title" = "暂未找到匹配句子";
 "study.scene.detail.loading_subtitle" = "马上就好，正在整理相关表达";
 "study.scene.detail.loading_slow_subtitle" = "首次寻找主题下的句子可能耗时较长，请稍后";
+"study.scene.detail.deep_search" = "正在深度查找句子，结果将陆续更新。";
+"study.scene.detail.deep_search_incomplete" = "部分句子暂未完成查找，当前结果可能不完整。";
 "study.scene.detail.loading_title" = "正在寻找这个主题的句子";
 "study.scene.detail.sentence_count" = "共 %d 句";
 "study.scene.detail.start" = "去学习";

@@ -13,6 +13,7 @@ const categories = await Deno.readTextFile(
   ),
 );
 const harness = `
+  function scheduleGenerationEnrichment(scope:any) {(state.background??=[]).push(scope);}
   export let handler: (req: Request) => Promise<Response>;
   export const state: any = {count:0,existing:false,raceLimit:false,calls:0,rpcs:0,anonymous:false};
   const Deno = {
@@ -33,8 +34,13 @@ const harness = `
             ?(state.queryExists?{scene_id:'existing'}:null)
             :(state.existing?{id:'existing',name:'Stored theme'}:null),error:null})};
       },
-      rpc:async(name:string,args:any)=>{state.rpcs++;state.rpcName=name;state.savedName=args.p_name;state.rpcArgs=args;return state.raceLimit
-        ?{data:null,error:{message:'study_scene_limit_reached'}}:{data:[{id:'scene'}],error:null};}
+      rpc:async(name:string,args:any)=>{
+        if(name==='begin_study_scene_enrichment'||name==='get_study_scene_enrichment_status'){
+          (state.enrichmentCalls??=[]).push([name,args]);return {data:{pendingCount:state.pending??0,completedCount:0,failedCount:0,retryAfterSeconds:5},error:null};
+        }
+        state.rpcs++;state.rpcName=name;state.savedName=args.p_name;state.rpcArgs=args;return state.raceLimit
+        ?{data:null,error:{message:'study_scene_limit_reached'}}:{data:name==='create_study_scene_with_enrichment'
+          ?{scene:{id:'scene'},enrichment:{pendingCount:state.pending??0,completedCount:0,failedCount:0,retryAfterSeconds:5}}:[{id:'scene'}],error:null};}
     };
   }
   const fetch=async(_url:string,init:RequestInit)=>{
@@ -74,6 +80,9 @@ const reset = () =>
     queryExists: true,
     writes: 0,
     filters: [],
+    enrichmentCalls: [],
+    background: [],
+    pending: 0,
   });
 
 Deno.test("custom topics embed user text directly without MiMo and reuse category vectors", async () => {
@@ -91,15 +100,48 @@ Deno.test("custom topics embed user text directly without MiMo and reuse categor
     strictEqual(state.savedName, name);
     strictEqual(state.textType, "query");
     strictEqual(state.calls, 1);
-    strictEqual(state.rpcName, "create_study_scene_with_embedding");
+    strictEqual(state.rpcName, "create_study_scene_with_enrichment");
   }
+});
+
+Deno.test("only creation enrolls missing work; owned status calls continue without model or scan", async () => {
+  reset();
+  state.pending = 2;
+  const created = await handler(request());
+  strictEqual(created.status, 200);
+  strictEqual((await created.json()).enrichment.pendingCount, 2);
+  strictEqual(state.rpcName, "create_study_scene_with_enrichment");
+  strictEqual(state.background[0].sceneID, "scene");
+  const poll = () =>
+    new Request("https://example.invalid/create-study-scene", {
+      method: "POST",
+      headers: { Authorization: "Bearer test" },
+      body: JSON.stringify({
+        enrichment_status_only: true,
+        scene_id: "10000000-0000-0000-0000-000000000001",
+      }),
+    });
+  reset();
+  strictEqual((await handler(poll())).status, 404);
+  strictEqual(state.enrichmentCalls.length, 0);
+  state.existing = true;
+  state.pending = 2;
+  strictEqual((await handler(poll())).status, 200);
+  strictEqual(state.enrichmentCalls[0][0], "get_study_scene_enrichment_status");
+  strictEqual(state.calls, 0);
+  strictEqual(state.background.length, 1);
+  state.pending = 0;
+  await handler(poll());
+  strictEqual(state.background.length, 1);
+  state.anonymous = true;
+  strictEqual((await handler(poll())).status, 401);
 });
 Deno.test("predefined topics use the same name embedding and creation RPC", async () => {
   reset();
   strictEqual((await handler(request("自然风景", true))).status, 200);
   strictEqual(state.calls, 1);
   strictEqual(state.input[0], "自然风景");
-  strictEqual(state.rpcName, "create_study_scene_with_embedding");
+  strictEqual(state.rpcName, "create_study_scene_with_enrichment");
 });
 Deno.test("capacity and concurrent rejections preserve the existing message", async () => {
   for (const predefined of [false, true]) {

@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { CATEGORY_CATALOG_VERSION, ensureCategoryEmbeddings } from "./categories.ts"
+import { scheduleGenerationEnrichment } from "../_shared/generation-enrichment.ts"
 
 const EMBEDDING_MODEL = "qwen3.7-text-embedding"
 const EMBEDDING_DIMENSIONS = 1024
@@ -15,6 +16,7 @@ interface CreateStudySceneRequest {
   learning_topic_id?: string
   scene_id?: string
   prepare_only?: boolean
+  enrichment_status_only?: boolean
 }
 
 const LEARNING_TOPIC_IDS = new Set([
@@ -65,9 +67,10 @@ Deno.serve(async (req) => {
     const body = (await req.json()) as CreateStudySceneRequest
     let name = body.name?.trim() ?? ""
     const preparing = body.prepare_only === true
+    const continuingEnrichment = body.enrichment_status_only === true
     const sceneID = body.scene_id
     const learningTopicID = body.learning_topic_id?.trim() || null
-    if (!preparing && (name.length < 2 || name.length > 24)) {
+    if (!preparing && !continuingEnrichment && (name.length < 2 || name.length > 24)) {
       return jsonResponse({ error: "Study scene name must be between 2 and 24 characters" }, 400)
     }
     if (learningTopicID && !LEARNING_TOPIC_IDS.has(learningTopicID)) {
@@ -97,7 +100,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Sign in is required to create study scenes" }, 401)
     }
 
-    if (preparing) {
+    if (preparing || continuingEnrichment) {
       if (typeof sceneID !== "string" || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sceneID)) {
         return jsonResponse({ error: "Invalid study scene" }, 400)
       }
@@ -106,6 +109,17 @@ Deno.serve(async (req) => {
       if (existing.error) throw existing.error
       if (!existing.data) return jsonResponse({ error: "Study scene not found" }, 404)
       name = existing.data.name
+    }
+
+    if (continuingEnrichment) {
+      const result = await adminClient.rpc("get_study_scene_enrichment_status", {
+        p_user_id: user.id, p_scene_id: sceneID,
+      })
+      if (result.error) throw result.error
+      if (result.data?.pendingCount > 0) {
+        scheduleGenerationEnrichment({ userID: user.id, sceneID: sceneID! })
+      }
+      return jsonResponse({ enrichment: result.data })
     }
 
     // Avoid paying for embedding when the limit is known. The
@@ -123,6 +137,7 @@ Deno.serve(async (req) => {
     }
 
     let data: unknown
+    let enrichment: { pendingCount: number } | undefined
     let error: { code?: string; message: string; details?: string; hint?: string } | null
 
     if (!embeddingAPIKey || !embeddingURL) {
@@ -163,13 +178,14 @@ Deno.serve(async (req) => {
       data = response.data
       error = response.error
     } else {
-      const response = await adminClient.rpc("create_study_scene_with_embedding", {
+      const response = await adminClient.rpc("create_study_scene_with_enrichment", {
         p_user_id: user.id,
         p_name: name,
         p_embedding: sceneEmbedding,
         p_model: EMBEDDING_MODEL,
       })
-      data = response.data
+      data = response.data?.scene
+      enrichment = response.data?.enrichment
       error = response.error
     }
 
@@ -193,11 +209,18 @@ Deno.serve(async (req) => {
       )
     }
 
-    const scene = Array.isArray(data) ? data[0] : data
+    const scene = (Array.isArray(data) ? data[0] : data) as { id: string } | null
     if (!scene) {
       return jsonResponse({ error: "Study scene response is invalid" }, 500)
     }
 
+    if (!preparing) {
+      // The database commits the topic and its missing-work snapshot together.
+      if (enrichment && enrichment.pendingCount > 0) {
+        scheduleGenerationEnrichment({ userID: user.id, sceneID: scene.id })
+      }
+      return jsonResponse({ scene, enrichment })
+    }
     return jsonResponse({ scene })
   } catch (error) {
     console.error("[create-study-scene]", error)

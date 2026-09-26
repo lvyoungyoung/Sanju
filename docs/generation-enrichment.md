@@ -19,7 +19,7 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 
 后台使用 `EdgeRuntime.waitUntil`，独立的数据库客户端和 45 秒预算，不沿用生成请求的
 90 秒截止时间，也不依赖手机继续连接。运行时不支持后台保活时不退回同步等待，任务保留在数据库中；
-当前暂不启用定时补偿，因此这种情况下不会自动在空闲期完成，需要排查后台运行能力或人工处理。
+没有定时或管理入口补偿；这种情况下保留缺失任务，等用户创建学习主题时检查并补全。
 参考：[Supabase background tasks](https://supabase.com/docs/guides/functions/background-tasks)。
 
 ## 难度分层
@@ -37,8 +37,7 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 启蒙继续强制平铺直叙。旧客户端的“高级”请求仍保留原有描述 14-24 词、场景表达 8-18 词的规则。
 这些范围是产品提示词策略，不是标准化语言能力认证；实际输出需要用同一组照片、相同风格对照测试。
 
-本次难度调整只需更新 `generate-memory-v2`，不新增迁移、环境变量或代理配置，
-也不需要更新 `process-generation-enrichment` 或 `recover-guest-generation`。
+仅难度提示词调整不需要迁移；下方的主题创建补偿另有迁移和部署要求。
 
 ## 完整性与重试
 
@@ -49,8 +48,8 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 - 分类和向量落库、匿名恢复结果补分类、主题匹配、完成任务在另一事务中一起提交；主题匹配失败时全部回滚并保留元数据检查点。
 - 服务器在向量表保留权威分类，防止客户端把初次收到的空分类再次上传后覆盖后台结果。
 - 没有向量的新句子插入时跳过主题匹配；后台完成后再执行。收藏和学习记录不被后台改写。
-- 后台最多同时处理 8 组，每次唤起最多处理 3 组。失败重试间隔从 30 秒倍增到最多 15 分钟。
-- 后续生成请求会顺带处理同账号待办；定时补偿暂缓，没有后续生成请求时，失败任务可能持续待处理。
+- 后台最多同时处理 8 组，生成后只处理本次结果且仅尝试一次，不领取其他待办。主题创建触发的每次后台唤起最多处理 3 组。
+- 失败保存进度，不自行定时执行，不由之后的生成请求补偿。只有创建主题登记的任务可以继续重试，退避间隔仍从 30 秒倍增到最多 15 分钟。
 - 完成后清空队列中的句子及元数据副本，保留轻量状态。删除回忆/账号会级联删除相应任务。
 - 匿名恢复任务的 24 小时清理不删除未完成的向量任务，与现有匿名向量保留规则一致。
 - 不自动补历史缺失向量，不更改主题的匹配阈值、收藏、学习进度和购买逻辑。
@@ -61,22 +60,34 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 
 ## 部署顺序
 
-1. `Backend Database`：staging + apply，新增 `20260926001000_defer_sentence_metadata.sql`；依赖已部署的 `20260925001000_defer_generation_enrichment.sql`。
-2. `Backend Functions`：staging，部署 `generate-memory-v2` 和 `process-generation-enrichment`（二者共用的后台模块已改）。
+1. `Backend Database`：staging + apply，新增 `20260926002000_retry_enrichment_on_scene_creation.sql`；依赖已部署的 `20260925001000_defer_generation_enrichment.sql` 和 `20260926001000_defer_sentence_metadata.sql`。
+2. `Backend Functions`：staging，紧接着部署 `generate-memory-v2`、`create-study-scene` 和 `process-generation-enrichment`。迁移会关闭旧的全局领取入口，必须及时更新生成函数，避免旧函数不能启动首次补全；期间任务不丢失，可在创建主题时补齐。
 3. 后台处理复用已有 `MIMO_API_KEY`、`MIMO_BASE_URL`、`DASHSCOPE_API_KEY`、`DASHSCOPE_EMBEDDING_URL`，无新增环境变量。
-4. 部署后跑 `node scripts/check-client-compatibility.mjs`，再测试正常/匿名生成、立即登录迁移与主题刷新，确认任务由即时后台处理完成。
+4. 部署后跑 `node scripts/check-client-compatibility.mjs`，更新本地客户端，再测试正常/匿名生成、立即登录迁移，以及首次补全失败后创建主题和页面结果更新。
 5. 完成 staging 验证后按相同顺序发布 production。
 
 按用户要求，已删除每五分钟触发的 `Backend Enrichment Retry` workflow，不再定时调用函数。
 不需要配置 `GENERATION_ENRICHMENT_SWEEPER_ENABLED`；如果此前已配置，该变量现在没有作用，可自行删除。
-`process-generation-enrichment` 管理入口与主函数一起更新以保持后台逻辑一致；部署不会自行运行，也不启用定时器。
-主路径依靠 EdgeRuntime 后台任务处理。不需要调整代理，不需要更新 `recover-guest-generation`，
-恢复接口只读取已经保存的结果，不应等待向量。客户端这次没有改动。
+`process-generation-enrichment` 保留一个停用响应：管理员调用返回 HTTP 410，不再执行任务。
+保留文件和部署选项是为了覆盖已经上线的旧函数，仅删除仓库文件不会让线上入口失效。
+不需要调整代理，不需要更新 `recover-guest-generation`；恢复接口只读取已经保存的结果，不应等待向量。
+旧客户端的生成和学习接口保持兼容，新客户端负责深度查找提示和结果刷新。
 
 迁移后旧生成函数仍能使用相同 finalize 参数；已有任务携带用途时，旧 worker 仍可完成。
 新 worker 会为待办补全元数据。新格式任务没有用途时，旧 worker 不能把缺失元数据的任务错误标记完成；
-因此迁移完成后要紧接着更新两个函数。无需更新 `recover-guest-generation`，它只读取已保存的结果。
+因此迁移完成后要紧接着更新上述三个函数。无需更新 `recover-guest-generation`，它只读取已保存的结果。
 不要只回滚共享 worker 而保留新前台格式。旧 iOS 客户端无需更新。
+
+## 创建主题时补偿
+
+- `create_study_scene_with_enrichment` 在一个事务中创建主题、按当前用户检查缺失数据并登记任务；任何一步失败都回滚，不留下“创建失败但主题已存在”的半完成状态。
+- 缺失检查依据数据库中的分类处理结果、非空用途、两套向量和模型版本；合法的分类空数组是已完成结果，不重复调用 AI。
+- 为没有任务的历史句子建立任务；失败任务保留分类/用途检查点；正在执行的任务保留租约。登录后按稳定句子 ID 复用匿名任务，避免和匿名 worker 同时生成。
+- `study_scene_enrichment_jobs` 保存本次创建的任务集合，不包含以后新生成的句子。详情页的状态请求只延续此集合，不重新扫描、不增加尝试上限，也不在查看收藏或调整匹配范围时创建补偿任务。
+- 每次创建给关联任务最多两次额外尝试，查找窗口为 15 分钟；相同主题的重复创建请求在窗口内不重置任务或退避。任务仍未完成时保留数据，下一次新主题创建会再次检查。
+- 详情页前台每 5 秒查询状态，继续分批处理。仅完成数变化或处理结束时刷新句子和概览，已有内容不清空。显示“正在深度查找句子，结果将陆续更新。”，失败或过期显示结果可能不完整，不无限转圈。
+- 离开详情页、切换账号、进入后台时停止客户端轮询。已经启动的服务端批次继续执行，但不会保证离开页面后自动清空所有待办；返回未过期查找或下次创建主题时可继续。
+- 后台完成后沿用原有事务更新分类、用途、向量和主题匹配。不会重新生成描述、重传图片、改写学习记录或再次扣次。
 
 ## 排查
 
@@ -92,4 +103,4 @@ order by created_at;
 
 检查 Edge Function 的 `[generation-enrichment]` 日志，不记录句子全文或向量。
 持续失败先核对 MiMo/百炼地址、密钥、实例出公网能力，再检查数据库错误。
-`process-generation-enrichment` 仅接受 service-role Authorization，不允许客户端直接调用。
+`process-generation-enrichment` 已停用，不再用于手动补偿。任务状态只供服务端查询，客户端不能指定其他用户或直接领取任务。

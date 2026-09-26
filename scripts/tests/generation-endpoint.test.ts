@@ -17,13 +17,16 @@ const timingHelper = new URL(
   import.meta.url,
 ).href;
 const harness = `
-import { GenerationTiming, withGenerationTiming } from ${JSON.stringify(timingHelper)};
+import { GenerationTiming, withGenerationTiming } from ${
+  JSON.stringify(timingHelper)
+};
 import { fetchWithTimeout as boundedFetch, fetchWithinDeadline as deadlineFetch } from ${
   JSON.stringify(httpHelper)
 };
 export let handler: (req: Request) => Promise<Response>;
 export const state: any = { jobs: new Map(), guests: new Map(), memories: new Map(), balance: 10, calls: 0, removed: 0, debits: 0 };
-function scheduleGenerationEnrichment(owner: string) { state.backgroundOwners.push(owner); }
+type EnrichmentScope = {userID:string,memoryID?:string,guestJobID?:string};
+function scheduleGenerationEnrichment(scope: EnrichmentScope) { state.backgroundOwners.push(scope.userID); (state.backgroundScopes??=[]).push(scope); }
 const Deno = {
   env: { get(name: string) {
     const values: any = { SUPABASE_ANON_KEY:'anon', SUPABASE_SERVICE_ROLE_KEY:'service', SUPABASE_URL:'https://db.invalid',
@@ -134,6 +137,7 @@ function reset(options: Record<string, unknown> = {}) {
     stallMimo: false,
     stallKimi: false,
     backgroundOwners: [],
+    backgroundScopes: [],
     embeddingRows: undefined,
   }, options);
 }
@@ -142,7 +146,12 @@ function request(token = "owner", legacy = false, timing = false) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
-      ...(timing ? { "X-Sanju-Generation-Timing": "1", "X-Sanju-Generation-Trace-ID": id } : {}),
+      ...(timing
+        ? {
+          "X-Sanju-Generation-Timing": "1",
+          "X-Sanju-Generation-Trace-ID": id,
+        }
+        : {}),
     },
     body: JSON.stringify({
       imageBase64: "AA==",
@@ -177,9 +186,21 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(completed.status, 200);
     const delivered = (await completed.json()).memory.sentences;
     strictEqual(delivered.length, 6);
-    strictEqual(delivered.every((s: any) => Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 0), true);
-    strictEqual(state.embeddingRows, undefined, "response must not await indexing");
+    strictEqual(
+      delivered.every((s: any) =>
+        Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 0
+      ),
+      true,
+    );
+    strictEqual(
+      state.embeddingRows,
+      undefined,
+      "response must not await indexing",
+    );
     strictEqual(state.backgroundOwners.includes("owner"), true);
+    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual(Boolean(state.backgroundScopes[0].guestJobID), anonymous);
+    strictEqual(Boolean(state.backgroundScopes[0].memoryID), !anonymous);
     if (anonymous) {
       strictEqual(state.guests.get(id).sentences[0].id, delivered[0].id);
     }
@@ -189,6 +210,11 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
     strictEqual(state.balance, 9);
+    strictEqual(
+      state.backgroundScopes.length,
+      1,
+      "reading a completed result must not trigger compensation",
+    );
   }
 });
 
@@ -199,10 +225,29 @@ Deno.test("generation timing covers both account types without changing response
     strictEqual(response.status, 200);
     strictEqual(response.headers.get("X-Sanju-Generation-Trace-ID"), id);
     const timing = response.headers.get("Server-Timing") ?? "";
-    for (const stage of ["auth", "profile", "job_claim", "moderation", "mimo", "finalize", "diagnostics", "read_result", "release_slot", "background_dispatch", "total"]) {
+    for (
+      const stage of [
+        "auth",
+        "profile",
+        "job_claim",
+        "moderation",
+        "mimo",
+        "finalize",
+        "diagnostics",
+        "read_result",
+        "release_slot",
+        "background_dispatch",
+        "total",
+      ]
+    ) {
       strictEqual(timing.includes(`${stage};dur=`), true, stage);
     }
-    strictEqual(timing.includes(anonymous ? "guest_image_upload;dur=" : ", image_upload;dur="), true);
+    strictEqual(
+      timing.includes(
+        anonymous ? "guest_image_upload;dur=" : ", image_upload;dur=",
+      ),
+      true,
+    );
     strictEqual(timing.includes("kimi;dur="), false);
     strictEqual(timing.includes("embedding"), false);
     strictEqual((await response.json()).memory.sentences.length, 6);
@@ -215,15 +260,30 @@ Deno.test("rejection and fallback return timings; legacy clients do not receive 
   reset({ blocked: true });
   const rejection = await handler(request("owner", false, true));
   strictEqual(rejection.status, 403);
-  strictEqual(rejection.headers.get("Server-Timing")?.includes("moderation;dur="), true);
-  strictEqual(rejection.headers.get("Server-Timing")?.includes("error_handling;dur="), true);
-  strictEqual(rejection.headers.get("Server-Timing")?.includes("mimo;dur="), false);
+  strictEqual(
+    rejection.headers.get("Server-Timing")?.includes("moderation;dur="),
+    true,
+  );
+  strictEqual(
+    rejection.headers.get("Server-Timing")?.includes("error_handling;dur="),
+    true,
+  );
+  strictEqual(
+    rejection.headers.get("Server-Timing")?.includes("mimo;dur="),
+    false,
+  );
   strictEqual((await rejection.json()).code, "generation_policy_violation");
   strictEqual(state.debits, 0);
   reset({ stallMimo: true });
   const fallback = await handler(request("owner", false, true));
-  strictEqual(fallback.headers.get("Server-Timing")?.includes("mimo;dur="), true);
-  strictEqual(fallback.headers.get("Server-Timing")?.includes("kimi;dur="), true);
+  strictEqual(
+    fallback.headers.get("Server-Timing")?.includes("mimo;dur="),
+    true,
+  );
+  strictEqual(
+    fallback.headers.get("Server-Timing")?.includes("kimi;dur="),
+    true,
+  );
   strictEqual((await fallback.json()).memory.provider, "kimi");
   reset({ dual: false });
   const legacy = await handler(request("owner", true));

@@ -518,6 +518,301 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         strictEqual(await claim(null), undefined);
       },
     );
+
+    await db.exec(
+      `create table study_scenes(id uuid primary key, user_id uuid references profiles(id), name text);
+      create function create_study_scene_with_embedding(p_user_id uuid,p_name text,p_embedding jsonb,p_model text)
+      returns table(id uuid,name text) language sql as $$
+        insert into study_scenes values(gen_random_uuid(),p_user_id,p_name) returning id,name;
+      $$;`,
+    );
+    await db.exec(
+      await Deno.readTextFile(
+        new URL("20260926002000_retry_enrichment_on_scene_creation.sql", root),
+      ),
+    );
+    const scene = crypto.randomUUID();
+    await db.query("insert into study_scenes values($1,$2,'My topic')", [
+      scene,
+      owner,
+    ]);
+    const clean = () =>
+      db.exec(
+        "truncate generation_enrichment_jobs, guest_sentence_embeddings, guest_generation_jobs, memories cascade",
+      );
+    const scopedClaim = async (
+      memory: string | null = null,
+      guestJob: string | null = null,
+      sceneID: string | null = null,
+      user = owner,
+    ) =>
+      (await db.query<any>(
+        "select * from claim_scoped_generation_enrichment($1,$2,$3,$4)",
+        [user, memory, guestJob, sceneID],
+      )).rows[0];
+    const begin = async (user = owner) =>
+      (await db.query<any>(
+        "select begin_study_scene_enrichment($1,$2) as result",
+        [user, scene],
+      )).rows[0].result;
+    const status = async () =>
+      (await db.query<any>(
+        "select get_study_scene_enrichment_status($1,$2) as result",
+        [owner, scene],
+      )).rows[0].result;
+
+    await t.step(
+      "generation runs only its own first attempt; replay and global sweep cannot retry failures",
+      async () => {
+        await clean();
+        const first = crypto.randomUUID(), second = crypto.randomUUID();
+        await finish(first, null);
+        const job = await scopedClaim(first);
+        strictEqual(job.memory_id, first);
+        await checkpoint(job);
+        await db.query("select retry_generation_enrichment($1,$2,'offline')", [
+          job.id,
+          job.lease_token,
+        ]);
+        await db.exec(
+          "update generation_enrichment_jobs set next_attempt_at=now()",
+        );
+        strictEqual(await scopedClaim(first), undefined);
+        strictEqual(await claim(null), undefined);
+        await finish(second, null);
+        strictEqual((await scopedClaim(second)).memory_id, second);
+        strictEqual(await scopedClaim(first, null, null, guest), undefined);
+        await rejects(() => scopedClaim());
+        await rejects(() => scopedClaim(first, null, scene));
+        await rejects(() => begin(guest));
+        await rejects(() => scopedClaim(null, null, scene, guest));
+        const pending = await begin();
+        strictEqual(pending.pendingCount, 2);
+        const retried = await scopedClaim(null, null, scene);
+        strictEqual(retried.id, job.id);
+        deepStrictEqual(retried.metadata, metadata(job));
+        strictEqual(await complete(retried), true);
+        strictEqual((await status()).completedCount, 1);
+      },
+    );
+
+    await t.step(
+      "completed empty classification is valid, but missing metadata or either vector is repaired",
+      async () => {
+        await clean();
+        const memory = crypto.randomUUID();
+        const original = payload(3);
+        await finish(memory, null, original);
+        const job = await scopedClaim(memory);
+        const emptyCategories = metadata(job).map((row: any) => ({
+          ...row,
+          learning_topic_ids: [],
+        }));
+        await checkpoint(job, emptyCategories);
+        await complete(job);
+        strictEqual((await begin()).pendingCount, 0);
+        await db.query(
+          "update sentence_embeddings set purpose_embedding=null where sentence_id=$1",
+          [original[0].id],
+        );
+        await db.query(
+          "update sentence_embeddings set learning_topic_ids=null where sentence_id=$1",
+          [original[1].id],
+        );
+        const balanceBefore = await balance();
+        strictEqual((await begin()).pendingCount, 1);
+        const repair = await scopedClaim(null, null, scene);
+        strictEqual(repair.sentences.length, 2);
+        deepStrictEqual(
+          repair.sentences.map((s: any) => s.id),
+          original.slice(0, 2).map((s) => s.id),
+        );
+        await checkpoint(repair);
+        await complete(repair);
+        strictEqual((await status()).pendingCount, 0);
+        strictEqual(await balance(), balanceBefore);
+        strictEqual((await begin()).pendingCount, 0);
+      },
+    );
+
+    await t.step(
+      "historical sentences without jobs are enrolled only by creation and only for the owner",
+      async () => {
+        await clean();
+        const memory = crypto.randomUUID(), otherMemory = crypto.randomUUID();
+        await db.query(
+          "insert into memories(id,user_id) values($1,$2),($3,$4)",
+          [memory, owner, otherMemory, guest],
+        );
+        await db.query(
+          "insert into memory_sentences(id,memory_id,english,chinese) values(gen_random_uuid(),$1,'A lake.','湖。'),(gen_random_uuid(),$2,'A cat.','猫。')",
+          [memory, otherMemory],
+        );
+        strictEqual((await status()).pendingCount, 0);
+        strictEqual(await count("generation_enrichment_jobs"), 0);
+        strictEqual((await begin()).pendingCount, 1);
+        const job = await scopedClaim(null, null, scene);
+        strictEqual(job.memory_id, memory);
+        strictEqual(await count("generation_enrichment_jobs"), 1);
+        await checkpoint(job);
+        await complete(job);
+        const fresh = crypto.randomUUID();
+        await finish(fresh, null);
+        strictEqual((await status()).pendingCount, 0);
+        strictEqual(await scopedClaim(null, null, scene), undefined);
+        strictEqual((await scopedClaim(fresh)).memory_id, fresh);
+      },
+    );
+
+    await t.step(
+      "creation reuses in-flight guest work after login and refreshes the signed-in owner's matches",
+      async () => {
+        await clean();
+        const guestJob = crypto.randomUUID(),
+          memory = crypto.randomUUID(),
+          sentences = payload(3);
+        await db.query(
+          "insert into guest_generation_jobs(id,user_id,status) values($1,$2,'pending')",
+          [guestJob, guest],
+        );
+        await db.query(
+          "select finalize_guest_generation($1,$2,now(),'mimo',$3::jsonb,'{}')",
+          [guest, guestJob, JSON.stringify(sentences)],
+        );
+        const active = await scopedClaim(null, guestJob, null, guest);
+        await db.query("insert into memories(id,user_id) values($1,$2)", [
+          memory,
+          owner,
+        ]);
+        for (const s of sentences) {
+          await db.query(
+            "insert into memory_sentences(id,memory_id,english,chinese) values($1,$2,$3,$4)",
+            [s.id, memory, s.english, s.chinese],
+          );
+        }
+        strictEqual((await begin()).pendingCount, 1);
+        strictEqual(await count("generation_enrichment_jobs"), 1);
+        strictEqual(await scopedClaim(null, null, scene), undefined);
+        await checkpoint(active);
+        await db.query(
+          "select retry_generation_enrichment($1,$2,'embedding failed')",
+          [active.id, active.lease_token],
+        );
+        await db.exec(
+          "update generation_enrichment_jobs set next_attempt_at=now()",
+        );
+        const resumed = await scopedClaim(null, null, scene);
+        strictEqual(resumed.id, active.id);
+        strictEqual(resumed.user_id, guest);
+        await complete(resumed);
+        strictEqual((await status()).completedCount, 1);
+        strictEqual(await count("sentence_embeddings"), 3);
+        strictEqual(
+          (await db.query<any>(
+            "select user_id from sentence_embeddings limit 1",
+          )).rows[0].user_id,
+          owner,
+        );
+        strictEqual((await begin()).pendingCount, 0);
+      },
+    );
+
+    await t.step(
+      "continuation respects backoff, attempt limits and expiry without resetting the creation snapshot",
+      async () => {
+        await clean();
+        await finish(crypto.randomUUID(), null);
+        await begin();
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const job = await scopedClaim(null, null, scene);
+          strictEqual(Boolean(job), true);
+          // At the limit the final active attempt is still pending until it completes.
+          strictEqual((await status()).pendingCount, 1);
+          await db.query("select retry_generation_enrichment($1,$2,'failed')", [
+            job.id,
+            job.lease_token,
+          ]);
+          strictEqual(await scopedClaim(null, null, scene), undefined);
+          await db.exec(
+            "update generation_enrichment_jobs set next_attempt_at=now()",
+          );
+        }
+        strictEqual(await scopedClaim(null, null, scene), undefined);
+        strictEqual((await status()).pendingCount, 0);
+        strictEqual((await status()).failedCount, 1);
+        strictEqual(
+          (await begin()).failedCount,
+          1,
+          "replaying creation must not reset retry limits",
+        );
+        await db.exec(
+          "update study_scene_enrichment_jobs set expires_at=now()-interval '1 second'",
+        );
+        await begin();
+        await db.exec(
+          "update study_scene_enrichment_jobs set expires_at=now()-interval '1 second'",
+        );
+        strictEqual((await status()).failedCount, 1);
+        strictEqual(await scopedClaim(null, null, scene), undefined);
+      },
+    );
+
+    await t.step(
+      "creating the topic and enrolling missing work is atomic; queue details remain service-only",
+      async () => {
+        await clean();
+        await finish(crypto.randomUUID(), null);
+        await db.exec(
+          "alter table study_scene_enrichment_jobs add constraint reject_enrollment check(false) not valid",
+        );
+        const before = await count("study_scenes");
+        await rejects(() =>
+          db.query(
+            "select create_study_scene_with_enrichment($1,'Atomic','[]','qwen3.7-text-embedding')",
+            [owner],
+          )
+        );
+        strictEqual(await count("study_scenes"), before);
+        await db.exec(
+          "alter table study_scene_enrichment_jobs drop constraint reject_enrollment",
+        );
+        const created = (await db.query<any>(
+          "select create_study_scene_with_enrichment($1,'Atomic','[]','qwen3.7-text-embedding') as result",
+          [owner],
+        )).rows[0].result;
+        strictEqual(created.enrichment.pendingCount, 1);
+        for (const role of ["anon", "authenticated"]) {
+          for (
+            const fn of [
+              "begin_study_scene_enrichment(uuid,uuid)",
+              "get_study_scene_enrichment_status(uuid,uuid)",
+              "claim_scoped_generation_enrichment(uuid,uuid,uuid,uuid)",
+              "create_study_scene_with_enrichment(uuid,text,jsonb,text)",
+            ]
+          ) {
+            strictEqual(
+              (await db.query<any>(
+                "select has_function_privilege($1,$2,'EXECUTE') as allowed",
+                [role, fn],
+              )).rows[0].allowed,
+              false,
+            );
+          }
+          strictEqual(
+            (await db.query<any>(
+              "select has_table_privilege($1,'study_scene_enrichment_jobs','SELECT') as allowed",
+              [role],
+            )).rows[0].allowed,
+            false,
+          );
+        }
+        await db.query("delete from study_scenes where id=$1", [
+          created.scene.id,
+        ]);
+        strictEqual(await count("study_scene_enrichment_jobs"), 0);
+        await rejects(() => scopedClaim(null, null, created.scene.id));
+      },
+    );
   } finally {
     await db.close();
   }
