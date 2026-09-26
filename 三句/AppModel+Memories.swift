@@ -70,6 +70,7 @@ extension AppModel {
         timing.start("client_generate_request")
         switch try await performGenerationRequest(images: images, context: context) {
         case let .generated(result, session):
+            observeGeneratedSentenceEnrichment(session: session, memoryID: result.memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             timing.start("client_local_save")
             let memory = makeGeneratedMemory(
                 from: result,
@@ -86,7 +87,8 @@ extension AppModel {
             outcome = "success"
             return memory
 
-        case let .recovered(memory, _):
+        case let .recovered(memory, session):
+            observeGeneratedSentenceEnrichment(session: session, memoryID: memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             outcome = "recovered"
             return memory
         }

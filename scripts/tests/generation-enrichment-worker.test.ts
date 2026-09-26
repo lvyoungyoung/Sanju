@@ -14,9 +14,12 @@ const metadataHelper = new URL(
   "../../supabase/functions/_shared/sentence-metadata.ts",
   import.meta.url,
 ).href;
+const timingHelper = new URL("../../supabase/functions/_shared/generation-enrichment-timing.ts", import.meta.url).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
   import {fetchWithTimeout, fetchWithinDeadline} from ${JSON.stringify(helper)};
+  import {EnrichmentTiming, type EnrichmentStage} from ${JSON.stringify(timingHelper)};
+  export {EnrichmentTiming};
   import {generateSentenceMetadata as generateMetadata, parseSentenceMetadata} from ${
     JSON.stringify(metadataHelper)
   };
@@ -51,7 +54,7 @@ function fixture(
   total = 1,
   cached = false,
 ) {
-  const calls: string[] = [], finished: any[] = [], retried: any[] = [];
+  const calls: string[] = [], finished: any[] = [], retried: any[] = [], reports: any[] = [];
   const expectedMetadata = [{
     sentence_id: "sentence",
     expression_purpose: "Describing a cat.",
@@ -74,7 +77,7 @@ function fixture(
         return {
           data: claims++ < total
             ? [{
-              id: String(claims),
+              id: `10000000-0000-0000-0000-${String(claims).padStart(12, "0")}`,
               lease_token: "lease",
               attempts: 1,
               sentences,
@@ -101,6 +104,10 @@ function fixture(
       }
       if (name === "retry_generation_enrichment") {
         retried.push(args);
+        return { error: null };
+      }
+      if (name === "save_generation_enrichment_timing") {
+        reports.push(args);
         return { error: null };
       }
       throw new Error(`Unexpected RPC: ${name}`);
@@ -131,8 +138,44 @@ function fixture(
       },
     });
   };
-  return { client, fetcher, calls, finished, retried, modelCalls };
+  return { client, fetcher, calls, finished, retried, modelCalls, reports };
 }
+
+Deno.test("staging diagnostics measure all stages including failures without changing results", async () => {
+  for (const failure of [null, "metadata", "purpose", "store", "stale"] as const) {
+    const f = fixture(failure);
+    const events: any[] = [];
+    const timing = new api.EnrichmentTiming({}, () => performance.now(), (event: any) => events.push(event), true);
+    await api.processGenerationEnrichment(f.client, initialScope, f.fetcher, Date.now() + 45_000, timing);
+    strictEqual(f.reports.length, 1);
+    const stages = f.reports[0].p_report.stages;
+    strictEqual(stages[0].stage, "claim");
+    strictEqual(stages.at(-1).stage, "job_total");
+    strictEqual(stages.at(-1).outcome, failure === "stale" ? "lease_lost" : failure ? "failed" : "completed");
+    strictEqual(stages.every((stage: any) => Number.isFinite(stage.ms) && stage.ms >= 0), true);
+    if (!failure) {
+      deepStrictEqual(stages.map((stage: any) => stage.stage).sort(), ["claim", "metadata_generate", "metadata_checkpoint", "sentence_embedding", "purpose_embedding", "embeddings_parallel", "publish_and_match", "job_total"].sort());
+    }
+    strictEqual(JSON.stringify(events).includes("This is a cat"), false);
+    strictEqual(JSON.stringify(events).includes("lease"), failure === "stale");
+  }
+});
+
+Deno.test("production diagnostics neither log nor write reports; diagnostic storage failure is nonfatal", async () => {
+  const f = fixture();
+  const events: any[] = [];
+  await api.processGenerationEnrichment(f.client, initialScope, f.fetcher, Date.now() + 45_000,
+    new api.EnrichmentTiming({}, () => performance.now(), (event: any) => events.push(event), false));
+  strictEqual(events.length, 0);
+  strictEqual(f.reports.length, 0);
+  const g = fixture();
+  const original = g.client.rpc;
+  g.client.rpc = (name: string, args: any) => name === "save_generation_enrichment_timing"
+    ? Promise.reject(new Error("diagnostics unavailable")) : original(name, args);
+  deepStrictEqual(await api.processGenerationEnrichment(g.client, initialScope, g.fetcher, Date.now() + 45_000,
+    new api.EnrichmentTiming({}, () => performance.now(), () => {}, true)), {completed: 1, failed: 0});
+  strictEqual(g.retried.length, 0);
+});
 
 Deno.test("worker uses leased persisted payload and atomically completes both vectors", async () => {
   const f = fixture();

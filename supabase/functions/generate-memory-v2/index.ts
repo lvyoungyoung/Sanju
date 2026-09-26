@@ -1166,7 +1166,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
     // Only this result's first attempt; failures wait for topic creation.
     if (enrichmentScope) {
       timing.start("background_dispatch")
-      try { scheduleGenerationEnrichment(enrichmentScope) } catch (error) {
+      try { scheduleGenerationEnrichment(enrichmentScope, req.headers.get("x-sanju-generation-trace-id") ?? undefined) } catch (error) {
         console.error("[generate-memory-v2] could not start background indexing", String(error))
       }
     }

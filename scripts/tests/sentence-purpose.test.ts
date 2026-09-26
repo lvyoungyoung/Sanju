@@ -26,6 +26,7 @@ const helper = new URL(
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
+  import type { EnrichmentTiming, EnrichmentStage } from ${JSON.stringify(new URL("../../supabase/functions/_shared/generation-enrichment-timing.ts", import.meta.url).href)};
   type Sentence = any; type FinalizedSentence = any; type IndexableSentence = any;
   type SentencePresentationGroup = "what_i_see" | "what_i_say";
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";

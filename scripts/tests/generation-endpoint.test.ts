@@ -26,7 +26,7 @@ import { fetchWithTimeout as boundedFetch, fetchWithinDeadline as deadlineFetch 
 export let handler: (req: Request) => Promise<Response>;
 export const state: any = { jobs: new Map(), guests: new Map(), memories: new Map(), balance: 10, calls: 0, removed: 0, debits: 0 };
 type EnrichmentScope = {userID:string,memoryID?:string,guestJobID?:string};
-function scheduleGenerationEnrichment(scope: EnrichmentScope) { state.backgroundOwners.push(scope.userID); (state.backgroundScopes??=[]).push(scope); }
+function scheduleGenerationEnrichment(scope: EnrichmentScope, _requestID?: string) { state.backgroundOwners.push(scope.userID); (state.backgroundScopes??=[]).push(scope); }
 const Deno = {
   env: { get(name: string) {
     const values: any = { SUPABASE_ANON_KEY:'anon', SUPABASE_SERVICE_ROLE_KEY:'service', SUPABASE_URL:'https://db.invalid',

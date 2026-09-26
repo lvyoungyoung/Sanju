@@ -74,9 +74,75 @@ failure without a response, only `http_timeout` / `http_transport_failed` and
 client recovery timing are available. `server_timings_unavailable` means the
 response lacked these headers (e.g. old deployment or proxy-generated error).
 
-Sentence classification, expression purposes, vector generation and topic matching run in the background, so their execution
-is deliberately not included in these foreground timing logs. This diagnostic
-change does not alter generation, recovery, charging, or background scheduling.
+Sentence classification, expression purposes, vector generation and topic matching
+are not included in the foreground headers. Their separate staging-only diagnostics
+are described below. Diagnostics do not alter generation, recovery, charging, or
+background scheduling.
+
+## Background stages in Xcode (staging only)
+
+The Debug + STAGING client starts a read-only observation after a successful or
+recovered generation. Filter Xcode by `GenerationTiming`, then look for
+`background.` under the same request UUID. This also supports anonymous generation
+using its server guest job ID, not the locally assigned memory ID.
+
+The client reads `get_generation_enrichment_timing` every two seconds, for at most
+90 seconds (an in-flight read has a five-second timeout). It stops after the first
+report, a network/read error, app backgrounding, session change or cancellation.
+Reports arrive together after a background attempt finishes; these are not live
+streamed model logs. A diagnostic timeout is NOT a generation failure and does not
+cancel server work, change the UI, retry enrichment or debit credits.
+
+Example only, not a measured result:
+
+```text
+[GenerationTiming] request=<uuid> background.metadata_generate ms=5100.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.metadata_checkpoint ms=15.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.sentence_embedding ms=630.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.purpose_embedding ms=820.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.embeddings_parallel ms=823.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.publish_and_match ms=120.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.job_total ms=6058.0 outcome=completed attempt=1
+```
+
+- `claim`: database task-claim round trip; not queue age.
+- `metadata_generate`: the single MiMo call generating BOTH categories and expression
+  purposes, including response decoding and validation. They cannot be timed separately.
+- `metadata_reuse`: validating previously checkpointed metadata; no AI request.
+- `metadata_checkpoint`: saving metadata before vector requests.
+- `sentence_embedding`, `purpose_embedding`: separate concurrent provider round trips,
+  including payload preparation, response decoding and vector validation.
+- `embeddings_parallel`: combined wall-clock wait, not the sum of those two requests.
+- `publish_and_match`: the existing atomic RPC that saves metadata/vectors, updates
+  matches and completes the job. This includes DB/network overhead; no transaction is split.
+- `retry_state`: recording the existing retry state on failure, not starting a retry.
+- `job_total`: this claimed job's processing time, excluding claim, prior queue wait
+  and the subsequent diagnostic write. Never add it to its component stages.
+
+The worker also logs stage starts/ends and `worker_total` in Edge Function logs,
+with a run UUID and job UUID. Diagnostics contain no sentence text, images, vectors,
+tokens, user IDs or provider error bodies. The table keeps one small latest-attempt
+report per job, follows job deletion, and ignores writes from superseded attempts.
+Authenticated/anonymous sessions can read only their own report through the RPC;
+direct queue/table reads and diagnostic writes remain service-role-only.
+
+### Deployment
+
+1. Push these changes, then apply `20260926003000_add_enrichment_timing_diagnostics.sql`
+   to **staging**, after the existing enrichment migrations.
+2. Deploy `generate-memory-v2` and `create-study-scene` to staging (both bundle the
+   shared background worker). `recover-guest-generation` and the retired
+   `process-generation-enrichment` need no update for this change.
+3. Run the updated Debug client from Xcode and generate a new photo while leaving
+   the app in the foreground. No new environment variables or proxy changes.
+
+Workers enable diagnostics only when the server-controlled `SUPABASE_URL` hostname
+is exactly `spb-bp1364k407p37qn7.supabase.opentrust.net` or `api-staging.sanju.cc`.
+Request headers cannot enable them on production. The client additionally requires
+DEBUG + STAGING and an allowlisted HTTPS staging URL. Release/production clients
+make no diagnostic requests; production workers neither emit these timing logs nor
+write reports. The additive migration can accompany a future production release
+but is inert there. There is no reason to deploy production just to test timings.
 
 ## Prompt compaction baseline (2026-09-26)
 

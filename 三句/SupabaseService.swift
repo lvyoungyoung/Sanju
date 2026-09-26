@@ -80,6 +80,7 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
     func downloadMemoryImage(session: SupabaseSession, path: String) async throws -> Data
     func deleteMemoryImage(session: SupabaseSession, path: String) async throws
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord]
+    func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot?
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
@@ -761,6 +762,23 @@ struct SupabaseService: SupabaseServicing {
         }
 
         return allRecords
+    }
+
+    func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot? {
+        #if DEBUG && STAGING
+        guard GenerationEnrichmentTiming.isStagingURL(baseURL?.absoluteString),
+              (memoryID == nil) != (guestJobID == nil) else { return nil }
+        var request = try makeRequest(
+            path: "/rest/v1/rpc/get_generation_enrichment_timing",
+            method: "POST",
+            bearerToken: session.accessToken,
+            body: ["p_memory_id": memoryID?.uuidString.lowercased(), "p_guest_job_id": guestJobID]
+        )
+        request.timeoutInterval = 5
+        return try await perform(request)
+        #else
+        return nil
+        #endif
     }
 
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry {

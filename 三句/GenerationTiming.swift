@@ -8,6 +8,9 @@ final class GenerationTiming {
     private var stageStartedAt = ContinuousClock.now
     private var stage = "client_checks"
 
+    // This value-only timer needs no executor-bound cleanup on synchronous release.
+    nonisolated deinit {}
+
     init(requestID: String = UUID().uuidString.lowercased()) {
         self.requestID = requestID
         Self.log(requestID: requestID, "BEGIN")
