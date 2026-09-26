@@ -82,13 +82,13 @@ Deno.test("restored full JSON examples keep all preference and response contract
   }
 });
 
-Deno.test("restored prose preserves detailed difficulty, humor and lyrical boundaries", () => {
+Deno.test("difficulty changes preserve grounded humor and lyrical boundaries", () => {
   for (const format of formats) {
     const plain = buildPromptText("简单", "平铺直叙", format);
     for (
       const text of [
-        "每句尽量控制在 6 到 12 个单词之间",
-        "不要使用抽象词、书面词、复杂从句、比喻、拟人、现在分词作状语、过去分词作定语",
+        "每句尽量控制在 6 到 10 个英文单词之间",
+        "不要使用从句、完成时、被动语态、分词修饰结构、抽象书面词、生僻习语、比喻或拟人",
         "允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞",
         "幽默必须来自画面中真实可见的对比、动作或细节",
         "不要虚构图片中没有的动作、对话、情绪或细节",
@@ -105,8 +105,8 @@ Deno.test("restored prose preserves detailed difficulty, humor and lyrical bound
   }
 });
 
-Deno.test("scene expressions retain everyday priority and grounded hypothetical dialogue", () => {
-  const prompt = buildPromptText("高级", "抒情优美", "dual_tabs_v1");
+Deno.test("scene expressions retain everyday speech and grounded hypothetical dialogue", () => {
+  const prompt = buildPromptText("中等", "抒情优美", "dual_tabs_v1");
   for (
     const text of [
       "不推测人物关系、事件背景和内心感受",
@@ -114,9 +114,83 @@ Deno.test("scene expressions retain everyday priority and grounded hypothetical 
       "不得编造图片无法支持的具体姓名、地点、时间、经历或事实",
       "不能把假设的对话写成真实发生过的事实",
       "不要因为输入是一张照片就默认请求别人帮忙拍照",
-      "生活表达的“日常口语感”优先级高于用户选择的英语级别和语言风格",
-      "每句尽量控制在 8 到 18 个英文单词之间",
+      "场景表达与画面描述遵守同一档难度",
+      "口语感不能成为忽略难度限制的理由",
+      "不能写成诗歌、散文、文艺配文或不符合日常对话的优雅腔调",
       "不做数据分析或涨跌解读",
     ]
   ) ok(prompt.includes(text), text);
+});
+
+Deno.test("active difficulty tiers keep one English length range across styles and formats", () => {
+  const ranges: Record<string, string> = {
+    "启蒙": "3 到 6 个英文单词",
+    "简单": "6 到 10 个英文单词",
+    "中等": "10 到 16 个英文单词",
+  };
+  for (const [level, range] of Object.entries(ranges)) {
+    for (const format of formats) {
+      for (const style of styles) {
+        const prompt = buildPromptText(level, style, format);
+        deepStrictEqual(prompt.match(/\d+ 到 \d+ 个英文单词/g), [range]);
+        ok(
+          prompt.includes(
+            "适用于每一组、每一句，优先于语言风格、幽默和表达层次要求",
+          ),
+        );
+        ok(prompt.includes("不要为了凑字数添加空洞修饰"));
+        ok(prompt.includes("不要为缩短句子省略必要成分"));
+        ok(!prompt.includes("优先级高于用户选择的英语级别"));
+        if (format === "dual_tabs_v1") {
+          ok(prompt.includes("场景表达与画面描述遵守同一档难度"));
+        }
+      }
+    }
+  }
+});
+
+Deno.test("difficulty progression changes information and grammar rather than length alone", () => {
+  const guidance: Record<string, string[]> = {
+    "启蒙": [
+      "每句只表达一个意思",
+      "不叠加背景和修饰细节",
+      "只用极常见的具体词和简单感受词",
+      "不要使用从句、抽象词、习语",
+    ],
+    "简单": [
+      "增加一个清楚的细节",
+      "每句只用一个简单分句",
+      "常见动词的一般过去时",
+      "不靠难词或复杂语法提高难度",
+    ],
+    "中等": [
+      "常见但更准确的动作词、感受词和自然日常搭配",
+      "补充一到两个有用的细节",
+      "一个简短从句",
+      "不要求每句都带从句，不嵌套多层从句",
+      "不是只加形容词拉长句子",
+    ],
+  };
+  for (const [level, rules] of Object.entries(guidance)) {
+    for (const format of formats) {
+      for (const style of styles) {
+        const prompt = buildPromptText(level, style, format);
+        for (const rule of rules) {
+          ok(prompt.includes(rule), `${level}: ${rule}`);
+        }
+      }
+    }
+  }
+});
+
+Deno.test("legacy advanced requests retain their description and conversational ranges", () => {
+  for (const style of styles) {
+    const legacy = buildPromptText("高级", style, "legacy_v1");
+    ok(legacy.includes("14 到 24 个单词"));
+    ok(!legacy.includes("8 到 18 个英文单词"));
+    const dual = buildPromptText("高级", style, "dual_tabs_v1");
+    ok(dual.includes("14 到 24 个单词"));
+    ok(dual.includes("8 到 18 个英文单词"));
+    ok(!dual.includes("中级难度："));
+  }
 });

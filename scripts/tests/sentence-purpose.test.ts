@@ -131,8 +131,11 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
 });
 Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
   const prompt = api.buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
-  ok(prompt.includes("每句只表达一个意思，使用极常见的具体词和简单句型"));
-  ok(prompt.includes("启蒙的生活表达也必须使用 3 到 6 个单词"));
+  ok(prompt.includes("每句只表达一个意思"));
+  ok(prompt.includes("只用极常见的具体词和简单感受词"));
+  ok(prompt.includes("3 到 6 个英文单词"));
+  ok(prompt.includes("场景表达与画面描述遵守同一档难度"));
+  ok(prompt.includes("优先于语言风格、幽默和表达层次要求"));
   ok(!prompt.includes("I like this day."));
   strictEqual(prompt, api.buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
 });
