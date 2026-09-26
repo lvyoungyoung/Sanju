@@ -65,29 +65,29 @@ const LEARNING_TOPICS = [
 ] as const
 
 const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
-const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：每句的简短英文用途，最多 30 个英文单词且不超过 240 个字符。依据句子本身，不是照片整体；保留关键对象、动作、感受及限制，不增补人物、关系、背景、感受或场景。不写宽泛分类、原句重复/翻译或多个猜测。湖边愉快用餐的用途是 Sharing an enjoyable meal beside a lake.，不是描述山水风景。"
+const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：简短英文用途，最多30词且≤240字符；只据句意，保留关键对象/动作/感受/限制，不从照片补人物/关系/背景/感受/场景，不写宽泛分类、复述、翻译或猜测列表。"
 const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
-  "self_and_style：自拍、形象、穿搭、发型、配饰，不泛指人物",
-  "family_time：家人相伴、合影、陪伴父母，不以孩子成长为主",
-  "children_growing_up：孩子玩耍、成长、亲子活动，不是学校课程",
-  "friends_gatherings：朋友相伴、聚餐、活动，不是明确庆生过节",
-  "romance_and_companionship：约会、恋爱、亲密陪伴，不凭两个人臆造情侣关系",
-  "pet_life：宠物日常、喂养、遛宠物，不含野生或动物园动物",
-  "food_and_drinks：菜品、饮料、咖啡、甜品的外观、味道、口感及吃喝体验，不含制作",
-  "cooking：备菜、烹调、烘焙，不含单纯的成品味道",
-  "home_life：房间、家具、布置、搬家、家务、居家日常，不以家人互动为主",
-  "city_life：街道、建筑、商店外观、城市夜景，不含购买行为",
-  "natural_scenery：山川湖海、日落、天气、季节、雪景，不以具体花草动物为主",
-  "plants_and_wildlife：花草树木、鸟、野生或动物园动物，不含宠物相处",
-  "travel：旅行经历、游览、酒店、当地见闻，不含交通过程，也不泛指旅游照片",
-  "transport：机场、车站、乘车、通勤、自驾、旅途交通",
-  "sports_and_outdoors：健身、跑步、骑行、徒步、露营等活动，不含单纯山景",
-  "festivals_and_celebrations：生日、婚礼、节日、纪念日、毕业庆典，不含普通朋友见面",
-  "arts_and_entertainment：演出、展览、电影、游乐园、阅读、音乐、游戏",
-  "school_and_study：课堂、校园、书本、课程、作业、学习，不含毕业庆祝",
-  "work_life：工位、同事、会议、任务、工作成果，不凭室内布置臆造工作场景",
-  "shopping：购买、选品、试穿、价格、购买体验、新购物品，不含单纯穿着",
-  "health_and_wellness：身体、医院、体检、康复、休息、健康照护，不以锻炼动作为主",
+  "self_and_style：自拍/形象/穿搭/发型/配饰，非泛指人物",
+  "family_time：家人相伴/合影/陪父母，非孩子成长重点",
+  "children_growing_up：孩子玩耍/成长/亲子，非学校课程",
+  "friends_gatherings：朋友相伴/聚餐/活动，非庆生过节",
+  "romance_and_companionship：约会/恋爱/亲密陪伴；双人≠情侣",
+  "pet_life：宠物日常/喂养/遛宠，非野生或动物园动物",
+  "food_and_drinks：吃喝外观/味道/口感/体验，非制作",
+  "cooking：备菜/烹调/烘焙，非单纯成品味道",
+  "home_life：房间/家具/布置/搬家/家务/居家，非家人互动重点",
+  "city_life：街道/建筑/商店外观/城市夜景，非购买",
+  "natural_scenery：山川湖海/日落/天气/季节/雪景，非具体花草动物重点",
+  "plants_and_wildlife：花草树木/鸟/野生或动物园动物，非宠物",
+  "travel：旅行经历/游览/酒店/当地见闻，非交通或泛指旅游照片",
+  "transport：机场/车站/乘车/通勤/自驾/旅途交通",
+  "sports_and_outdoors：健身/跑步/骑行/徒步/露营等，非单纯山景",
+  "festivals_and_celebrations：生日/婚礼/节日/纪念日/毕业庆典，非普通朋友见面",
+  "arts_and_entertainment：演出/展览/电影/游乐园/阅读/音乐/游戏",
+  "school_and_study：课堂/校园/书本/课程/作业/学习，非毕业庆典",
+  "work_life：工位/同事/会议/任务/工作成果；室内≠工作",
+  "shopping：购买/选品/试穿/价格/购买体验/新购物品，非单纯穿着",
+  "health_and_wellness：身体/医院/体检/康复/休息/照护，非锻炼重点",
 ].join("；")
 
 function buildPromptText(
@@ -112,35 +112,34 @@ function buildPromptText(
       : "风格生动活泼：具体动词、自然口语、有节奏；轻微幽默取自可见对比/动作/细节，不写段子、网络梗、夸张笑话、生硬拟人，不虚构动作/对话/情绪/细节。"
 
   const outputRules = `
-只输出 JSON 对象，不用 markdown/代码块/解释/额外字段，不把整个对象转义或包成字符串。
-句子仅含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段；除分类外均为非空字符串，必须显式写出 chinese 字段名；中文每句 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字。
-learning_topic_ids 数组：按句意而非照片整体分类，主类在前，最多 2 个不同 ID；仅明确涉及另一独立场景时加第二个。照片只消歧，不以句外背景补分类；无匹配场景（票据/证件/备忘截图/无场景感叹等）返回 []。限下列 ID，按边界确定主类：
+仅JSON对象，无markdown/代码块/解释/额外字段，勿将对象包成转义字符串。
+句子字段见末尾样例；分类为数组，其余为非空字符串，不能省略chinese键；中文每句${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"}个汉字。
+learning_topic_ids：按句意非照片整体分类；主类在前，最多2个不同ID，仅句中明确涉及另一独立场景才加第二个。照片只消歧，不以句外背景补分类；无匹配（票据/证件/备忘/无场景感叹等）返回[]。只选下列ID，边界决定主类：
 ${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}
-蛋糕味道→food_and_drinks，庆生→festivals_and_celebrations；家庭露营→sports_and_outdoors+family_time，未提家人不补 family_time，湖景背景不补 natural_scenery。
-tags：照片分类数组，1 到 3 个不重复的字符串，只能选：${MEMORY_TAGS.join("、")}。
+tags：1–3个不同照片分类字符串，数组，限：${MEMORY_TAGS.join("、")}。
 ${EXPRESSION_PURPOSE_PROMPT}`
 
   if (generationFormat === "dual_tabs_v1") {
     return `
-看图生成两组英语学习句子及中文翻译。
+看图生成英语学习句子及中文翻译。
 ${englishLevelPrompt}
 ${languageStylePrompt}
 
-image_descriptions：3 句客观描述，只写可见的人/物/动作/环境/文字，不推测关系、背景或感受。
-scene_and_feelings：3 句用户视角的场景表达，可大胆推测最可能的场景/关系/感受，不必声明推测，但不编造无依据的具体姓名/地点/时间/经历/事实。不写物体清单、同义改写或空泛鸡汤，按序各一句：
+image_descriptions：客观描述可见人/物/动作/环境/文字，不推测关系/背景/感受。
+scene_and_feelings：以用户视角大胆推测最可能的场景/关系/感受，无须声明；不编造无依据的姓名/地点/时间/经历/事实，不写物体清单/同义改写/鸡汤。按序各一句：
 1. 我当时的感受：情绪、反应或氛围。
-2. 当时会对别人说什么：围绕具体对象/活动，写一句发现/建议/邀请/提问/请求/提醒/回应，不限问句或请求。禁用通用寒暄、重复感受、事后配文；仅画面明确涉及拍照才可请求拍照。直接写用户会说的这句及译文，不写双方对话、说话人标签、额外引号或 I would say 等前言。此句允许假设对话，但不得写成已发生的事实。
+2. 当时会对别人说什么：围绕具体对象/活动写发现/建议/邀请/提问/请求/提醒/回应，不限问句或请求；不写通用寒暄、重复感受、事后配文。仅画面明确涉及拍照才可请求拍照。只写一句及译文，无双方对话/标签/额外引号/I would say前言；可假设对话，非已发生事实。
 3. 发生了什么：第一人称的最可能场景或动作。
 1、3 优先 I/we；2 可用 you/we、祈使句或疑问句。
-场景表达以母语者对朋友说话/照片配文的日常口语为准，优先于难度/风格：高级仅提升搭配、情绪词、节奏，不用复杂从句、书面词、文学修辞；抒情仅温暖、有画面感、真诚，不写诗、散文或文艺腔。
+场景组须为母语者对朋友说话/照片配文的口语，优先于难度/风格：高级仅提升搭配/情绪词/节奏，不用复杂从句/书面词/文学修辞；抒情仅温暖/画面感/真诚，不写诗/散文/文艺腔。
 ${englishLevel === "启蒙" ? "启蒙场景表达仍须 3 到 6 个单词，启蒙限制优先。" : "场景表达每句尽量 8 到 18 个英文单词。"}
-信息图（截图/界面/图表/股票/数据面板/网页/文档）：客观组概括可见内容，场景组写看到/记录/分享时的话；不分析数据、解读涨跌或逐项抄录文字数字。
+信息图（截图/界面/图表/股票/数据/网页/文档）：客观组概括画面，场景组说看到/记录/分享时的话；不分析数据/解读涨跌/逐项抄录文字数字。
 
 顶层仅 image_descriptions、scene_and_feelings、tags；两组句子数组各 3 项。
 ${outputRules}
 
-严格按此结构填入内容：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["self_and_style"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["natural_scenery"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["festivals_and_celebrations"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["人物","生活场景"]}
+句子结构示例（非完整回答，须填满上述数组）：
+{"english":"...","chinese":"...","learning_topic_ids":["food_and_drinks"],"expression_purpose":"..."}
 `.trim()
   }
 
@@ -153,8 +152,8 @@ ${languageStylePrompt}
 顶层仅 sentences、tags；sentences 数组固定 3 项。
 ${outputRules}
 
-严格按此结构填入内容：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."}],"tags":["动物","生活场景"]}
+句子结构示例（非完整回答，须填满上述数组）：
+{"english":"...","chinese":"...","learning_topic_ids":["food_and_drinks"],"expression_purpose":"..."}
 `.trim()
 }
 

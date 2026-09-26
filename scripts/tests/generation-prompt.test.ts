@@ -7,67 +7,59 @@ const source = await Deno.readTextFile(
   ),
 );
 // Load the actual catalog and prompt builder without starting an HTTP handler.
-const { buildPromptText, LEARNING_TOPICS, MEMORY_TAGS } = await import(
-  "data:application/typescript," + encodeURIComponent(`
-    type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
+const { buildPromptText, LEARNING_TOPICS, MEMORY_TAGS, parseGeneratedContent } =
+  await import(
+    "data:application/typescript," + encodeURIComponent(`
     ${
-    source.slice(
-      source.indexOf("const MEMORY_TAGS"),
-      source.indexOf("function serializeGenerationError"),
-    )
-  }
-    export { buildPromptText, LEARNING_TOPICS, MEMORY_TAGS };
+      source.slice(
+        source.indexOf("interface Sentence"),
+        source.indexOf("const MIMO_TIMEOUT_MS"),
+      )
+    }
+    export { buildPromptText, LEARNING_TOPICS, MEMORY_TAGS, parseGeneratedContent };
   `)
-);
+  );
 const levels = ["启蒙", "简单", "中等", "高级"];
 const styles = ["平铺直叙", "抒情优美"];
 const formats = ["legacy_v1", "dual_tabs_v1"];
 
-Deno.test("compact prompts keep full JSON examples and every sentence field for all preferences", () => {
+Deno.test("two-thousand-character prompts keep one complete sentence schema and explicit output counts", () => {
   const topicIDs = new Set(LEARNING_TOPICS.map(([id]: string[]) => id));
   for (const format of formats) {
     for (const level of levels) {
       for (const style of styles) {
         const prompt = buildPromptText(level, style, format);
         // Character budgets, not provider token counts or latency guarantees.
-        ok([...prompt].length <= (format === "legacy_v1" ? 2250 : 3100));
-        const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-        const groups = format === "legacy_v1"
-          ? ["sentences"]
-          : ["image_descriptions", "scene_and_feelings"];
-        deepStrictEqual(
-          Object.keys(example).sort(),
-          [...groups, "tags"].sort(),
+        ok([...prompt].length <= 2100, `${format}/${level}/${style}`);
+        const sentence = JSON.parse(
+          prompt.slice(prompt.lastIndexOf("\n{") + 1),
         );
-        for (const group of groups) {
-          strictEqual(example[group].length, 3);
-          for (const sentence of example[group]) {
-            deepStrictEqual(Object.keys(sentence).sort(), [
-              "chinese",
-              "english",
-              "expression_purpose",
-              "learning_topic_ids",
-            ]);
-            for (const field of ["english", "chinese", "expression_purpose"]) {
-              strictEqual(typeof sentence[field], "string");
-              ok(sentence[field].length > 0);
-            }
-            ok(Array.isArray(sentence.learning_topic_ids));
-            ok(sentence.learning_topic_ids.length <= 2);
-            ok(
-              sentence.learning_topic_ids.every((id: string) =>
-                topicIDs.has(id)
-              ),
-            );
-          }
+        deepStrictEqual(Object.keys(sentence).sort(), [
+          "chinese",
+          "english",
+          "expression_purpose",
+          "learning_topic_ids",
+        ]);
+        for (const field of ["english", "chinese", "expression_purpose"]) {
+          strictEqual(typeof sentence[field], "string");
+          ok(sentence[field].length > 0);
         }
-        ok(example.tags.length >= 1 && example.tags.length <= 3);
-        ok(example.tags.every((tag: string) => MEMORY_TAGS.includes(tag)));
-        ok(prompt.includes("不把整个对象转义或包成字符串"));
-        ok(prompt.includes("必须显式写出 chinese 字段名"));
-        ok(prompt.includes("除分类外均为非空字符串"));
-        ok(prompt.includes("learning_topic_ids 数组"));
-        ok(prompt.includes("tags：照片分类数组"));
+        ok(Array.isArray(sentence.learning_topic_ids));
+        ok(sentence.learning_topic_ids.length <= 2);
+        ok(sentence.learning_topic_ids.every((id: string) => topicIDs.has(id)));
+        ok(
+          prompt.includes(
+            format === "legacy_v1"
+              ? "顶层仅 sentences、tags；sentences 数组固定 3 项"
+              : "顶层仅 image_descriptions、scene_and_feelings、tags；两组句子数组各 3 项",
+          ),
+        );
+        ok(prompt.includes("非完整回答，须填满上述数组"));
+        ok(prompt.includes("勿将对象包成转义字符串"));
+        ok(prompt.includes("不能省略chinese键"));
+        ok(prompt.includes("分类为数组，其余为非空字符串"));
+        ok(prompt.includes("tags：1–3个不同照片分类字符串，数组"));
+        for (const tag of MEMORY_TAGS) ok(prompt.includes(tag), tag);
       }
     }
   }
@@ -81,21 +73,20 @@ Deno.test("compact classification keeps all 21 boundaries, ordered labels and gr
     }
     for (
       const requirement of [
-        "按句意而非照片整体分类",
+        "按句意非照片整体分类",
         "主类在前",
-        "最多 2 个不同 ID",
-        "仅明确涉及另一独立场景时加第二个",
+        "最多2个不同ID",
+        "仅句中明确涉及另一独立场景才加第二个",
         "照片只消歧，不以句外背景补分类",
-        "返回 []",
-        "不凭两个人臆造情侣关系",
-        "不凭室内布置臆造工作场景",
-        "湖景背景不补 natural_scenery",
-        "限下列 ID",
-        "依据句子本身，不是照片整体",
-        "不增补人物、关系、背景、感受或场景",
-        "最多 30 个英文单词且不超过 240 个字符",
-        "不是描述山水风景",
-        "不写宽泛分类、原句重复/翻译或多个猜测",
+        "返回[]",
+        "双人≠情侣",
+        "室内≠工作",
+        "只选下列ID",
+        "简短英文用途",
+        "只据句意，保留关键对象/动作/感受/限制",
+        "不从照片补人物/关系/背景/感受/场景",
+        "最多30词且≤240字符",
+        "不写宽泛分类、复述、翻译或猜测列表",
         "逐项抄录文字数字",
       ]
     ) {
@@ -104,7 +95,7 @@ Deno.test("compact classification keeps all 21 boundaries, ordered labels and gr
     ok(
       prompt.includes(
         format === "dual_tabs_v1"
-          ? "不分析数据、解读涨跌"
+          ? "不分析数据/解读涨跌"
           : "不分析、解读涨跌、总结数据",
       ),
     );
@@ -115,7 +106,7 @@ Deno.test("starter stays shortest and scene expressions remain conversational ev
   const starter = buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
   strictEqual(starter, buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
   ok(starter.includes("启蒙词汇/句长限制在所有组中优先于风格、幽默和表达层次"));
-  ok(starter.includes("3 到 15 个汉字"));
+  ok(starter.includes("3 到 15个汉字"));
   ok(!starter.includes("8 到 18 个英文单词"));
   const advanced = buildPromptText("高级", "抒情优美", "dual_tabs_v1");
   for (
@@ -123,17 +114,69 @@ Deno.test("starter stays shortest and scene expressions remain conversational ev
       "14 到 24 个单词",
       "风格抒情：明显细腻",
       "8 到 18 个英文单词",
-      "日常口语为准，优先于难度/风格",
-      "高级仅提升搭配、情绪词、节奏，不用复杂从句、书面词、文学修辞",
-      "只写可见的人/物/动作/环境/文字，不推测关系、背景或感受",
-      "可大胆推测最可能的场景/关系/感受",
-      "不编造无依据的具体姓名/地点/时间/经历/事实",
+      "口语，优先于难度/风格",
+      "高级仅提升搭配/情绪词/节奏，不用复杂从句/书面词/文学修辞",
+      "客观描述可见人/物/动作/环境/文字，不推测关系/背景/感受",
+      "以用户视角大胆推测最可能的场景/关系/感受",
+      "不编造无依据的姓名/地点/时间/经历/事实",
       "仅画面明确涉及拍照才可请求拍照",
       "不限问句或请求",
-      "此句允许假设对话，但不得写成已发生的事实",
+      "可假设对话，非已发生事实",
     ]
   ) {
     ok(advanced.includes(requirement), requirement);
+  }
+});
+
+Deno.test("single sentence examples still compose valid legacy and dual-tab responses for the real parser", () => {
+  for (const format of formats) {
+    const prompt = buildPromptText("中等", "平铺直叙", format);
+    const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+    const sentence = {
+      ...example,
+      english: "The soup tastes good.",
+      chinese: "汤很好喝。",
+      expression_purpose: "Describing the taste of soup.",
+    };
+    const group = Array.from({ length: 3 }, () => ({ ...sentence }));
+    const payload = format === "legacy_v1"
+      ? { sentences: group, tags: ["美食"] }
+      : {
+        image_descriptions: group,
+        scene_and_feelings: group,
+        tags: ["美食"],
+      };
+    const parsed = parseGeneratedContent(JSON.stringify(payload), format);
+    ok(parsed);
+    strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
+    deepStrictEqual(parsed.tags, ["美食"]);
+    for (const item of parsed.sentences) {
+      strictEqual(item.english, sentence.english);
+      strictEqual(item.chinese, sentence.chinese);
+      strictEqual(item.expression_purpose, sentence.expression_purpose);
+      deepStrictEqual(item.learning_topic_ids, sentence.learning_topic_ids);
+    }
+    if (format === "dual_tabs_v1") {
+      deepStrictEqual(
+        parsed.sentences.map((item: any) => item.presentation_group),
+        [
+          "what_i_see",
+          "what_i_see",
+          "what_i_see",
+          "what_i_say",
+          "what_i_say",
+          "what_i_say",
+        ],
+      );
+      strictEqual(
+        parseGeneratedContent(
+          JSON.stringify({ ...payload, scene_and_feelings: group.slice(0, 2) }),
+          format,
+        ),
+        null,
+      );
+    }
+    strictEqual(parseGeneratedContent(JSON.stringify(sentence), format), null);
   }
 });
 

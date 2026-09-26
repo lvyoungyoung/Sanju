@@ -27,7 +27,7 @@ Deno.test("starter overrides lyrical style in both generation formats", () => {
     ok(prompt.includes("3 到 6 个英文单词"));
     ok(prompt.includes("禁用从句、抽象词、习语"));
     ok(prompt.includes("风格固定为平铺直叙"));
-    ok(prompt.includes("3 到 15 个汉字"));
+    ok(prompt.includes("3 到 15个汉字"));
     ok(!prompt.includes("风格抒情："));
     if (format === "dual_tabs_v1") {
       ok(prompt.includes("启蒙场景表达仍须 3 到 6 个单词"));

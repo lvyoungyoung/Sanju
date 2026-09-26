@@ -81,14 +81,18 @@ const makeFetcher = (fail?: "sentence" | "purpose" | "both") =>
 Deno.test("both generation formats request grounded short expression purposes", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"]) {
     const prompt = api.buildPromptText("中等", "平铺直叙", format);
-    ok(prompt.includes("expression_purpose 四个字段"));
-    ok(prompt.includes("依据句子本身，不是照片整体"));
-    ok(prompt.includes("最多 30 个英文单词"));
-    const json = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-    const items = json.sentences ??
-      [...json.image_descriptions, ...json.scene_and_feelings];
-    strictEqual(items.length, format === "legacy_v1" ? 3 : 6);
-    ok(items.every((item: any) => typeof item.expression_purpose === "string"));
+    ok(prompt.includes("简短英文用途"));
+    ok(prompt.includes("只据句意"));
+    ok(prompt.includes("最多30词且≤240字符"));
+    const sentence = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+    strictEqual(typeof sentence.expression_purpose, "string");
+    ok(
+      prompt.includes(
+        format === "legacy_v1"
+          ? "sentences 数组固定 3 项"
+          : "两组句子数组各 3 项",
+      ),
+    );
   }
 });
 Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
@@ -100,20 +104,20 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
       const eventIndex = prompt.indexOf("3. 发生了什么：");
       ok(feelingIndex >= 0 && conversationIndex > feelingIndex);
       ok(eventIndex > conversationIndex);
-      ok(prompt.includes("直接写用户会说的这句及译文"));
+      ok(prompt.includes("只写一句及译文"));
       ok(
         prompt.includes(
-          "不写双方对话、说话人标签、额外引号或 I would say 等前言",
+          "无双方对话/标签/额外引号/I would say前言",
         ),
       );
-      ok(prompt.includes("此句允许假设对话，但不得写成已发生的事实"));
+      ok(prompt.includes("可假设对话，非已发生事实"));
       ok(prompt.includes("1、3 优先 I/we；2 可用 you/we、祈使句或疑问句"));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
       ok(prompt.includes("不限问句或请求"));
       ok(prompt.includes("仅画面明确涉及拍照才可请求拍照"));
-      ok(prompt.includes("禁用通用寒暄、重复感受、事后配文"));
+      ok(prompt.includes("不写通用寒暄、重复感受、事后配文"));
       for (
         const example of [
           "I had such a lovely time with my friends.",
@@ -143,9 +147,9 @@ Deno.test("legacy image descriptions do not gain the hypothetical dialogue instr
       const prompt = api.buildPromptText(level, style, "legacy_v1");
       ok(!prompt.includes("当时会对别人说什么"));
       ok(prompt.includes("最直接可见的内容"));
-      const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-      deepStrictEqual(Object.keys(payload).sort(), ["sentences", "tags"]);
-      strictEqual(payload.sentences.length, 3);
+      ok(prompt.includes("顶层仅 sentences、tags；sentences 数组固定 3 项"));
+      ok(!prompt.includes("image_descriptions"));
+      ok(!prompt.includes("scene_and_feelings"));
     }
   }
 });

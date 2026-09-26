@@ -104,3 +104,23 @@ characters (another 9.9%; 39.6% below the original 4,994). Legacy text drops fro
 after prompt construction are unchanged. Tests cover each difficulty/style/format
 combination, not live model quality or speed; deployment and comparison remain
 necessary before attributing any timing improvement to this wording change.
+
+### Around 2,000 characters
+
+The latest request sets a much tighter budget. Continuing the character-count
+metric above (not words or tokens), the medium/everyday dual-tab prompt is now
+2,020 characters, down from 3,018. All dual-tab preference combinations are
+1,992-2,071 characters; the medium/everyday legacy prompt is 1,551 characters.
+
+The six repeated JSON items are replaced by one complete sentence-object example
+and explicit top-level fields and counts (two arrays of three, or the legacy
+array of three). The prompt says the example is not a complete answer. The 21
+topic IDs are unchanged; shorter definitions retain their selection boundaries.
+Purpose limits, sentence difficulty/style, scene-expression order and response
+fields remain specified. No parser, model, recovery, credit or indexing code was
+changed. Regression tests also exercise the actual parser with the composed
+three/six-sentence payloads and reject a lone example or incomplete dual group.
+
+Deploy only `generate-memory-v2`; no migration, client or proxy update is needed.
+The shorter structural instructions still need a real-photo quality/format check
+after deployment. Unit tests do not prove model adherence or a latency reduction.
