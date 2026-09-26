@@ -25,19 +25,19 @@ Deno.test("starter overrides lyrical style in both generation formats", () => {
     const prompt = buildPromptText("启蒙", "抒情优美", format);
     strictEqual(prompt, buildPromptText("启蒙", "平铺直叙", format));
     ok(prompt.includes("3 到 6 个英文单词"));
-    ok(prompt.includes("不要使用从句、抽象词、习语"));
-    ok(prompt.includes("语言风格固定为平铺直叙"));
+    ok(prompt.includes("禁用从句、抽象词、习语"));
+    ok(prompt.includes("风格固定为平铺直叙"));
     ok(prompt.includes("3 到 15 个汉字"));
-    ok(!prompt.includes("整体风格请明显更细腻"));
+    ok(!prompt.includes("风格抒情："));
     if (format === "dual_tabs_v1") {
-      ok(prompt.includes("启蒙的生活表达也必须使用 3 到 6 个单词"));
+      ok(prompt.includes("启蒙场景表达仍须 3 到 6 个单词"));
       ok(
         prompt.includes(
-          "image_descriptions 和 scene_and_feelings 都必须恰好有 3 项",
+          "顶层仅 image_descriptions、scene_and_feelings、tags；两组句子数组各 3 项",
         ),
       );
     } else {
-      ok(prompt.includes("sentences 必须是长度为 3 的数组"));
+      ok(prompt.includes("sentences 数组固定 3 项"));
     }
   }
 });
@@ -52,7 +52,7 @@ Deno.test("existing levels and lyrical style keep their generation rules", () =>
     for (const format of ["legacy_v1", "dual_tabs_v1"]) {
       const prompt = buildPromptText(level, "抒情优美", format);
       ok(prompt.includes(length + " 个单词"));
-      ok(prompt.includes("整体风格请明显更细腻"));
+      ok(prompt.includes("风格抒情：明显细腻"));
       ok(!prompt.includes("启蒙难度："));
     }
   }

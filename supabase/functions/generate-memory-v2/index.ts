@@ -65,7 +65,7 @@ const LEARNING_TOPICS = [
 ] as const
 
 const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
-const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：每句必填一条简短的英文表达用途，最多 30 个英文单词且不超过 240 个字符。依据句子本身，不是照片整体；保留关键对象、动作、感受及限制，不增补人物、关系、背景、感受或场景。不要只写宽泛分类、重复或翻译原句，也不罗列猜测。例如 We enjoyed a delicious meal by the lake. 的用途是 Sharing an enjoyable meal beside a lake.，不是描述山水风景。"
+const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：每句的简短英文用途，最多 30 个英文单词且不超过 240 个字符。依据句子本身，不是照片整体；保留关键对象、动作、感受及限制，不增补人物、关系、背景、感受或场景。不写宽泛分类、原句重复/翻译或多个猜测。湖边愉快用餐的用途是 Sharing an enjoyable meal beside a lake.，不是描述山水风景。"
 const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
   "self_and_style：自拍、形象、穿搭、发型、配饰，不泛指人物",
   "family_time：家人相伴、合影、陪伴父母，不以孩子成长为主",
@@ -97,63 +97,63 @@ function buildPromptText(
 ): string {
   const englishLevelPrompt =
     englishLevel === "启蒙"
-      ? "启蒙难度：儿童或零基础。每句 3 到 6 个英文单词，优先 3 到 5 个；每句只表达一个意思，使用极常见的具体词和简单句型，以一般现在时和 be 动词为主，必须是完整自然的句子，不用碎片短语。不要使用从句、抽象词、习语、俚语、比喻、拟人、双关、复杂时态或文学表达；中文也要适合儿童。所有组均以启蒙词汇和句长限制为最高优先级，不为风格、幽默或表达层次牺牲易懂程度。"
+      ? "启蒙难度：儿童/零基础；每句 3 到 6 个英文单词，优先 3 到 5 个。一句一意，用极常见具体词、一般现在时/be 简单句，完整自然，不用碎片短语。禁用从句、抽象词、习语、俚语、比喻、拟人、双关、复杂时态、文学表达；中文适合儿童。启蒙词汇/句长限制在所有组中优先于风格、幽默和表达层次。"
       : englishLevel === "简单"
-      ? "初学者难度：每句尽量 6 到 12 个单词，使用小学到初中常见词、简单主谓宾或 This is / There is 句型；不用抽象词、书面词、复杂从句、比喻、拟人、分词状语或分词定语。"
+      ? "初学者：每句尽量 6 到 12 个单词，小学至初中常见词、简单主谓宾或 This is/There is；不用抽象/书面词、复杂从句、比喻、拟人、分词状语/定语。"
       : englishLevel === "高级"
-        ? "高级难度：每句尽量 14 到 24 个单词，词汇细腻、结构完整、有层次，可适度修辞和变化节奏；保持自然、准确、易理解，不写诗或炫技。"
-        : "中等难度：每句尽量 10 到 18 个单词，用稍丰富的日常表达，允许定语、状语及完整结构，不要书面或艰深。"
+        ? "高级：每句尽量 14 到 24 个单词，词汇细腻、结构完整有层次，可适度修辞、变化节奏；自然准确易懂，不写诗或炫技。"
+        : "中等：每句尽量 10 到 18 个单词，稍丰富的日常表达，可用定语/状语及完整结构，不书面或艰深。"
 
   const languageStylePrompt =
     englishLevel === "启蒙"
-      ? "语言风格固定为平铺直叙：友好、自然、直接，不使用抒情优雅风格。"
+      ? "风格固定为平铺直叙：友好、自然、直接，不抒情。"
       : languageStyle === "抒情优美"
-      ? "整体风格请明显更细腻、温柔、有画面感和情绪节奏，可轻微抒情；自然、准确、易懂，不写诗、不过度夸张或脱离图片。"
-      : "风格生动活泼，像脱口而出的日常英语：具体动词、自然口语搭配、有节奏；轻微幽默须来自真实可见的对比、动作或细节，不写段子、网络梗、夸张笑话或生硬拟人；不要虚构动作、对话、情绪或细节。"
+      ? "风格抒情：明显细腻、温柔，有画面感和情绪节奏；自然准确易懂，不写诗、过度夸张或脱离图片。"
+      : "风格生动活泼：具体动词、自然口语、有节奏；轻微幽默取自可见对比/动作/细节，不写段子、网络梗、夸张笑话、生硬拟人，不虚构动作/对话/情绪/细节。"
 
   const outputRules = `
-只输出一个 JSON 对象，不用 markdown、代码块、解释或额外字段，不把对象转义或包成字符串。
-每个句子项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段。english、chinese、expression_purpose 均为非空字符串，必须显式写出 chinese 字段名；每句中文 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字。
-learning_topic_ids 数组：按每句实际表达的内容分类，不按照片整体分类。选择 1–2 个不重复的 ID，第一个是最匹配的主场景；只有句子明确涉及另一独立场景时才加第二个，每句最多 2 个分类。照片只辅助消除歧义，不用未在句中表达的背景强行归类；无合适场景（如票据、证件、备忘截图或无场景感叹）返回 []。只使用下面的 ID，不自创分类；边界用于确定主场景：
+只输出 JSON 对象，不用 markdown/代码块/解释/额外字段，不把整个对象转义或包成字符串。
+句子仅含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段；除分类外均为非空字符串，必须显式写出 chinese 字段名；中文每句 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字。
+learning_topic_ids 数组：按句意而非照片整体分类，主类在前，最多 2 个不同 ID；仅明确涉及另一独立场景时加第二个。照片只消歧，不以句外背景补分类；无匹配场景（票据/证件/备忘截图/无场景感叹等）返回 []。限下列 ID，按边界确定主类：
 ${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}
-例如蛋糕味道只归 food_and_drinks，庆生归 festivals_and_celebrations；家庭露营可归 sports_and_outdoors 与 family_time，未提家人则不加 family_time，背景有湖也不自动加 natural_scenery。
+蛋糕味道→food_and_drinks，庆生→festivals_and_celebrations；家庭露营→sports_and_outdoors+family_time，未提家人不补 family_time，湖景背景不补 natural_scenery。
 tags：照片分类数组，1 到 3 个不重复的字符串，只能选：${MEMORY_TAGS.join("、")}。
 ${EXPRESSION_PURPOSE_PROMPT}`
 
   if (generationFormat === "dual_tabs_v1") {
     return `
-根据图片为英语学习生成两组句子，每句附中文翻译。
+看图生成两组英语学习句子及中文翻译。
 ${englishLevelPrompt}
 ${languageStylePrompt}
 
-image_descriptions：三句客观描述，仅限直接可见的人、物、动作、环境或文字，不推测关系、背景或内心感受。
-scene_and_feelings：三句场景表达，不是另一组物体清单；可大胆推测最可能的场景、关系和感受，无需反复说明推测，但不编造无依据的具体姓名、地点、时间、经历或事实。按以下顺序各一句，角度不同，不同义改写、不写空泛鸡汤：
+image_descriptions：3 句客观描述，只写可见的人/物/动作/环境/文字，不推测关系、背景或感受。
+scene_and_feelings：3 句用户视角的场景表达，可大胆推测最可能的场景/关系/感受，不必声明推测，但不编造无依据的具体姓名/地点/时间/经历/事实。不写物体清单、同义改写或空泛鸡汤，按序各一句：
 1. 我当时的感受：情绪、反应或氛围。
-2. 当时会对别人说什么：围绕具体对象或活动，分享发现、建议、邀请、提问、请求、提醒或回应，不必总是问句或请求；不写通用寒暄、重复感受或事后配文。不要因为输入是一张照片就默认请求别人帮忙拍照，仅画面明确涉及拍照时考虑。直接输出用户会说的那一句，不要输出双方对话、说话人标签或额外引号，不要使用 I would say 等解释性开头；中文直接翻译。第二句不受前面“不要虚构对话”的限制，但不能把假设的对话写成真实发生过的事实。
-3. 发生了什么：用第一人称说最可能发生的场景或动作。
-第一句和第三句优先使用 I 或 we；第二句可自然使用 you、we、祈使句或疑问句。
-场景表达须像母语者对朋友说话或发照片配文，日常口语感优先于难度和风格：高级也不用复杂从句、书面词或文学修辞，只用地道搭配、准确情绪词和自然节奏；抒情仅让语气温暖、有画面感、真诚，不写诗、散文或文艺腔。
-${englishLevel === "启蒙" ? "启蒙的生活表达也必须使用 3 到 6 个单词，词汇和句长限制仍为最高优先级。" : "场景表达每句尽量 8 到 18 个英文单词。"}
-截图、界面、图表、股票、数据面板、网页、文档等信息图：客观组概括可见内容，场景组表达看到、记录或分享信息时可能说的话；不分析数据、解读涨跌或逐项抄写文字数字。
+2. 当时会对别人说什么：围绕具体对象/活动，写一句发现/建议/邀请/提问/请求/提醒/回应，不限问句或请求。禁用通用寒暄、重复感受、事后配文；仅画面明确涉及拍照才可请求拍照。直接写用户会说的这句及译文，不写双方对话、说话人标签、额外引号或 I would say 等前言。此句允许假设对话，但不得写成已发生的事实。
+3. 发生了什么：第一人称的最可能场景或动作。
+1、3 优先 I/we；2 可用 you/we、祈使句或疑问句。
+场景表达以母语者对朋友说话/照片配文的日常口语为准，优先于难度/风格：高级仅提升搭配、情绪词、节奏，不用复杂从句、书面词、文学修辞；抒情仅温暖、有画面感、真诚，不写诗、散文或文艺腔。
+${englishLevel === "启蒙" ? "启蒙场景表达仍须 3 到 6 个单词，启蒙限制优先。" : "场景表达每句尽量 8 到 18 个英文单词。"}
+信息图（截图/界面/图表/股票/数据面板/网页/文档）：客观组概括可见内容，场景组写看到/记录/分享时的话；不分析数据、解读涨跌或逐项抄录文字数字。
 
-顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags；image_descriptions 和 scene_and_feelings 都必须恰好有 3 项。
+顶层仅 image_descriptions、scene_and_feelings、tags；两组句子数组各 3 项。
 ${outputRules}
 
-严格按照下面的格式返回：
+严格按此结构填入内容：
 {"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":["self_and_style"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["natural_scenery"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":["festivals_and_celebrations"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["人物","生活场景"]}
 `.trim()
   }
 
   return `
-根据图片生成三句适合英语学习的英文描述，每句附中文翻译，只描述最明显、最直接可见的内容。
-截图、界面、图表、股票、数据面板、网页、文档等信息图：仅作简洁描述，可概括屏幕、图表、数字，不做分析报告、解释涨跌、总结数据或逐项抄写文字数字。
+看图生成 3 句英语描述及中文翻译，供学习模仿，仅限最明显、最直接可见的内容。
+信息图（截图/界面/图表/股票/数据面板/网页/文档）：仅概括屏幕/图表/数字，不分析、解读涨跌、总结数据或逐项抄录文字数字。
 ${englishLevelPrompt}
 ${languageStylePrompt}
 
-顶层字段必须且只能是 sentences 和 tags；sentences 必须是长度为 3 的数组。
+顶层仅 sentences、tags；sentences 数组固定 3 项。
 ${outputRules}
 
-你必须严格按照下面这个格式返回：
+严格按此结构填入内容：
 {"sentences":[{"english":"...","chinese":"...","learning_topic_ids":["pet_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["home_life"],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":["sports_and_outdoors","family_time"],"expression_purpose":"..."}],"tags":["动物","生活场景"]}
 `.trim()
 }

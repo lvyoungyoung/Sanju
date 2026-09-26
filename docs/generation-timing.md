@@ -93,3 +93,14 @@ No live model quality or latency comparison was performed locally. Compare
 several identical photos/preferences after deploying `generate-memory-v2`, using
 `server.mimo` and `client_total_ms`; do not infer proportional speedup from size.
 No database migration or client update is needed for this prompt-only change.
+
+### Second wording pass
+
+The next pass keeps the 21 topic boundary descriptions and complete JSON examples
+byte-for-byte, while shortening generation/format rules and the purpose example.
+At the same medium/everyday settings, dual-tab text drops from 3,348 to 3,018
+characters (another 9.9%; 39.6% below the original 4,994). Legacy text drops from
+2,364 to 2,153. Field types, sentence counts, purpose limits and all processing
+after prompt construction are unchanged. Tests cover each difficulty/style/format
+combination, not live model quality or speed; deployment and comparison remain
+necessary before attributing any timing improvement to this wording change.
