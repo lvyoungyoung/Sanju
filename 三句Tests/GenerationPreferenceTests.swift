@@ -3,12 +3,30 @@ import SwiftUI
 @testable import 三句
 
 final class GenerationPreferenceTests: XCTestCase {
-    func testStarterIsFirstAndPreservesExistingStoredValues() {
-        XCTAssertEqual(EnglishLevel.allCases, [.starter, .simple, .intermediate, .advanced])
+    func testThreeDifficultyOptionsNormalizeLegacyAdvancedValues() {
+        XCTAssertEqual(EnglishLevel.allCases, [.starter, .simple, .intermediate])
         XCTAssertEqual(EnglishLevel(rawValue: "启蒙"), .starter)
         XCTAssertEqual(EnglishLevel(rawValue: "简单"), .simple)
         XCTAssertEqual(EnglishLevel(rawValue: "中等"), .intermediate)
-        XCTAssertEqual(EnglishLevel(rawValue: "高级"), .advanced)
+        XCTAssertEqual(EnglishLevel(rawValue: "高级"), .intermediate)
+        XCTAssertNil(EnglishLevel(rawValue: "unknown"))
+    }
+
+    func testLegacyAdvancedCodableValueBecomesIntermediateAndWritesCurrentValue() throws {
+        let stored = Data("\"高级\"".utf8)
+        let level = try JSONDecoder().decode(EnglishLevel.self, from: stored)
+        XCTAssertEqual(level, .intermediate)
+        XCTAssertTrue(EnglishLevel.allCases.contains(level))
+        let saved = try JSONEncoder().encode(level)
+        XCTAssertEqual(try JSONDecoder().decode(String.self, from: saved), "中等")
+    }
+
+    func testCurrentDifficultyValuesKeepTheirWireFormat() throws {
+        XCTAssertEqual(EnglishLevel.allCases.map(\.rawValue), ["启蒙", "简单", "中等"])
+        for level in EnglishLevel.allCases {
+            let saved = try JSONEncoder().encode(level)
+            XCTAssertEqual(try JSONDecoder().decode(EnglishLevel.self, from: saved), level)
+        }
     }
 
     func testOnlyStarterDisablesLyricalAndResolvesToPlain() {

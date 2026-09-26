@@ -335,7 +335,16 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
     case starter = "启蒙"
     case simple = "简单"
     case intermediate = "中等"
-    case advanced = "高级"
+
+    init?(rawValue: String) {
+        switch rawValue {
+        case "启蒙": self = .starter
+        case "简单": self = .simple
+        // Migrate both local preferences and profiles saved by older clients.
+        case "中等", "高级": self = .intermediate
+        default: return nil
+        }
+    }
 
     var id: String { rawValue }
 
@@ -355,8 +364,6 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
             return L10n.string("english_level.simple", "初级")
         case .intermediate:
             return L10n.string("english_level.intermediate", "中级")
-        case .advanced:
-            return L10n.string("english_level.advanced", "高级")
         }
     }
 }
