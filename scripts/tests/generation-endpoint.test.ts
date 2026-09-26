@@ -45,7 +45,7 @@ const fetch = (async (input: any, init?: RequestInit) => {
   }
   state.modelStarted?.();
   if (state.modelWait) await state.modelWait;
-  const sentence = { english:'This is a cat.', chinese:'这是一只猫。', learning_topic_ids:['pet_life'], expression_purpose:'Identifying a cat.' };
+  const sentence = { english:'This is a cat.', chinese:'这是一只猫。' };
   const payload = state.dual
     ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence],tags:['动物']}
     : {sentences:[sentence,sentence,sentence],tags:['动物']};
@@ -177,6 +177,7 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(completed.status, 200);
     const delivered = (await completed.json()).memory.sentences;
     strictEqual(delivered.length, 6);
+    strictEqual(delivered.every((s: any) => Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 0), true);
     strictEqual(state.embeddingRows, undefined, "response must not await indexing");
     strictEqual(state.backgroundOwners.includes("owner"), true);
     if (anonymous) {

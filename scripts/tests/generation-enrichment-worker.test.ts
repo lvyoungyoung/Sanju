@@ -10,9 +10,17 @@ const helper = new URL(
   "../../supabase/functions/_shared/fetch-with-timeout.ts",
   import.meta.url,
 ).href;
+const metadataHelper = new URL(
+  "../../supabase/functions/_shared/sentence-metadata.ts",
+  import.meta.url,
+).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
   import {fetchWithTimeout, fetchWithinDeadline} from ${JSON.stringify(helper)};
+  import {generateSentenceMetadata as generateMetadata, parseSentenceMetadata} from ${
+    JSON.stringify(metadataHelper)
+  };
+  const generateSentenceMetadata = (sentences: any, fetcher: any) => generateMetadata(sentences, fetcher, {url:"https://model.invalid",key:"test"});
   export const state: any = {tasks:[], client:null};
   const globalThis = {EdgeRuntime: undefined as any};
   export function runtime(enabled: boolean) {
@@ -28,13 +36,27 @@ const sentences = [{
   id: "sentence",
   english: "This is a cat.",
   chinese: "这是一只猫。",
-  expression_purpose: "Describing a cat.",
 }];
 function fixture(
-  failure: "sentence" | "purpose" | "store" | null = null,
+  failure:
+    | "sentence"
+    | "purpose"
+    | "store"
+    | "metadata"
+    | "checkpoint"
+    | "stale"
+    | null = null,
   total = 1,
+  cached = false,
 ) {
   const calls: string[] = [], finished: any[] = [], retried: any[] = [];
+  const expectedMetadata = [{
+    sentence_id: "sentence",
+    expression_purpose: "Describing a cat.",
+    learning_topic_ids: ["pet_life"],
+  }];
+  const modelCalls: string[] = [];
+  let metadata = cached ? expectedMetadata : null;
   let claims = 0;
   const client = {
     rpc: async (name: string, args: any) => {
@@ -47,10 +69,19 @@ function fixture(
               lease_token: "lease",
               attempts: 1,
               sentences,
+              metadata,
             }]
             : [],
           error: null,
         };
+      }
+      if (name === "save_generation_enrichment_metadata") {
+        if (failure === "checkpoint") {
+          return { error: { message: "checkpoint failed" } };
+        }
+        if (failure === "stale") return { data: false, error: null };
+        metadata = args.p_metadata;
+        return { data: true, error: null };
       }
       if (name === "complete_generation_enrichment") {
         finished.push(args);
@@ -68,9 +99,19 @@ function fixture(
   };
   const fetcher: typeof fetch = async (_input, init) => {
     const body = JSON.parse(String((init as { body?: unknown })?.body));
+    if (body.messages) {
+      modelCalls.push("metadata");
+      if (failure === "metadata") return Response.json({}, { status: 503 });
+      return Response.json({
+        choices: [{
+          message: { content: JSON.stringify({ sentences: expectedMetadata }) },
+        }],
+      });
+    }
     const route = body.input.texts[0].startsWith("English:")
       ? "sentence"
       : "purpose";
+    modelCalls.push(route);
     if (route === failure) return Response.json({}, { status: 503 });
     return Response.json({
       output: {
@@ -81,7 +122,7 @@ function fixture(
       },
     });
   };
-  return { client, fetcher, calls, finished, retried };
+  return { client, fetcher, calls, finished, retried, modelCalls };
 }
 
 Deno.test("worker uses leased persisted payload and atomically completes both vectors", async () => {
@@ -94,10 +135,20 @@ Deno.test("worker uses leased persisted payload and atomically completes both ve
   strictEqual(f.finished[0].p_rows[0].sentence_id, "sentence");
   strictEqual(f.finished[0].p_rows[0].purpose_embedding.length, 1024);
   strictEqual(f.retried.length, 0);
+  deepStrictEqual(f.modelCalls, ["metadata", "sentence", "purpose"]);
+  strictEqual(f.calls[1], "save_generation_enrichment_metadata");
 });
 
 Deno.test("incomplete vectors and database failure remain retryable without finalizing or debiting", async () => {
-  for (const failure of ["sentence", "purpose", "store"] as const) {
+  for (
+    const failure of [
+      "sentence",
+      "purpose",
+      "store",
+      "metadata",
+      "checkpoint",
+    ] as const
+  ) {
     const f = fixture(failure);
     deepStrictEqual(
       await api.processGenerationEnrichment(f.client, "owner", f.fetcher),
@@ -108,6 +159,30 @@ Deno.test("incomplete vectors and database failure remain retryable without fina
     strictEqual(f.finished.length, failure === "store" ? 1 : 0);
     strictEqual(f.calls.some((c) => c.startsWith("finalize_")), false);
   }
+});
+
+Deno.test("checkpointed metadata is reused on retries; lost leases do not start embeddings", async () => {
+  const cached = fixture(null, 1, true);
+  deepStrictEqual(
+    await api.processGenerationEnrichment(
+      cached.client,
+      "owner",
+      cached.fetcher,
+    ),
+    { completed: 1, failed: 0 },
+  );
+  deepStrictEqual(cached.modelCalls, ["sentence", "purpose"]);
+  strictEqual(
+    cached.calls.includes("save_generation_enrichment_metadata"),
+    false,
+  );
+  const stale = fixture("stale");
+  deepStrictEqual(
+    await api.processGenerationEnrichment(stale.client, "owner", stale.fetcher),
+    { completed: 0, failed: 0 },
+  );
+  deepStrictEqual(stale.modelCalls, ["metadata"]);
+  strictEqual(stale.finished.length, 0);
 });
 
 Deno.test("worker bounds drain batches and refuses to start a batch with an exhausted budget", async () => {

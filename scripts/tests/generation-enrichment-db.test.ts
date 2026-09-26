@@ -90,6 +90,22 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         new URL("20260925001000_defer_generation_enrichment.sql", root),
       ),
     );
+    await db.exec(
+      functionSQL(
+        await Deno.readTextFile(
+          new URL("20260920001000_use_photo_life_scenes.sql", root),
+        ),
+        "learning_topic_ids_from_json",
+      ),
+    );
+    await db.exec(
+      await Deno.readTextFile(
+        new URL("20260926001000_defer_sentence_metadata.sql", root),
+      ),
+    );
+    await db.exec(`create trigger match_sentence_to_semantic_study_scenes
+      after insert or update of learning_topic_ids on memory_sentences
+      for each row execute function match_sentence_to_semantic_study_scenes()`);
     const balance = async () =>
       (await db.query<any>(
         "select available_generations from profiles where id=$1",
@@ -122,6 +138,17 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         "select complete_generation_enrichment($1,$2,$3::jsonb) as done",
         [job.id, job.lease_token, JSON.stringify(values)],
       )).rows[0].done;
+    const metadata = (job: any) =>
+      job.sentences.map((s: any) => ({
+        sentence_id: s.id,
+        learning_topic_ids: ["natural_scenery"],
+        expression_purpose: "Describing a calm lake.",
+      }));
+    const checkpoint = async (job: any, value = metadata(job)) =>
+      (await db.query<any>(
+        "select save_generation_enrichment_metadata($1,$2,$3::jsonb) as saved",
+        [job.id, job.lease_token, JSON.stringify(value)],
+      )).rows[0].saved;
 
     await t.step(
       "result and debit commit before indexing; replay cannot debit or enqueue twice",
@@ -224,6 +251,102 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
       },
     );
     await t.step(
+      "metadata-free generation commits immediately; failed vectors retain checkpoint without another debit",
+      async () => {
+        const before = await balance(), memory = crypto.randomUUID();
+        await finish(
+          memory,
+          null,
+          payload().map((s) => ({
+            ...s,
+            expression_purpose: undefined,
+          })) as any,
+        );
+        const job = await claim();
+        strictEqual(await balance(), before - 1);
+        await rejects(() => complete(job), /metadata required/);
+        for (
+          const invalid of [
+            [],
+            metadata(job).slice(1),
+            metadata(job).map((m: any, i: number) =>
+              i ? m : { ...m, sentence_id: crypto.randomUUID() }
+            ),
+            metadata(job).map((m: any, i: number) =>
+              i ? m : { ...m, expression_purpose: "" }
+            ),
+            metadata(job).map((m: any, i: number) =>
+              i ? m : { ...m, expression_purpose: "word ".repeat(31) }
+            ),
+            metadata(job).map((m: any, i: number) =>
+              i ? m : { ...m, learning_topic_ids: ["invalid"] }
+            ),
+            metadata(job).map((m: any, i: number) =>
+              i ? m : {
+                ...m,
+                learning_topic_ids: ["natural_scenery", "natural_scenery"],
+              }
+            ),
+          ]
+        ) await rejects(() => checkpoint(job, invalid));
+        strictEqual(
+          await checkpoint({ ...job, lease_token: crypto.randomUUID() }),
+          false,
+        );
+        strictEqual(await checkpoint(job), true);
+        strictEqual(await checkpoint(job), false);
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where memory_id=$1",
+            [memory],
+          )).rows.map((s) => s.learning_topic_ids),
+          Array.from({ length: 6 }, () => []),
+        );
+        const broken = rows(job);
+        broken[0].purpose_embedding = [];
+        await rejects(() => complete(job, broken), /Invalid indexing vectors/);
+        await db.query(
+          "select retry_generation_enrichment($1,$2,'vector failure')",
+          [job.id, job.lease_token],
+        );
+        await db.query(
+          "update generation_enrichment_jobs set next_attempt_at=now() where id=$1",
+          [job.id],
+        );
+        const retry = await claim();
+        deepStrictEqual(retry.metadata, metadata(job));
+        await db.exec("update match_control set fail=true");
+        await rejects(
+          () => complete(retry),
+          /matching temporarily unavailable/,
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where memory_id=$1",
+            [memory],
+          )).rows.map((s) => s.learning_topic_ids),
+          Array.from({ length: 6 }, () => []),
+        );
+        await db.exec("update match_control set fail=false");
+        strictEqual(await complete(retry), true);
+        strictEqual(await balance(), before - 1);
+        for (const s of job.sentences) {
+          // A stale local sync cannot erase server-produced categories.
+          await db.query(
+            "update memory_sentences set learning_topic_ids='{}', is_favorite=true where id=$1",
+            [s.id],
+          );
+          const saved =
+            (await db.query<any>("select * from memory_sentences where id=$1", [
+              s.id,
+            ])).rows[0];
+          deepStrictEqual(saved.learning_topic_ids, ["natural_scenery"]);
+          strictEqual(saved.english, s.english);
+          strictEqual(saved.is_favorite, true);
+        }
+      },
+    );
+    await t.step(
       "anonymous vectors survive login both before and after indexing",
       async () => {
         for (const loginFirst of [false, true]) {
@@ -245,10 +368,13 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
           );
           const job = await claim(guest);
           deepStrictEqual(job.sentences, sentences);
+          strictEqual(await checkpoint(job), true);
           // Cleanup of the recoverable photo/job must not discard queued vectors.
-          await db.query("delete from guest_generation_jobs where id=$1", [
-            guestJob,
-          ]);
+          if (!loginFirst) {
+            await db.query("delete from guest_generation_jobs where id=$1", [
+              guestJob,
+            ]);
+          }
           const migrate = async () => {
             await db.query("insert into memories(id,user_id) values($1,$2)", [
               memory,
@@ -263,6 +389,24 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
           };
           if (loginFirst) await migrate();
           strictEqual(await complete(job), true);
+          if (loginFirst) {
+            const recovered = (await db.query<any>(
+              "select * from guest_generation_jobs where id=$1",
+              [guestJob],
+            )).rows[0];
+            strictEqual(recovered.status, "completed");
+            deepStrictEqual(
+              recovered.sentences.map((s: any) => s.id),
+              sentences.map((s) => s.id),
+            );
+            deepStrictEqual(
+              recovered.sentences.map((s: any) => s.english),
+              sentences.map((s) => s.english),
+            );
+            for (const s of recovered.sentences) {
+              deepStrictEqual(s.learning_topic_ids, ["natural_scenery"]);
+            }
+          }
           if (!loginFirst) await migrate();
           for (const s of sentences) {
             const saved = (await db.query<any>(
@@ -272,6 +416,14 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
             strictEqual(saved.user_id, owner);
             strictEqual(saved.expression_purpose, s.expression_purpose);
             strictEqual(saved.purpose_embedding.length, 1024);
+            deepStrictEqual(saved.learning_topic_ids, ["natural_scenery"]);
+            deepStrictEqual(
+              (await db.query<any>(
+                "select learning_topic_ids from memory_sentences where id=$1",
+                [s.id],
+              )).rows[0].learning_topic_ids,
+              ["natural_scenery"],
+            );
             strictEqual(
               (await db.query<any>(
                 "select user_id from matched_sentences where sentence_id=$1",
@@ -303,6 +455,7 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
           job.sentences.every((s: any) => typeof s.id === "string"),
           true,
         );
+        strictEqual(await checkpoint(job), true);
         strictEqual(await complete(job), true);
       },
     );
@@ -332,6 +485,7 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
               "claim_generation_enrichment(uuid)",
               "retry_generation_enrichment(uuid,uuid,text)",
               "complete_generation_enrichment(uuid,uuid,jsonb)",
+              "save_generation_enrichment_metadata(uuid,uuid,jsonb)",
             ]
           ) {
             strictEqual(

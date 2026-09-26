@@ -74,11 +74,18 @@ failure without a response, only `http_timeout` / `http_transport_failed` and
 client recovery timing are available. `server_timings_unavailable` means the
 response lacked these headers (e.g. old deployment or proxy-generated error).
 
-Vector generation and topic matching run in the background, so their execution
+Sentence classification, expression purposes, vector generation and topic matching run in the background, so their execution
 is deliberately not included in these foreground timing logs. This diagnostic
 change does not alter generation, recovery, charging, or background scheduling.
 
 ## Prompt compaction baseline (2026-09-26)
+
+Historical measurements below describe the three compaction experiments, which
+were subsequently reverted for the two-stage pipeline. Current generation restores
+the detailed sentence instructions from `5351ee5` but removes metadata tasks.
+See [two-stage generation](generation-enrichment.md) for the current migration and
+function deployment requirements. The earlier "no migration" notes apply only to
+those historical prompt-only changes.
 
 The subsequent prompt-only change consolidates JSON rules, lists each topic
 boundary once, and shortens repeated wording. Full three/six-sentence JSON

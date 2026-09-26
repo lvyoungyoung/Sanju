@@ -1,11 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithinDeadline, fetchWithTimeout } from "./fetch-with-timeout.ts"
+import { generateSentenceMetadata, parseSentenceMetadata } from "./sentence-metadata.ts"
 
 export interface IndexableSentence {
   id: string
   english: string
   chinese: string
   expression_purpose?: string
+  learning_topic_ids?: string[]
 }
 
 // A separate deadline/client is essential: returning the generation response
@@ -41,15 +43,30 @@ export async function processGenerationEnrichment(
 ) {
   let completed = 0
   let failed = 0
-  for (let batch = 0; batch < 3 && Date.now() < deadline - 12_000; batch++) {
+  for (let batch = 0; batch < 3 && Date.now() < deadline - 32_000; batch++) {
     const claim = await client.rpc("claim_generation_enrichment", { p_user_id: userID })
     if (claim.error) throw new Error(`Index claim failed: ${claim.error.message}`)
     const job = claim.data?.[0]
     if (!job) break
     try {
-      const rows = await buildSentenceEmbeddingRows(job.sentences, fetcher)
-      // Incomplete routes are retried, not silently treated as indexed. Old
-      // payloads without a purpose still support the original-text route.
+      const metadata = job.metadata != null
+        ? parseSentenceMetadata(job.metadata, job.sentences)
+        : await generateSentenceMetadata(job.sentences, fetcher)
+      if (job.metadata == null) {
+        // Checkpoint before embedding so a vector retry does not repeat the AI call.
+        const saved = await client.rpc("save_generation_enrichment_metadata", {
+          p_job_id: job.id, p_lease_token: job.lease_token, p_metadata: metadata,
+        })
+        if (saved.error) throw new Error(`Metadata checkpoint failed: ${saved.error.message}`)
+        if (saved.data !== true) continue
+      }
+      const enriched = job.sentences.map((sentence: IndexableSentence, index: number) => ({
+        ...sentence,
+        expression_purpose: metadata[index].expression_purpose,
+        learning_topic_ids: metadata[index].learning_topic_ids,
+      }))
+      const rows = await buildSentenceEmbeddingRows(enriched, fetcher)
+      // Both vectors must be complete before publishing metadata and topic matches.
       if (rows.some((row) => !row.embedding || (row.expression_purpose && !row.purpose_embedding))) {
         throw new Error("Incomplete sentence embeddings")
       }

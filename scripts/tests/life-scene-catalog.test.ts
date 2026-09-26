@@ -3,6 +3,7 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert";
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
 const generation = await read("supabase/functions/generate-memory-v2/index.ts");
+const metadata = await read("supabase/functions/_shared/sentence-metadata.ts");
 const recovery = await read(
   "supabase/functions/recover-guest-generation/index.ts",
 );
@@ -45,6 +46,10 @@ Deno.test("all active topic catalogs contain the same 21 life scenes", () => {
     match,
   ) => match[1]);
   deepStrictEqual(generatedIDs, expected);
+  deepStrictEqual(
+    [...metadata.matchAll(/^  \["([a-z_]+)",/gm)].map((m) => m[1]),
+    expected,
+  );
   deepStrictEqual(clientIDs, expected);
   for (const source of [creation, recovery]) {
     const block = source.match(
