@@ -30,10 +30,12 @@ const api = await import(
   type SentencePresentationGroup = "what_i_see" | "what_i_say";
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   const Deno = {env:{get:()=>"test"}};
-  const LEARNING_TOPIC_IDS = new Set(["natural_scenery"]);
-  const LEARNING_TOPIC_PROMPT = "test";
-  const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = "test";
-  ${source.match(/^const EXPRESSION_PURPOSE_PROMPT = .*$/m)?.[0]}
+  ${
+    source.slice(
+      source.indexOf("const MEMORY_TAGS"),
+      source.indexOf("function buildPromptText"),
+    )
+  }
   ${
     [
       "normalizeExpressionPurpose",

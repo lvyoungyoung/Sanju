@@ -10,9 +10,12 @@ ok(promptFunction);
 const { buildPromptText } = await import(
   "data:application/typescript," + encodeURIComponent(`
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
-  const LEARNING_TOPIC_PROMPT = "test topics";
-  const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = "test boundaries";
-  ${source.match(/^const EXPRESSION_PURPOSE_PROMPT = .*$/m)?.[0]}
+  ${
+    source.slice(
+      source.indexOf("const MEMORY_TAGS"),
+      source.indexOf("function buildPromptText"),
+    )
+  }
   export ${promptFunction}
 `)
 );

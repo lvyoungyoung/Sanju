@@ -77,3 +77,19 @@ response lacked these headers (e.g. old deployment or proxy-generated error).
 Vector generation and topic matching run in the background, so their execution
 is deliberately not included in these foreground timing logs. This diagnostic
 change does not alter generation, recovery, charging, or background scheduling.
+
+## Prompt compaction baseline (2026-09-26)
+
+The subsequent prompt-only change consolidates JSON rules, lists each topic
+boundary once, and shortens repeated wording. Full three/six-sentence JSON
+examples, difficulty/style rules, scene-expression order, all 21 classification
+IDs, up to two ordered labels, and grounded expression purposes are retained.
+It does not change the model, output fields, token limit, timeout or fallback.
+
+At medium difficulty and the everyday style, the dual-tab prompt decreased from
+4,994 to 3,348 characters (33.0%); the legacy prompt from 3,834 to 2,364 (38.3%).
+These are Unicode character counts of the text prompt only, **not token counts**.
+No live model quality or latency comparison was performed locally. Compare
+several identical photos/preferences after deploying `generate-memory-v2`, using
+`server.mimo` and `client_total_ms`; do not infer proportional speedup from size.
+No database migration or client update is needed for this prompt-only change.
