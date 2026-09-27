@@ -8,17 +8,13 @@ import {
   parseSentenceMetadata,
 } from "../supabase/functions/_shared/sentence-metadata.ts";
 
+import * as generation from "../supabase/functions/generate-memory-v2/content.ts";
+
 const root = new URL("../", import.meta.url);
-const generationSource = await Deno.readTextFile(new URL("supabase/functions/generate-memory-v2/index.ts", root));
-// Load the same pure prompt/parser functions used by the endpoint, without starting its server.
-const generation = await import("data:application/typescript," + encodeURIComponent(
-  `import {buildSentenceMetadataRules} from ${JSON.stringify(new URL("../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};\n` +
-  generationSource.slice(generationSource.indexOf("interface Sentence"), generationSource.indexOf("const MIMO_TIMEOUT_MS")) +
-    "\nexport { buildPromptText, parseGeneratedContent, parseJSONObject };",
-));
+const generationSource = await Deno.readTextFile(new URL("supabase/functions/generate-memory-v2/content.ts", root));
 
 export function buildBenchmarkPrompts(level = "简单") {
-  const combined: string = generation.buildPromptText(level, "平铺直叙", "dual_tabs_v1");
+  const combined: string = generation.buildPromptText(level as Parameters<typeof generation.buildPromptText>[0], "平铺直叙", "dual_tabs_v1");
   const metadata = buildSentenceMetadataPrompt();
   const rules = buildSentenceMetadataRules() + "\n分类和表达用途仅依据该句本身，不借用其他句子的背景；句子难度限制适用于 english 字段。\n\n";
   const exampleStart = combined.lastIndexOf("\n{");
@@ -60,9 +56,9 @@ export function validateGeneration(content: string, combined: boolean): Sentence
   const result = generation.parseGeneratedContent(content, "dual_tabs_v1");
   const raw = generation.parseJSONObject(content);
   if (!result || !raw || result.sentences.length !== 6) throw new Error("Invalid generation output");
-  const sentences = result.sentences.map((s: Sentence) => ({ id: crypto.randomUUID(), english: s.english, chinese: s.chinese }));
+  const sentences = result.sentences.map((s) => ({ id: crypto.randomUUID(), english: s.english, chinese: s.chinese }));
   if (combined) {
-    const items = [...raw.image_descriptions, ...raw.scene_and_feelings];
+    const items: Record<string, unknown>[] = [...raw.image_descriptions, ...raw.scene_and_feelings];
     parseSentenceMetadata(items.map((s, i) => ({ ...s, sentence_id: sentences[i].id })), sentences);
   }
   return sentences;

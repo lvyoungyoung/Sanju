@@ -2,12 +2,12 @@ import { deepStrictEqual, ok, strictEqual } from "node:assert";
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
-const generation = await read("supabase/functions/generate-memory-v2/index.ts");
+const generation = await read("supabase/functions/generate-memory-v2/content.ts");
 const metadata = await read("supabase/functions/_shared/sentence-metadata.ts");
 const recovery = await read(
   "supabase/functions/recover-guest-generation/index.ts",
 );
-const creation = await read("supabase/functions/create-study-scene/index.ts");
+const creation = await read("supabase/functions/create-study-scene/handler.ts");
 const swift = await read("三句/LearningTopics.swift");
 const migration = await read(
   "supabase/migrations/20260920001000_use_photo_life_scenes.sql",

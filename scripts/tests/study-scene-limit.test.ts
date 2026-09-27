@@ -1,14 +1,9 @@
 import { strictEqual } from "node:assert";
+import { readFunctionSource } from "./helpers/function-source.ts";
 
-const source = await Deno.readTextFile(
+const source = await readFunctionSource(
   new URL(
     "../../supabase/functions/create-study-scene/index.ts",
-    import.meta.url,
-  ),
-);
-const categories = await Deno.readTextFile(
-  new URL(
-    "../../supabase/functions/create-study-scene/categories.ts",
     import.meta.url,
   ),
 );
@@ -52,7 +47,7 @@ const harness = `
 const { handler, state } = await import(
   "data:application/typescript," +
     encodeURIComponent(
-      harness + categories + source.replace(/^import .*\n/gm, ""),
+      harness + source.replace(/^import .*\n/gm, ""),
     )
 );
 const request = (name = "  描述风景的句子  ", predefined = false) =>

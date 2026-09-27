@@ -2172,7 +2172,13 @@ Deno.test("active client and generation paths do not invoke paused AI review", a
   for (
     const file of [
       "三句/StudySceneDetailView.swift",
-      "supabase/functions/generate-memory-v2/index.ts",
+      "supabase/functions/generate-memory-v2/content.ts",
+      "supabase/functions/generate-memory-v2/responses.ts",
+      "supabase/functions/generate-memory-v2/providers.ts",
+      "supabase/functions/generate-memory-v2/repository.ts",
+      "supabase/functions/generate-memory-v2/moderation.ts",
+      "supabase/functions/generate-memory-v2/handler.ts",
+      "supabase/functions/generate-memory-v2/persist-result.ts",
     ]
   ) {
     const source = await Deno.readTextFile(new URL(file, root));

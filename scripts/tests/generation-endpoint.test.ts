@@ -1,8 +1,9 @@
 import { strictEqual } from "node:assert";
+import { readFunctionSource } from "./helpers/function-source.ts";
 
 // Exercise the actual HTTP handler with overlapping requests. All auth, storage,
 // database and model calls are local doubles; transaction rules are tested in PG.
-const source = await Deno.readTextFile(
+const source = await readFunctionSource(
   new URL(
     "../../supabase/functions/generate-memory-v2/index.ts",
     import.meta.url,
@@ -84,10 +85,11 @@ class Query {
 function createClient(_url:string,key:string,_options?:unknown):any {
   if (key==='anon') return {auth:{getUser:async(token:string)=>({data:{user:{id:token==='other'?'other':'owner',is_anonymous:!!state.anonymous}},error:null})}};
   return {from:(table:string)=>new Query(table), storage:{from:()=>({
-    upload:async()=>({error:null}), remove:async()=>{state.removed++;return {error:null};}
+    upload:async()=>({error:state.uploadFails?{message:'upload unavailable'}:null}), remove:async()=>{state.removed++;return {error:null};}
   })}, rpc:async(name:string,args:any)=>{
     if (name==='try_acquire_generation_slot') return {data:true,error:null};
-    if (name==='release_generation_slot' || name==='refresh_semantic_study_scene_matches_for_sentence') return {data:null,error:null};
+    if (name==='release_generation_slot') {state.released++;return {data:null,error:null};}
+    if (name==='refresh_semantic_study_scene_matches_for_sentence') return {data:null,error:null};
     if (name==='claim_generation_job') {
       const map=args.p_is_anonymous?state.guests:state.jobs;
       const existing=map.get(args.p_request_id);
@@ -102,6 +104,7 @@ function createClient(_url:string,key:string,_options?:unknown):any {
       state.finalizedSentences = args.p_sentences;
       const guest=name==='finalize_guest_generation';
       const job=(guest?state.guests:state.jobs).get(guest?args.p_guest_job_id:args.p_client_request_id);
+      if (state.finalizeRejected) return {data:null,error:{message:'constraint rejected',code:'23514'}};
       state.debits++; state.balance--;
       const id=state.canonicalID ?? args.p_memory_id;
       if (!guest) state.memories.set(id,{id,user_id:args.p_user_id,image_url:args.p_image_path,
@@ -109,6 +112,7 @@ function createClient(_url:string,key:string,_options?:unknown):any {
         memory_sentences:args.p_sentences.map((s:any,i:number)=>({...s,sort_order:i}))});
       if (job) Object.assign(job,{status:'completed',memory_id:id,image_path:args.p_image_path ?? job.image_path,
         sentences:args.p_sentences,tags:args.p_tags,provider:args.p_provider,remaining_credits:state.balance});
+      if (state.finalizeThrows) throw new Error('transport disconnected after commit');
       if (state.finalizeResponseLost) return {data:null,error:{message:'request timed out',code:''}};
       return {data:state.balance,error:null};
     }
@@ -136,6 +140,10 @@ function reset(options: Record<string, unknown> = {}) {
     missingMetadata: false,
     unsolicitedTags: false,
     removed: 0,
+    released: 0,
+    uploadFails: false,
+    finalizeRejected: false,
+    finalizeThrows: false,
     debits: 0,
     dual: true,
     anonymous: false,
@@ -382,6 +390,34 @@ Deno.test("policy rejection stays terminal without model calls or debits; legacy
   strictEqual((await result.json()).memory.sentences.length, 3);
   strictEqual(state.debits, 1);
   strictEqual(state.jobs.size, 0);
+});
+
+Deno.test("extracted persistence preserves the commit boundary when finalization throws", async () => {
+  for (const anonymous of [false, true]) {
+    reset({ anonymous, finalizeThrows: true });
+    strictEqual((await handler(request())).status, 504);
+    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
+    strictEqual(state.removed, 0);
+    strictEqual(state.released, 1);
+    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual((await handler(request())).status, 200);
+    strictEqual(state.debits, 1);
+    strictEqual(state.calls, 1);
+  }
+});
+
+Deno.test("definite upload or transaction failures do not debit and release the generation slot", async () => {
+  for (const anonymous of [false, true]) {
+    for (const failure of ["uploadFails", "finalizeRejected"]) {
+      reset({ anonymous, [failure]: true });
+      strictEqual((await handler(request())).status, 500);
+      strictEqual(state.debits, 0);
+      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
+      strictEqual(state.released, 1);
+      strictEqual(state.removed, failure === "finalizeRejected" ? 1 : 0);
+      if (failure === "uploadFails") strictEqual(state.backgroundScopes.length, 0);
+    }
+  }
 });
 
 Deno.test("a stalled MiMo body falls back to Kimi; two stalled bodies never debit", async () => {

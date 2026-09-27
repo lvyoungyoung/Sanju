@@ -1,11 +1,11 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
 
-const source = await Deno.readTextFile(
+const source = (await Deno.readTextFile(
   new URL(
-    "../../supabase/functions/generate-memory-v2/index.ts",
+    "../../supabase/functions/generate-memory-v2/content.ts",
     import.meta.url,
   ),
-);
+)).replace(/^export /gm, "");
 const indexingSource = await Deno.readTextFile(
   new URL(
     "../../supabase/functions/_shared/generation-enrichment.ts",

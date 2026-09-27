@@ -3,26 +3,10 @@ import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
-const source = await read("supabase/functions/generate-memory-v2/index.ts");
-const promptFunction = source.match(/function buildPromptText\([\s\S]*?\n}/)
-  ?.[0];
-ok(promptFunction);
-const { buildPromptText } = await import(
-  "data:application/typescript," + encodeURIComponent(`
-  import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
-  type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
-  ${
-    source.slice(
-      source.indexOf("const LEARNING_TOPICS"),
-      source.indexOf("function buildPromptText"),
-    )
-  }
-  export ${promptFunction}
-`)
-);
+import { buildPromptText } from "../../supabase/functions/generate-memory-v2/content.ts";
 
 Deno.test("starter overrides lyrical style in both generation formats", () => {
-  for (const format of ["legacy_v1", "dual_tabs_v1"]) {
+  for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
     const prompt = buildPromptText("启蒙", "抒情优美", format);
     strictEqual(prompt, buildPromptText("启蒙", "平铺直叙", format));
     ok(prompt.includes("3 到 6 个英文单词"));
@@ -53,8 +37,8 @@ Deno.test("non-starter levels support lyrical style within their difficulty", ()
       "14 到 24 个单词",
     ]]
   ) {
-    for (const format of ["legacy_v1", "dual_tabs_v1"]) {
-      const prompt = buildPromptText(level, "抒情优美", format);
+    for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
+      const prompt = buildPromptText(level as Parameters<typeof buildPromptText>[0], "抒情优美", format);
       ok(prompt.includes(length));
       ok(prompt.includes("整体风格请明显更细腻"));
       ok(!prompt.includes("启蒙难度："));

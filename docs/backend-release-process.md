@@ -17,7 +17,7 @@
 
 ### GitHub Actions 发布
 
-1. 在本地修改 `supabase/functions/<function-name>/index.ts`。
+1. 在本地修改 `supabase/functions/<function-name>/` 下的入口和业务模块；依赖文件随函数打包，不是独立的部署目标。
 2. 如果新增或删除函数，同步更新 `scripts/edge-functions.txt` 和 `.github/workflows/backend-functions.yml` 的 `workflow_dispatch` 选项。
 3. 本地运行检查。
 
@@ -116,7 +116,7 @@ The upstream server is timing out
    git rev-parse --short HEAD
    ```
 
-5. 只有当 GitHub Actions / CLI 发布不可用时，才从本地仓库当前版本复制完整函数内容到阿里云 Supabase Edge Function 编辑器。
+5. 只有当 GitHub Actions / CLI 发布不可用时，才考虑阿里云 Supabase Edge Function 编辑器。必须保留全部相对导入依赖及目录结构；不能只粘贴 `index.ts`。编辑器不支持多文件依赖时，恢复 CLI 发布，不手动拼接或遗漏模块。
 
    ```bash
    pbcopy < supabase/functions/<function-name>/index.ts

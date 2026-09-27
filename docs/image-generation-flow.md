@@ -1,6 +1,6 @@
 # 图片生成完整链路
 
-核对日期：2026-09-21。依据当前本地仓库代码及迁移顺序整理，已更新任务执行权和完整响应超时改动，未连接 staging / production 验证实际部署版本、环境变量、Nginx 配置或运行日志。
+核对日期：2026-09-27。依据当前本地仓库代码及迁移顺序整理，已更新任务执行权、完整响应超时与业务阶段拆分，未连接 staging / production 验证实际部署版本、环境变量、Nginx 配置或运行日志。生成和主题创建的统一总览见 [两条业务链路与模块职责](generation-and-study-theme-flows.md)。
 
 ## 1. 总览
 
@@ -19,7 +19,7 @@
 → 匿名：事务保存可恢复任务结果、扣次、完成任务
 → 同事务登记后台向量任务 → 写诊断信息
 → 返回 JSON → 手机保存回忆、余额并展示
-→ 后台独立执行向量化/匹配已有主题（失败可重试）
+→ 后台独立执行向量化/匹配已有主题（仅本次结果的首次尝试，无自动补偿）
 → 登录用户另行用较清晰的回忆图覆盖云端分析图
 ```
 
@@ -193,7 +193,7 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 | 审核内部 | 凭证/审核请求各 10 秒，OSS 上传 15 秒 | 不应简单累加成主生成函数必等的时间 |
 | MiMo | 20 秒 | 失败后才尝试 Kimi |
 | Kimi | 20 秒 | 不与 MiMo 同时跑 |
-| 句子 embedding | 8 秒 | 提交成功后仍在返回前等待 |
+| 句子 embedding | 8 秒 | 在后台执行，不阻塞生成结果返回 |
 | 客户端回忆图片上传 | 30 秒 | 发生在本地保存之后，失败转待上传队列 |
 | 恢复子操作 | 12 秒 | 还要加多轮等待，且取消并非无条件硬截止 |
 
@@ -214,10 +214,11 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 ## 15. 主要代码入口
 
 - `三句/NewLearningView.swift`：选图、生成按钮、进度展示、恢复交互。
-- `三句/AppModel+Memories.swift`：图片准备、请求标识、生成请求、结果持久化、恢复、图片补传。
+- `三句/AppModel+Generation.swift`：图片准备、请求标识、生成请求、结果持久化、恢复。
+- `三句/AppModel+Memories.swift`：回忆同步和图片补传。
 - `三句/ImageCompressor.swift`：分析图和回忆图压缩参数。
 - `三句/SupabaseService.swift`、`三句/SupabaseModels.swift`：请求/解码/错误分类。
-- `supabase/functions/generate-memory-v2/index.ts`：前置检查、审核、模型切换、提交和响应。
+- `supabase/functions/generate-memory-v2/index.ts`：HTTP 注册和计时；`handler.ts` 串联验证、审核、模型调用与保存，`persist-result.ts` 负责结果提交。各阶段职责见统一总览。
 - `supabase/functions/_shared/generation-enrichment.ts`：本次生成的首次后台向量处理、领取任务及失败状态保存。
 - `supabase/functions/process-generation-enrichment/index.ts`：已停用的管理补偿入口（HTTP 410）。创建主题补偿也已停用；生成后仅尝试本次结果的首次后台处理。详见 `docs/generation-enrichment.md`。
 - `supabase/functions/moderate-image-v1/index.ts`：阿里云 OSS 上传和审核风险判断。
@@ -228,8 +229,8 @@ finalize 最新定义来自 `20260925001000_defer_generation_enrichment.sql`，�
 - `supabase/migrations/20260921005000_claim_generation_jobs_atomically.sql`：原子执行权、账号隔离和终态保护。
 - `supabase/functions/_shared/fetch-with-timeout.ts`：完整响应读取超时、父请求取消与共享网络预算。
 
-## 16. 本轮部署与验证
+## 16. 部署与验证
 
-先对 staging 应用 `20260921005000_claim_generation_jobs_atomically.sql`，再部署 `generate-memory-v2` 和 `moderate-image-v1`（会打包共享模块，不单独部署 `_shared`）。客户端增加 `generation_in_progress` 恢复分类，需重新构建；旧三句接口和 finalize 签名不变。`recover-guest-generation` 本轮未改，不需要重新部署。前置迁移须已按顺序应用。
+2026-09-27 的职责拆分只需部署 `generate-memory-v2` 和 `create-study-scene`，没有新 SQL migration。依赖模块随函数一起打包，不单独部署。客户端重新构建；请求、响应和 finalize 签名不变。`recover-guest-generation`、`moderate-image-v1` 本轮未改，不需要重新部署。历史前置迁移仍须已按顺序应用。
 
 测试涵盖重叠 HTTP 请求只执行一次模型、已完成结果复用、跨账号 ID、回滚/扣次、响应丢失保留结果与图片、匿名 acknowledged、旧三句请求、正文停滞切换 Kimi、双模型停滞不扣次、父取消和完整响应状态保持。数据库测试使用本地 PGlite 执行真实 SQL；HTTP 测试使用真实 handler 与本地替身，不调用付费模型；没有做线上负载测试或真实多连接 PostgreSQL 压测。

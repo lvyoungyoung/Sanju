@@ -1,26 +1,9 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
 
-const source = await Deno.readTextFile(
-  new URL(
-    "../../supabase/functions/generate-memory-v2/index.ts",
-    import.meta.url,
-  ),
-);
-const { buildPromptText, parseGeneratedContent } = await import(
-  "data:application/typescript," + encodeURIComponent(`
-    import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
-    ${
-    source.slice(
-      source.indexOf("interface Sentence"),
-      source.indexOf("const MIMO_TIMEOUT_MS"),
-    )
-  }
-    export { buildPromptText, parseGeneratedContent };
-  `)
-);
-const levels = ["启蒙", "简单", "中等", "高级"];
-const styles = ["平铺直叙", "抒情优美"];
-const formats = ["legacy_v1", "dual_tabs_v1"];
+import { buildPromptText, parseGeneratedContent } from "../../supabase/functions/generate-memory-v2/content.ts";
+const levels = ["启蒙", "简单", "中等", "高级"] as const;
+const styles = ["平铺直叙", "抒情优美"] as const;
+const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 
 Deno.test("combined generation requests sentence text, categories and purposes together", () => {
   for (const format of formats) {
@@ -49,7 +32,8 @@ Deno.test("combined generation requests sentence text, categories and purposes t
         ok(prompt.includes("self_and_style"));
         ok(!prompt.includes("tags"));
         const parsed = parseGeneratedContent(JSON.stringify(example), format);
-        strictEqual(parsed.tags, undefined);
+        ok(parsed);
+        strictEqual("tags" in parsed, false);
         strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
         for (const item of parsed.sentences) {
           deepStrictEqual(
@@ -87,7 +71,8 @@ Deno.test("unsolicited photo tags are ignored without discarding sentence metada
     const prompt = buildPromptText("简单", "平铺直叙", format);
     const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
     const parsed = parseGeneratedContent(JSON.stringify({...example, tags: ["风景", "旅行"]}), format);
-    strictEqual(parsed.tags, undefined);
+    ok(parsed);
+    strictEqual("tags" in parsed, false);
     strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
     strictEqual(parsed.sentences.every((s: any) => s.expression_purpose && Array.isArray(s.learning_topic_ids)), true);
   }
@@ -142,7 +127,7 @@ Deno.test("active difficulty tiers keep one English length range across styles a
   for (const [level, range] of Object.entries(ranges)) {
     for (const format of formats) {
       for (const style of styles) {
-        const prompt = buildPromptText(level, style, format);
+        const prompt = buildPromptText(level as Parameters<typeof buildPromptText>[0], style, format);
         deepStrictEqual(prompt.match(/\d+ 到 \d+ 个英文单词/g), [range]);
         ok(
           prompt.includes(
@@ -185,7 +170,7 @@ Deno.test("difficulty progression changes information and grammar rather than le
   for (const [level, rules] of Object.entries(guidance)) {
     for (const format of formats) {
       for (const style of styles) {
-        const prompt = buildPromptText(level, style, format);
+        const prompt = buildPromptText(level as Parameters<typeof buildPromptText>[0], style, format);
         for (const rule of rules) {
           ok(prompt.includes(rule), `${level}: ${rule}`);
         }

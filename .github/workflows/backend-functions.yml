@@ -14,6 +14,7 @@ on:
       - "scripts/tests/sentence-metadata.test.ts"
       - "scripts/benchmark-generation-metadata.ts"
       - "scripts/tests/generation-*.test.ts"
+      - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
@@ -33,6 +34,7 @@ on:
       - "scripts/tests/sentence-metadata.test.ts"
       - "scripts/benchmark-generation-metadata.ts"
       - "scripts/tests/generation-*.test.ts"
+      - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
@@ -94,7 +96,7 @@ jobs:
         run: deno test --no-lock --allow-read scripts/tests/study-scene-limit.test.ts scripts/tests/sentence-purpose.test.ts
 
       - name: Test generation retries and full-response deadlines
-        run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-prompt.test.ts scripts/tests/generation-timeouts.test.ts scripts/tests/generation-timing.test.ts scripts/tests/generation-enrichment-timing.test.ts scripts/tests/generation-enrichment-worker.test.ts
+        run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-prompt.test.ts scripts/tests/generation-timeouts.test.ts scripts/tests/generation-timing.test.ts scripts/tests/generation-enrichment-timing.test.ts scripts/tests/generation-enrichment-worker.test.ts scripts/tests/generation-module-boundaries.test.ts
 
       - name: Test combined metadata and benchmark validation
         run: deno test --no-lock --allow-read scripts/tests/sentence-metadata.test.ts scripts/tests/generation-metadata-benchmark.test.ts
