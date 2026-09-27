@@ -839,6 +839,100 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         await rejects(() => scopedClaim(null, null, created.scene.id));
       },
     );
+    await t.step("disabling theme repairs stops existing enrollments without invalidating active work", async () => {
+      await clean();
+      const activeMemory = crypto.randomUUID(), pendingMemory = crypto.randomUUID();
+      await finish(activeMemory, null);
+      await finish(pendingMemory, null);
+      await begin();
+      const active = await scopedClaim(activeMemory);
+      const before = (await db.query("select * from generation_enrichment_jobs order by id")).rows;
+      const migration = await Deno.readTextFile(new URL("20260927001000_disable_scene_creation_enrichment.sql", root));
+      await db.exec(migration);
+      await db.exec(migration);
+      deepStrictEqual((await db.query("select * from generation_enrichment_jobs order by id")).rows, before);
+      deepStrictEqual(await status(), {pendingCount: 0, completedCount: 0, failedCount: 0, retryAfterSeconds: 5});
+      deepStrictEqual(await begin(), await status());
+      strictEqual(await scopedClaim(null, null, scene), undefined);
+      strictEqual(await claim(null), undefined);
+      strictEqual(await checkpoint(active), true);
+      strictEqual(await complete(active), true);
+      const pending = await scopedClaim(pendingMemory);
+      strictEqual(pending.memory_id, pendingMemory);
+      strictEqual(await checkpoint(pending), true);
+      strictEqual(await complete(pending), true);
+      strictEqual(await count("sentence_embeddings"), 12);
+      strictEqual(await count("matched_sentences"), 12);
+    });
+
+    await t.step("theme creation no longer scans, resets failures or enrolls historical sentences", async () => {
+      await clean();
+      const historical = crypto.randomUUID(), failedMemory = crypto.randomUUID();
+      await db.query("insert into memories(id,user_id) values($1,$2)", [historical, owner]);
+      await db.query("insert into memory_sentences(id,memory_id,english,chinese) values(gen_random_uuid(),$1,'A lake.','湖。')", [historical]);
+      await finish(failedMemory, null);
+      const failed = await scopedClaim(failedMemory);
+      await checkpoint(failed);
+      await db.query("select retry_generation_enrichment($1,$2,'offline')", [failed.id, failed.lease_token]);
+      await db.exec("update generation_enrichment_jobs set next_attempt_at=now()");
+      const before = (await db.query("select * from generation_enrichment_jobs")).rows;
+      const credits = await balance();
+      // Even an unavailable enrollment table must no longer block theme creation.
+      await db.exec("alter table study_scene_enrichment_jobs add constraint reject_enrollment check(false) not valid");
+      await db.query("select * from create_study_scene_with_embedding($1,'New theme','[]','qwen3.7-text-embedding')", [owner]);
+      const legacy = (await db.query<any>("select create_study_scene_with_enrichment($1,'Legacy theme','[]') as result", [owner])).rows[0].result;
+      strictEqual(legacy.enrichment.pendingCount, 0);
+      deepStrictEqual(await begin(), await status());
+      deepStrictEqual((await db.query("select * from generation_enrichment_jobs")).rows, before);
+      strictEqual(await count("study_scene_enrichment_jobs"), 0);
+      strictEqual(await scopedClaim(failedMemory), undefined);
+      strictEqual(await scopedClaim(null, null, legacy.scene.id), undefined);
+      strictEqual(await balance(), credits);
+      await db.exec("alter table study_scene_enrichment_jobs drop constraint reject_enrollment");
+    });
+
+    await t.step("normal guest indexing and late login promotion still complete without theme repairs", async () => {
+      await clean();
+      const guestJob = crypto.randomUUID(), memory = crypto.randomUUID(), sentences = payload(3);
+      await db.query("insert into guest_generation_jobs(id,user_id,status) values($1,$2,'pending')", [guestJob, guest]);
+      await db.query("select finalize_guest_generation($1,$2,now(),'mimo',$3::jsonb,'{}')", [guest, guestJob, JSON.stringify(sentences)]);
+      strictEqual(await scopedClaim(null, guestJob), undefined);
+      const job = await scopedClaim(null, guestJob, null, guest);
+      strictEqual(job.guest_job_id, guestJob);
+      await db.query("insert into memories(id,user_id) values($1,$2)", [memory, owner]);
+      for (const s of sentences) {
+        await db.query("insert into memory_sentences(id,memory_id,english,chinese) values($1,$2,$3,$4)", [s.id, memory, s.english, s.chinese]);
+      }
+      strictEqual(await checkpoint(job), true);
+      strictEqual(await complete(job), true);
+      strictEqual(await count("sentence_embeddings"), 3);
+      strictEqual((await db.query<any>("select user_id from sentence_embeddings limit 1")).rows[0].user_id, owner);
+      strictEqual(await scopedClaim(null, guestJob, null, guest), undefined);
+    });
+
+    await t.step("disabled repair endpoints preserve ownership, service permissions and the indexing cap", async () => {
+      await clean();
+      await rejects(() => begin(guest));
+      await rejects(() => scopedClaim(null, null, scene, guest));
+      await rejects(() => scopedClaim());
+      await rejects(() => scopedClaim(crypto.randomUUID(), null, scene));
+      for (const role of ["anon", "authenticated", "service_role"]) {
+        for (const fn of [
+          "begin_study_scene_enrichment(uuid,uuid)", "get_study_scene_enrichment_status(uuid,uuid)",
+          "claim_scoped_generation_enrichment(uuid,uuid,uuid,uuid)", "create_study_scene_with_enrichment(uuid,text,jsonb,text)",
+        ]) {
+          strictEqual((await db.query<any>("select has_function_privilege($1,$2,'EXECUTE') as allowed", [role, fn])).rows[0].allowed, role === "service_role");
+        }
+      }
+      const memories: string[] = [];
+      for (let i = 0; i < 9; i++) {
+        const memory = crypto.randomUUID();
+        memories.push(memory);
+        await finish(memory, null, payload(3));
+      }
+      for (const memory of memories.slice(0, 8)) strictEqual((await scopedClaim(memory)).memory_id, memory);
+      strictEqual(await scopedClaim(memories[8]), undefined);
+    });
   } finally {
     await db.close();
   }

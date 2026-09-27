@@ -100,18 +100,21 @@ Deno.test("custom topics embed user text directly without MiMo and reuse categor
     strictEqual(state.savedName, name);
     strictEqual(state.textType, "query");
     strictEqual(state.calls, 1);
-    strictEqual(state.rpcName, "create_study_scene_with_enrichment");
+    strictEqual(state.rpcName, "create_study_scene_with_embedding");
   }
 });
 
-Deno.test("only creation enrolls missing work; owned status calls continue without model or scan", async () => {
+Deno.test("creation does not enroll repairs and legacy status requests stop without work", async () => {
   reset();
   state.pending = 2;
   const created = await handler(request());
   strictEqual(created.status, 200);
-  strictEqual((await created.json()).enrichment.pendingCount, 2);
-  strictEqual(state.rpcName, "create_study_scene_with_enrichment");
-  strictEqual(state.background[0].sceneID, "scene");
+  const body = await created.json();
+  strictEqual(body.scene.id, "scene");
+  strictEqual(body.enrichment, undefined);
+  strictEqual(state.rpcName, "create_study_scene_with_embedding");
+  strictEqual(state.enrichmentCalls.length, 0);
+  strictEqual(state.background.length, 0);
   const poll = () =>
     new Request("https://example.invalid/create-study-scene", {
       method: "POST",
@@ -126,13 +129,16 @@ Deno.test("only creation enrolls missing work; owned status calls continue witho
   strictEqual(state.enrichmentCalls.length, 0);
   state.existing = true;
   state.pending = 2;
-  strictEqual((await handler(poll())).status, 200);
-  strictEqual(state.enrichmentCalls[0][0], "get_study_scene_enrichment_status");
+  const stopped = await handler(poll());
+  strictEqual(stopped.status, 200);
+  strictEqual((await stopped.json()).enrichment.pendingCount, 0);
+  strictEqual(state.enrichmentCalls.length, 0);
+  strictEqual(state.rpcs, 0);
   strictEqual(state.calls, 0);
-  strictEqual(state.background.length, 1);
+  strictEqual(state.background.length, 0);
   state.pending = 0;
   await handler(poll());
-  strictEqual(state.background.length, 1);
+  strictEqual(state.background.length, 0);
   state.anonymous = true;
   strictEqual((await handler(poll())).status, 401);
 });
@@ -141,7 +147,7 @@ Deno.test("predefined topics use the same name embedding and creation RPC", asyn
   strictEqual((await handler(request("自然风景", true))).status, 200);
   strictEqual(state.calls, 1);
   strictEqual(state.input[0], "自然风景");
-  strictEqual(state.rpcName, "create_study_scene_with_enrichment");
+  strictEqual(state.rpcName, "create_study_scene_with_embedding");
 });
 Deno.test("capacity and concurrent rejections preserve the existing message", async () => {
   for (const predefined of [false, true]) {

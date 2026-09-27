@@ -36,7 +36,6 @@ const api = await import(
 );
 const vector = [1, ...Array(1023).fill(0)];
 const initialScope = { userID: "owner", memoryID: "memory" };
-const sceneScope = { userID: "owner", sceneID: "scene" };
 const sentences = [{
   id: "sentence",
   english: "This is a cat.",
@@ -69,6 +68,7 @@ function fixture(
       calls.push(name);
       if (name === "claim_scoped_generation_enrichment") {
         strictEqual(args.p_user_id, "owner");
+        strictEqual(args.p_scene_id, null);
         strictEqual(
           [args.p_memory_id, args.p_guest_job_id, args.p_scene_id].filter(
             Boolean,
@@ -268,17 +268,17 @@ Deno.test("checkpointed metadata is reused on retries; lost leases do not start 
   strictEqual(stale.finished.length, 0);
 });
 
-Deno.test("worker bounds drain batches and refuses to start a batch with an exhausted budget", async () => {
+Deno.test("worker only processes the generated batch and refuses an exhausted budget", async () => {
   const f = fixture(null, 100);
   deepStrictEqual(
-    await api.processGenerationEnrichment(f.client, sceneScope, f.fetcher),
-    { completed: 3, failed: 0 },
+    await api.processGenerationEnrichment(f.client, initialScope, f.fetcher),
+    { completed: 1, failed: 0 },
   );
-  strictEqual(f.finished.length, 3);
+  strictEqual(f.finished.length, 1);
   const g = fixture();
   await api.processGenerationEnrichment(
     g.client,
-    sceneScope,
+    initialScope,
     g.fetcher,
     Date.now(),
   );
@@ -317,7 +317,7 @@ Deno.test("background registration returns immediately while slow work is still 
   strictEqual(rpcCalls, 1);
 });
 
-Deno.test("unsupported background runtime leaves durable work for topic creation rather than blocking response", () => {
+Deno.test("unsupported background runtime preserves unfinished work without blocking the response", () => {
   api.state.tasks = [];
   api.state.clientCalls = 0;
   api.runtime(false);

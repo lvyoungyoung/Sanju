@@ -14,9 +14,8 @@ export interface IndexableSentence {
 export type EnrichmentScope =
   & { userID: string }
   & (
-    | { memoryID: string; guestJobID?: never; sceneID?: never }
-    | { guestJobID: string; memoryID?: never; sceneID?: never }
-    | { sceneID: string; memoryID?: never; guestJobID?: never }
+    | { memoryID: string; guestJobID?: never }
+    | { guestJobID: string; memoryID?: never }
   )
 
 // A separate deadline/client is essential: returning the generation response
@@ -26,7 +25,7 @@ export function scheduleGenerationEnrichment(scope: EnrichmentScope, requestID?:
     EdgeRuntime?: { waitUntil: (task: Promise<unknown>) => void }
   }).EdgeRuntime
   if (!runtime?.waitUntil) {
-    console.warn("[generation-enrichment] background runtime unavailable; missing work awaits topic creation")
+    console.warn("[generation-enrichment] background runtime unavailable; initial enrichment was not started")
     return
   }
   const task = Promise.resolve().then(() => runGenerationEnrichment(scope, requestID)).catch((error) => {
@@ -46,8 +45,8 @@ async function runGenerationEnrichment(scope: EnrichmentScope, requestID?: strin
   return await processGenerationEnrichment(client, scope, fetcher, deadline, timing)
 }
 
-// Claim only one batch at a time; leases allow a later worker to resume after
-// process termination. Finishing persists vectors, matches and completion atomically.
+// Only the generated batch's first attempt is allowed. Leases fence stale workers;
+// finishing persists vectors, matches and completion atomically.
 export async function processGenerationEnrichment(
   client: any,
   scope: EnrichmentScope,
@@ -58,15 +57,14 @@ export async function processGenerationEnrichment(
   let completed = 0
   let failed = 0
   let endedNormally = false
-  const batchLimit = scope.sceneID ? 3 : 1
   try {
-    for (let batch = 0; batch < batchLimit && Date.now() < deadline - 32_000; batch++) {
+    for (let batch = 0; batch < 1 && Date.now() < deadline - 32_000; batch++) {
       const claim = await timing.measure("claim", async () => {
         const result = await client.rpc("claim_scoped_generation_enrichment", {
           p_user_id: scope.userID,
           p_memory_id: scope.memoryID ?? null,
           p_guest_job_id: scope.guestJobID ?? null,
-          p_scene_id: scope.sceneID ?? null,
+          p_scene_id: null,
         })
         if (result.error) throw new Error(`Index claim failed: ${result.error.message}`)
         return result
@@ -127,7 +125,7 @@ export async function processGenerationEnrichment(
       } catch (error) {
         failed++
         const message = error instanceof Error ? error.message : String(error)
-        console.error("[generation-enrichment] retry scheduled", JSON.stringify({ jobID: job.id, attempt: job.attempts, error: message }))
+        console.error("[generation-enrichment] background attempt failed", JSON.stringify({ jobID: job.id, attempt: job.attempts, error: message }))
         await jobTiming.measure("retry_state", async () => {
           const retry = await client.rpc("retry_generation_enrichment", {
             p_job_id: job.id,
