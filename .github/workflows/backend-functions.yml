@@ -11,6 +11,8 @@ on:
       - "scripts/tests/life-scene-catalog.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
       - "scripts/tests/sentence-purpose.test.ts"
+      - "scripts/tests/sentence-metadata.test.ts"
+      - "scripts/benchmark-generation-metadata.ts"
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
@@ -28,6 +30,8 @@ on:
       - "scripts/tests/life-scene-catalog.test.ts"
       - "scripts/tests/study-scene-limit.test.ts"
       - "scripts/tests/sentence-purpose.test.ts"
+      - "scripts/tests/sentence-metadata.test.ts"
+      - "scripts/benchmark-generation-metadata.ts"
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/speech-synthesis.test.ts"
       - "三句/LearningTopics.swift"
@@ -91,6 +95,9 @@ jobs:
 
       - name: Test generation retries and full-response deadlines
         run: deno test --no-lock --allow-read scripts/tests/generation-endpoint.test.ts scripts/tests/generation-prompt.test.ts scripts/tests/generation-timeouts.test.ts scripts/tests/generation-timing.test.ts scripts/tests/generation-enrichment-timing.test.ts scripts/tests/generation-enrichment-worker.test.ts
+
+      - name: Test combined metadata and benchmark validation
+        run: deno test --no-lock --allow-read scripts/tests/sentence-metadata.test.ts scripts/tests/generation-metadata-benchmark.test.ts
 
       - name: Test speech streaming and request limits
         run: deno test --no-lock --allow-read scripts/tests/speech-synthesis.test.ts

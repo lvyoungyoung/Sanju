@@ -25,6 +25,7 @@ const helper = new URL(
 ).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
+  import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
   import type { EnrichmentTiming, EnrichmentStage } from ${JSON.stringify(new URL("../../supabase/functions/_shared/generation-enrichment-timing.ts", import.meta.url).href)};
   type Sentence = any; type FinalizedSentence = any; type IndexableSentence = any;
@@ -79,17 +80,17 @@ const makeFetcher = (fail?: "sentence" | "purpose" | "both") =>
     });
   }) as typeof fetch;
 
-Deno.test("foreground generation no longer requests sentence metadata", () => {
+Deno.test("foreground generation requests metadata without changing the sentence groups", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"]) {
     const prompt = api.buildPromptText("中等", "平铺直叙", format);
-    ok(!prompt.includes("expression_purpose"));
-    ok(!prompt.includes("learning_topic_ids"));
+    ok(prompt.includes("expression_purpose"));
+    ok(prompt.includes("learning_topic_ids"));
     const json = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
     const items = json.sentences ??
       [...json.image_descriptions, ...json.scene_and_feelings];
     strictEqual(items.length, format === "legacy_v1" ? 3 : 6);
     for (const item of items) {
-      deepStrictEqual(Object.keys(item).sort(), ["chinese", "english"]);
+      deepStrictEqual(Object.keys(item).sort(), ["chinese", "english", "expression_purpose", "learning_topic_ids"]);
     }
   }
 });
@@ -164,8 +165,19 @@ Deno.test("purpose parsing is bounded and missing purposes do not discard valid 
     english: "A lake.",
     chinese: "湖。",
     expression_purpose: "Describing a lake.",
+    learning_topic_ids: ["natural_scenery"],
   }]);
   strictEqual(parsed[0].expression_purpose, "Describing a lake.");
+  for (const topics of [undefined, null, ["invalid"], ["natural_scenery", "natural_scenery"]]) {
+    const incomplete = api.normalizeSentenceArray([{
+      english: "A lake.", chinese: "湖。", expression_purpose: "Describing a lake.", learning_topic_ids: topics,
+    }]);
+    strictEqual(incomplete.length, 1);
+    strictEqual(incomplete[0].expression_purpose, undefined, "incomplete metadata must be repaired, not mistaken for intentional empty categories");
+  }
+  strictEqual(api.normalizeSentenceArray([{
+    english: "A lake.", chinese: "湖。", expression_purpose: "Describing a lake.", learning_topic_ids: [],
+  }])[0].expression_purpose, "Describing a lake.");
   strictEqual(
     api.normalizeSentenceArray([{ english: "A lake.", chinese: "湖。" }])
       .length,

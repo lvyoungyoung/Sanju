@@ -1,21 +1,24 @@
-# 两步生成：内容先返回，学习元数据后台补全
+# 合并生成句子元数据，向量与主题匹配留在后台
 
 ## 请求链路
 
 `generate-memory-v2` 仍等待审核、MiMo/Kimi 返回、图片保存和 finalize 数据库事务。
 finalize 在同一事务保存结果、扣一次额度，并写入 `generation_enrichment_jobs`。
-接口随后返回原来的 JSON，不再等待句子分类、表达用途、向量服务和主题匹配。
+一次模型请求同时生成句子、翻译、句子分类和表达用途；接口返回仍不等待向量服务和主题匹配。
 
 第一步恢复到提示词精简之前（`5351ee5`）的完整难度、风格、场景表达和 JSON 示例，
-仅移出句子的分类与表达用途要求；随后调整了三个在用难度的梯度，见下节。新客户端两组三句、
-旧客户端三句及其顺序不变。照片级 `tags` 仍在第一步产生，与句子分类不同。
-初次返回的句子继续包含 `learning_topic_ids: []`，不要求客户端更新。
+随后调整了三个在用难度的梯度，见下节。2026-09-27 对照测试后选择合并方案，
+将完整分类和用途规则放回这次请求；两组三句及其顺序不变。
+照片级 `tags` 与句子分类不同。初次返回的 `learning_topic_ids` 包含生成的分类，
+`expression_purpose` 随结果保存到后台任务，不作为客户端展示字段。不需要更新客户端。
 
-第二步读取已保存的句子，用一次 MiMo 纯文本请求批量生成这 3/6 句的
-`learning_topic_ids` 和 `expression_purpose`。依据句子本身分类，不再上传照片，
-不改写英文、翻译或句子 ID。完整的 21 类边界、最多两个有序分类和用途限制保留。
+后台优先复用任务的 `metadata` 检查点，其次校验并复用随句子保存的分类和用途。
+正常生成不再发起第二次 MiMo 请求。完整的 21 类边界、最多两个有序分类和用途限制保留，
+依据句子本身分类，不借用照片整体背景或其他句子的感受。
 分类/用途通过租约校验后保存到任务的 `metadata`，然后并行生成原句/用途两组向量，
 最后落库并匹配学习主题。向量重试复用已保存的元数据，不再次调用分类模型。
+若模型漏填/错填辅助字段，保留有效句子，不因此让生成失败；后台沿用纯文本补全，
+不改写英文、翻译或句子 ID。缺失分类不能伪装为合法的空数组来跳过补全。
 
 后台使用 `EdgeRuntime.waitUntil`，独立的数据库客户端和 45 秒预算，不沿用生成请求的
 90 秒截止时间，也不依赖手机继续连接。运行时不支持后台保活时不退回同步等待，任务保留在数据库中；
@@ -55,15 +58,16 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 - 不自动补历史缺失向量，不更改主题的匹配阈值、收藏、学习进度和购买逻辑。
 
 生成成功后立即打开主题时，新句子可能还未加入；后台完成后重新获取主题内容即可看到。
-这里没有承诺固定缩短几秒。第二步增加一次文本 AI 调用，但减少第一步的提示词任务和输出量；
-后台耗时不计入生成结果返回时间，需要用真实照片测试内容质量与前台耗时。
+相比之前的分步方案，句子返回会多等待分类/用途，但减少一次模型调用和所有数据就绪的总等待。
+对照实验中合并模型请求平均约 10 秒，不是 App 全链路时长保证，详见
+[对照报告](generation-metadata-benchmark.md)。后台向量耗时仍不计入生成结果返回时间。
 
 ## 部署顺序
 
-1. `Backend Database`：staging + apply，新增 `20260926002000_retry_enrichment_on_scene_creation.sql`；依赖已部署的 `20260925001000_defer_generation_enrichment.sql` 和 `20260926001000_defer_sentence_metadata.sql`。
-2. `Backend Functions`：staging，紧接着部署 `generate-memory-v2`、`create-study-scene` 和 `process-generation-enrichment`。迁移会关闭旧的全局领取入口，必须及时更新生成函数，避免旧函数不能启动首次补全；期间任务不丢失，可在创建主题时补齐。
+1. `Backend Database`：staging + apply，新增 `20260927000000_reuse_generated_sentence_metadata.sql`；此前的后台任务、主题创建补偿和诊断迁移应已按顺序部署。本迁移只让登录 finalize 的任务副本保留分类，不改变保存、扣次、入队的事务规则。
+2. `Backend Functions`：staging，部署 `generate-memory-v2`、`create-study-scene`。两者打包同一个后台 worker，都需要更新，否则创建主题时可能重复生成已经随句子保存的分类/用途。
 3. 后台处理复用已有 `MIMO_API_KEY`、`MIMO_BASE_URL`、`DASHSCOPE_API_KEY`、`DASHSCOPE_EMBEDDING_URL`，无新增环境变量。
-4. 部署后跑 `node scripts/check-client-compatibility.mjs`，更新本地客户端，再测试正常/匿名生成、立即登录迁移，以及首次补全失败后创建主题和页面结果更新。
+4. 不要求更新客户端。测试登录/匿名生成、立即登录迁移，以及向量失败后创建主题和页面结果更新；staging Xcode 日志正常应出现 `background.metadata_reuse`，而不是 `background.metadata_generate`。本次按用户要求不以旧客户端兼容性为验收范围。
 5. 完成 staging 验证后按相同顺序发布 production。
 
 按用户要求，已删除每五分钟触发的 `Backend Enrichment Retry` workflow，不再定时调用函数。
@@ -71,12 +75,8 @@ finalize 在同一事务保存结果、扣一次额度，并写入 `generation_e
 `process-generation-enrichment` 保留一个停用响应：管理员调用返回 HTTP 410，不再执行任务。
 保留文件和部署选项是为了覆盖已经上线的旧函数，仅删除仓库文件不会让线上入口失效。
 不需要调整代理，不需要更新 `recover-guest-generation`；恢复接口只读取已经保存的结果，不应等待向量。
-旧客户端的生成和学习接口保持兼容，新客户端负责深度查找提示和结果刷新。
-
-迁移后旧生成函数仍能使用相同 finalize 参数；已有任务携带用途时，旧 worker 仍可完成。
-新 worker 会为待办补全元数据。新格式任务没有用途时，旧 worker 不能把缺失元数据的任务错误标记完成；
-因此迁移完成后要紧接着更新上述三个函数。无需更新 `recover-guest-generation`，它只读取已保存的结果。
-不要只回滚共享 worker 而保留新前台格式。旧 iOS 客户端无需更新。
+本轮无需更新 `process-generation-enrichment`，它继续停用。无需更新 `recover-guest-generation`，
+匿名 finalize 原本就保存整个句子对象，恢复只读取已保存结果，不负责调用分类或向量模型。
 
 ## 创建主题时补偿
 

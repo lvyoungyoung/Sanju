@@ -9,6 +9,7 @@ const promptFunction = source.match(/function buildPromptText\([\s\S]*?\n}/)
 ok(promptFunction);
 const { buildPromptText } = await import(
   "data:application/typescript," + encodeURIComponent(`
+  import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   ${
     source.slice(

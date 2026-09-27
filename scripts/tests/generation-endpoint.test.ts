@@ -17,6 +17,7 @@ const timingHelper = new URL(
   import.meta.url,
 ).href;
 const harness = `
+import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
 import { GenerationTiming, withGenerationTiming } from ${
   JSON.stringify(timingHelper)
 };
@@ -40,6 +41,7 @@ const fetch = (async (input: any, init?: RequestInit) => {
   if (String(input).includes('moderate-image-v1')) return Response.json({ allowed:false, policyViolation:true, countedViolation:false,
     statusCode:403, code:'generation_policy_violation', publicError:{error:'Blocked',code:'generation_policy_violation'} });
   state.calls++;
+  state.modelRequests.push(JSON.parse(String(init?.body)));
   if ((state.stallMimo && String(input).endsWith('/mimo')) || (state.stallKimi && String(input).endsWith('/kimi'))) {
     return new Response(new ReadableStream({start(controller) {
       init?.signal?.addEventListener('abort',()=>controller.error(init.signal?.reason),{once:true});
@@ -48,7 +50,8 @@ const fetch = (async (input: any, init?: RequestInit) => {
   }
   state.modelStarted?.();
   if (state.modelWait) await state.modelWait;
-  const sentence = { english:'This is a cat.', chinese:'这是一只猫。' };
+  const sentence = { english:'This is a cat.', chinese:'这是一只猫。',
+    ...(state.missingMetadata ? {} : {learning_topic_ids:['pet_life'], expression_purpose:'Describing a cat.'}) };
   const payload = state.dual
     ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence],tags:['动物']}
     : {sentences:[sentence,sentence,sentence],tags:['动物']};
@@ -93,6 +96,7 @@ function createClient(_url:string,key:string,_options?:unknown):any {
       return {data:'acquired',error:null};
     }
     if (name.startsWith('finalize_')) {
+      state.finalizedSentences = args.p_sentences;
       const guest=name==='finalize_guest_generation';
       const job=(guest?state.guests:state.jobs).get(guest?args.p_guest_job_id:args.p_client_request_id);
       state.debits++; state.balance--;
@@ -124,6 +128,9 @@ function reset(options: Record<string, unknown> = {}) {
     memories: new Map(),
     balance: 10,
     calls: 0,
+    modelRequests: [],
+    finalizedSentences: [],
+    missingMetadata: false,
     removed: 0,
     debits: 0,
     dual: true,
@@ -188,10 +195,13 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(delivered.length, 6);
     strictEqual(
       delivered.every((s: any) =>
-        Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 0
+        Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 1 && s.learning_topic_ids[0] === "pet_life"
       ),
       true,
     );
+    strictEqual(state.finalizedSentences.length, 6);
+    strictEqual(state.finalizedSentences.every((s: any) => s.expression_purpose === "Describing a cat."), true);
+    strictEqual(delivered.every((s: any) => s.expression_purpose === undefined), true);
     strictEqual(
       state.embeddingRows,
       undefined,
@@ -215,6 +225,19 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
       1,
       "reading a completed result must not trigger compensation",
     );
+  }
+});
+
+Deno.test("missing auxiliary metadata keeps valid sentences and leaves repair to the background", async () => {
+  for (const anonymous of [false, true]) {
+    reset({ anonymous, missingMetadata: true });
+    const response = await handler(request());
+    strictEqual(response.status, 200);
+    strictEqual((await response.json()).memory.sentences.length, 6);
+    strictEqual(state.finalizedSentences.every((s: any) => !s.expression_purpose), true);
+    strictEqual(state.calls, 1);
+    strictEqual(state.debits, 1);
+    strictEqual(state.backgroundScopes.length, 1);
   }
 });
 
@@ -285,6 +308,9 @@ Deno.test("rejection and fallback return timings; legacy clients do not receive 
     true,
   );
   strictEqual((await fallback.json()).memory.provider, "kimi");
+  strictEqual(state.finalizedSentences.every((s: any) => s.expression_purpose === "Describing a cat."), true);
+  strictEqual(state.modelRequests.length, 2);
+  strictEqual(state.modelRequests.every((body: any) => JSON.stringify(body.messages).includes("learning_topic_ids") && JSON.stringify(body.messages).includes("expression_purpose")), true);
   reset({ dual: false });
   const legacy = await handler(request("owner", true));
   strictEqual(legacy.headers.get("Server-Timing"), null);

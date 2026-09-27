@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
 import { scheduleGenerationEnrichment, type EnrichmentScope } from "../_shared/generation-enrichment.ts"
 import { GenerationTiming, withGenerationTiming } from "../_shared/generation-timing.ts"
+import { buildSentenceMetadataRules } from "../_shared/sentence-metadata.ts"
 
 interface Sentence {
   english: string
@@ -109,17 +110,20 @@ ${englishLevel === "高级" ? '高级的场景表达仍以日常口语为准，�
 - 生活表达的标准是：一位英语母语者会自然地对朋友说、发在社交平台上，或在回想照片时脱口而出的句子。
 如果图片是手机截图、应用界面、图表、股票页面、数据面板、网页、文档或任何带有大量文字/数字的信息界面，第二组也应围绕用户看到、记录或分享这个信息时可能说的话，不做数据分析或涨跌解读。
 
+${buildSentenceMetadataRules()}
+分类和表达用途仅依据该句本身，不借用其他句子的背景；句子难度限制适用于 english 字段。
+
 你必须严格遵守以下输出规则：
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
 2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
-4. 每一项必须且只能包含 english 和 chinese 两个字段
+4. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段
 5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 6. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 7. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"scene_and_feelings":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["人物","生活场景"]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["人物","生活场景"]}
 `.trim()
   }
 
@@ -131,6 +135,9 @@ ${englishLevelPrompt}
 ${languageStylePrompt}
 ${difficultyPriorityPrompt}
 
+${buildSentenceMetadataRules()}
+分类和表达用途仅依据该句本身，不借用其他句子的背景；句子难度限制适用于 english 字段。
+
 你必须严格遵守以下输出规则：
 1. 你的回复必须是一个 JSON 对象
 2. 不要把 JSON 放在字符串里
@@ -139,7 +146,7 @@ ${difficultyPriorityPrompt}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+8. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english、chinese 必须是非空字符串
 10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
 11. tags 中不要重复分类，不要自创分类
@@ -150,7 +157,7 @@ ${difficultyPriorityPrompt}
 16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["动物","生活场景"]}
 `.trim()
 }
 
@@ -376,7 +383,12 @@ function normalizeSentenceArray(
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
       learning_topic_ids: normalizeLearningTopicIDs(item?.learning_topic_ids),
-      expression_purpose: normalizeExpressionPurpose(item?.expression_purpose),
+      // Missing/invalid categories must not masquerade as an intentional empty classification.
+      expression_purpose: Array.isArray(item?.learning_topic_ids) &&
+          item.learning_topic_ids.length <= 2 &&
+          normalizeLearningTopicIDs(item.learning_topic_ids).length === item.learning_topic_ids.length
+        ? normalizeExpressionPurpose(item?.expression_purpose)
+        : undefined,
       ...(presentationGroup ? { presentation_group: presentationGroup } : {}),
     }))
     .filter(
@@ -957,8 +969,8 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
       id: crypto.randomUUID(),
       english: sentence.english,
       chinese: sentence.chinese,
-      // Stage two classifies the saved sentence; keep the client field present.
-      learning_topic_ids: [],
+      learning_topic_ids: sentence.learning_topic_ids,
+      expression_purpose: sentence.expression_purpose,
       presentation_group: sentence.presentation_group ?? "what_i_see",
       is_favorite: false,
     }))

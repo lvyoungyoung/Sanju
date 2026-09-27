@@ -103,6 +103,11 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         new URL("20260926001000_defer_sentence_metadata.sql", root),
       ),
     );
+    const combinedMetadataMigration = await Deno.readTextFile(new URL("20260927000000_reuse_generated_sentence_metadata.sql", root));
+    const oldFinalize = functionSQL(await Deno.readTextFile(new URL("20260925001000_defer_generation_enrichment.sql", root)), "finalize_authenticated_generation");
+    strictEqual(functionSQL(combinedMetadataMigration, "finalize_authenticated_generation").replace("    'learning_topic_ids', s.learning_topic_ids,\n", ""), oldFinalize, "only the queued payload changes; finalization transaction remains identical");
+    await db.exec(combinedMetadataMigration);
+    await db.exec(combinedMetadataMigration);
     await db.exec(`create trigger match_sentence_to_semantic_study_scenes
       after insert or update of learning_topic_ids on memory_sentences
       for each row execute function match_sentence_to_semantic_study_scenes()`);
@@ -347,12 +352,33 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
       },
     );
     await t.step(
+      "combined metadata survives authenticated finalization and vector publication without regenerating",
+      async () => {
+        const memory = crypto.randomUUID(), request = crypto.randomUUID(), before = await balance();
+        const sentences = payload().map((s, i) => ({...s, learning_topic_ids: i === 0 ? [] : ["natural_scenery"]}));
+        await finish(memory, request, sentences);
+        const job = await claim();
+        deepStrictEqual(job.sentences, sentences);
+        const inline = job.sentences.map((s: any) => ({sentence_id: s.id, expression_purpose: s.expression_purpose, learning_topic_ids: s.learning_topic_ids}));
+        strictEqual(await checkpoint(job, inline), true);
+        strictEqual(await complete(job), true);
+        for (const sentence of sentences) {
+          const saved = (await db.query<any>("select learning_topic_ids, expression_purpose from sentence_embeddings where sentence_id=$1", [sentence.id])).rows[0];
+          deepStrictEqual(saved.learning_topic_ids, sentence.learning_topic_ids);
+          strictEqual(saved.expression_purpose, sentence.expression_purpose);
+        }
+        await finish(crypto.randomUUID(), request);
+        strictEqual(await balance(), before - 1);
+        strictEqual(await claim(), undefined);
+      },
+    );
+    await t.step(
       "anonymous vectors survive login both before and after indexing",
       async () => {
         for (const loginFirst of [false, true]) {
           const guestJob = crypto.randomUUID(),
             memory = crypto.randomUUID(),
-            sentences = payload(3);
+            sentences = payload(6).map(s => ({...s, learning_topic_ids: ["natural_scenery"]}));
           await db.query(
             "insert into guest_generation_jobs(id,user_id,status) values($1,$2,'pending')",
             [guestJob, guest],

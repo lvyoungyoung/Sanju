@@ -74,10 +74,11 @@ failure without a response, only `http_timeout` / `http_transport_failed` and
 client recovery timing are available. `server_timings_unavailable` means the
 response lacked these headers (e.g. old deployment or proxy-generated error).
 
-Sentence classification, expression purposes, vector generation and topic matching
-are not included in the foreground headers. Their separate staging-only diagnostics
-are described below. Diagnostics do not alter generation, recovery, charging, or
-background scheduling.
+Sentence classification and expression purposes are generated with the sentences
+and included in `server.mimo` / `server.kimi`; they cannot be timed separately
+within that model request. Vector generation and topic matching remain background
+work with the staging-only diagnostics below. Diagnostics do not alter generation,
+recovery, charging, or background scheduling.
 
 ## Background stages in Xcode (staging only)
 
@@ -96,19 +97,21 @@ cancel server work, change the UI, retry enrichment or debit credits.
 Example only, not a measured result:
 
 ```text
-[GenerationTiming] request=<uuid> background.metadata_generate ms=5100.0 outcome=success attempt=1
+[GenerationTiming] request=<uuid> background.metadata_reuse ms=0.2 outcome=success attempt=1
 [GenerationTiming] request=<uuid> background.metadata_checkpoint ms=15.0 outcome=success attempt=1
 [GenerationTiming] request=<uuid> background.sentence_embedding ms=630.0 outcome=success attempt=1
 [GenerationTiming] request=<uuid> background.purpose_embedding ms=820.0 outcome=success attempt=1
 [GenerationTiming] request=<uuid> background.embeddings_parallel ms=823.0 outcome=success attempt=1
 [GenerationTiming] request=<uuid> background.publish_and_match ms=120.0 outcome=success attempt=1
-[GenerationTiming] request=<uuid> background.job_total ms=6058.0 outcome=completed attempt=1
+[GenerationTiming] request=<uuid> background.job_total ms=958.2 outcome=completed attempt=1
 ```
 
 - `claim`: database task-claim round trip; not queue age.
-- `metadata_generate`: the single MiMo call generating BOTH categories and expression
-  purposes, including response decoding and validation. They cannot be timed separately.
-- `metadata_reuse`: validating previously checkpointed metadata; no AI request.
+- `metadata_generate`: exceptional repair of missing/invalid categories and purposes
+  with one MiMo request, including response decoding and validation. Normal combined
+  generation does not execute this stage.
+- `metadata_reuse`: validating metadata saved with sentences or a previous checkpoint;
+  no AI request.
 - `metadata_checkpoint`: saving metadata before vector requests.
 - `sentence_embedding`, `purpose_embedding`: separate concurrent provider round trips,
   including payload preparation, response decoding and vector validation.
@@ -147,9 +150,10 @@ but is inert there. There is no reason to deploy production just to test timings
 ## Prompt compaction baseline (2026-09-26)
 
 Historical measurements below describe the three compaction experiments, which
-were subsequently reverted for the two-stage pipeline. Current generation restores
-the detailed sentence instructions from `5351ee5` but removes metadata tasks.
-See [two-stage generation](generation-enrichment.md) for the current migration and
+were subsequently reverted for the two-stage pipeline. On 2026-09-27, classification
+and purpose generation were combined with the detailed sentence instructions again;
+embeddings and matching remain background work.
+See [generation enrichment](generation-enrichment.md) for the current migration and
 function deployment requirements. The earlier "no migration" notes apply only to
 those historical prompt-only changes.
 

@@ -1,8 +1,10 @@
 import { deepStrictEqual, ok, rejects, strictEqual, throws } from "node:assert";
 import {
   buildSentenceMetadataPrompt,
+  buildSentenceMetadataRules,
   generateSentenceMetadata,
   parseSentenceMetadata,
+  readEmbeddedSentenceMetadata,
 } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 const sentences = Array.from(
@@ -21,6 +23,7 @@ const metadata = sentences.map((s) => ({
 
 Deno.test("metadata prompt restores detailed classification and grounded purpose rules", () => {
   const prompt = buildSentenceMetadataPrompt();
+  ok(prompt.includes(buildSentenceMetadataRules()));
   for (
     const text of [
       "最多 30 个英文单词且不超过 240 个字符",
@@ -34,6 +37,19 @@ Deno.test("metadata prompt restores detailed classification and grounded purpose
       "health_and_wellness",
     ]
   ) ok(prompt.includes(text), text);
+});
+
+Deno.test("inline metadata is reused only when every sentence has valid metadata", () => {
+  const inline = sentences.map((s, i) => ({...s, ...metadata[i]}));
+  deepStrictEqual(readEmbeddedSentenceMetadata(inline), metadata);
+  deepStrictEqual(readEmbeddedSentenceMetadata(inline.map(s => ({...s, learning_topic_ids: []}))), metadata.map(m => ({...m, learning_topic_ids: []})));
+  for (const invalid of [
+    {learning_topic_ids: undefined}, {learning_topic_ids: ["invalid"]},
+    {learning_topic_ids: ["cooking", "cooking"]},
+    {expression_purpose: undefined}, {expression_purpose: "word ".repeat(31)},
+  ]) {
+    strictEqual(readEmbeddedSentenceMetadata(inline.map((s, i) => i ? s : {...s, ...invalid})), null);
+  }
 });
 
 Deno.test("one text-only metadata request covers all six sentences with stable identities", async () => {

@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithinDeadline, fetchWithTimeout } from "./fetch-with-timeout.ts"
-import { generateSentenceMetadata, parseSentenceMetadata } from "./sentence-metadata.ts"
+import { generateSentenceMetadata, parseSentenceMetadata, readEmbeddedSentenceMetadata } from "./sentence-metadata.ts"
 import { type EnrichmentStage, EnrichmentTiming } from "./generation-enrichment-timing.ts"
 
 export interface IndexableSentence {
@@ -76,11 +76,12 @@ export async function processGenerationEnrichment(
       const jobTiming = timing.forJob(job.id, job.attempts)
       let jobOutcome: "completed" | "failed" | "lease_lost" = "failed"
       try {
+        const existingMetadata = job.metadata ?? readEmbeddedSentenceMetadata(job.sentences)
         const metadata = await jobTiming.measure(
-          job.metadata != null ? "metadata_reuse" : "metadata_generate",
+          existingMetadata != null ? "metadata_reuse" : "metadata_generate",
           async () =>
-            job.metadata != null
-              ? parseSentenceMetadata(job.metadata, job.sentences)
+            existingMetadata != null
+              ? parseSentenceMetadata(existingMetadata, job.sentences)
               : await generateSentenceMetadata(job.sentences, fetcher),
         )
         if (job.metadata == null) {

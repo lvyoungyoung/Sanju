@@ -20,7 +20,7 @@ const api = await import(
   import {fetchWithTimeout, fetchWithinDeadline} from ${JSON.stringify(helper)};
   import {EnrichmentTiming, type EnrichmentStage} from ${JSON.stringify(timingHelper)};
   export {EnrichmentTiming};
-  import {generateSentenceMetadata as generateMetadata, parseSentenceMetadata} from ${
+  import {generateSentenceMetadata as generateMetadata, parseSentenceMetadata, readEmbeddedSentenceMetadata} from ${
     JSON.stringify(metadataHelper)
   };
   const generateSentenceMetadata = (sentences: any, fetcher: any) => generateMetadata(sentences, fetcher, {url:"https://model.invalid",key:"test"});
@@ -53,6 +53,7 @@ function fixture(
     | null = null,
   total = 1,
   cached = false,
+  embedded = false,
 ) {
   const calls: string[] = [], finished: any[] = [], retried: any[] = [], reports: any[] = [];
   const expectedMetadata = [{
@@ -80,7 +81,10 @@ function fixture(
               id: `10000000-0000-0000-0000-${String(claims).padStart(12, "0")}`,
               lease_token: "lease",
               attempts: 1,
-              sentences,
+              sentences: embedded ? sentences.map((s, i) => ({...s,
+                learning_topic_ids: expectedMetadata[i].learning_topic_ids,
+                expression_purpose: expectedMetadata[i].expression_purpose,
+              })) : sentences,
               metadata,
             }]
             : [],
@@ -189,6 +193,29 @@ Deno.test("worker uses leased persisted payload and atomically completes both ve
   strictEqual(f.retried.length, 0);
   deepStrictEqual(f.modelCalls, ["metadata", "sentence", "purpose"]);
   strictEqual(f.calls[1], "save_generation_enrichment_metadata");
+});
+
+Deno.test("authenticated and guest jobs reuse combined metadata without another model request", async () => {
+  for (const scope of [initialScope, {userID: "owner", guestJobID: "guest-job"}]) {
+    const f = fixture(null, 1, false, true);
+    const timing = new api.EnrichmentTiming({}, () => performance.now(), () => {}, true);
+    deepStrictEqual(await api.processGenerationEnrichment(f.client, scope, f.fetcher, Date.now() + 45_000, timing), {completed: 1, failed: 0});
+    deepStrictEqual(f.modelCalls, ["sentence", "purpose"]);
+    strictEqual(f.calls[1], "save_generation_enrichment_metadata");
+    strictEqual(f.finished[0].p_rows[0].expression_purpose, "Describing a cat.");
+    const stages = f.reports[0].p_report.stages.map((s: any) => s.stage);
+    strictEqual(stages.includes("metadata_reuse"), true);
+    strictEqual(stages.includes("metadata_generate"), false);
+  }
+});
+
+Deno.test("combined metadata stays checkpointed if vector generation fails", async () => {
+  const f = fixture("purpose", 1, false, true);
+  deepStrictEqual(await api.processGenerationEnrichment(f.client, initialScope, f.fetcher), {completed: 0, failed: 1});
+  deepStrictEqual(f.modelCalls, ["sentence", "purpose"]);
+  strictEqual(f.calls[1], "save_generation_enrichment_metadata");
+  strictEqual(f.finished.length, 0);
+  strictEqual(f.retried.length, 1);
 });
 
 Deno.test("incomplete vectors and database failure remain retryable without finalizing or debiting", async () => {

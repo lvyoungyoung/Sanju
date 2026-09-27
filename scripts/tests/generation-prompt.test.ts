@@ -8,6 +8,7 @@ const source = await Deno.readTextFile(
 );
 const { buildPromptText, MEMORY_TAGS, parseGeneratedContent } = await import(
   "data:application/typescript," + encodeURIComponent(`
+    import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
     ${
     source.slice(
       source.indexOf("interface Sentence"),
@@ -21,7 +22,7 @@ const levels = ["启蒙", "简单", "中等", "高级"];
 const styles = ["平铺直叙", "抒情优美"];
 const formats = ["legacy_v1", "dual_tabs_v1"];
 
-Deno.test("restored full JSON examples keep all preference and response contracts without metadata", () => {
+Deno.test("combined generation requests sentence text, categories and purposes together", () => {
   for (const format of formats) {
     for (const level of levels) {
       for (const style of styles) {
@@ -37,15 +38,15 @@ Deno.test("restored full JSON examples keep all preference and response contract
         for (const group of groups) {
           strictEqual(example[group].length, 3);
           for (const item of example[group]) {
-            deepStrictEqual(Object.keys(item).sort(), ["chinese", "english"]);
+            deepStrictEqual(Object.keys(item).sort(), ["chinese", "english", "expression_purpose", "learning_topic_ids"]);
             for (const field of ["english", "chinese"]) {
               strictEqual(typeof item[field], "string");
             }
           }
         }
-        ok(!prompt.includes("expression_purpose"));
-        ok(!prompt.includes("learning_topic_ids"));
-        ok(!prompt.includes("self_and_style"));
+        ok(prompt.includes("expression_purpose"));
+        ok(prompt.includes("learning_topic_ids"));
+        ok(prompt.includes("self_and_style"));
         for (const tag of MEMORY_TAGS) {
           ok(prompt.includes(tag));
         }
