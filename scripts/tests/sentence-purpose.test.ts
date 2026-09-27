@@ -34,7 +34,7 @@ const api = await import(
   const Deno = {env:{get:()=>"test"}};
   ${
     source.slice(
-      source.indexOf("const MEMORY_TAGS"),
+      source.indexOf("const LEARNING_TOPICS"),
       source.indexOf("function buildPromptText"),
     )
   }
@@ -148,7 +148,7 @@ Deno.test("legacy image descriptions do not gain the hypothetical dialogue instr
       ok(!prompt.includes("当时会对别人说什么"));
       ok(prompt.includes("最直接可见的内容"));
       const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-      deepStrictEqual(Object.keys(payload).sort(), ["sentences", "tags"]);
+      deepStrictEqual(Object.keys(payload).sort(), ["sentences"]);
       strictEqual(payload.sentences.length, 3);
     }
   }

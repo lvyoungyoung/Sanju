@@ -4,6 +4,8 @@ import { buildBenchmarkPrompts, imageRequest, stats, validateGeneration } from "
 Deno.test("benchmark preserves generation rules and shares full metadata semantics", () => {
   for (const level of ["启蒙", "简单", "中等"]) {
     const { separate, combined, metadata } = buildBenchmarkPrompts(level);
+    ok(!combined.includes("tags"));
+    ok(!separate.includes("tags"));
     ok(!separate.includes("expression_purpose"));
     ok(!separate.includes("learning_topic_ids"));
     const rules = metadata.slice(metadata.indexOf("learning_topic_ids 是句子的分类"), metadata.indexOf("\n\n仅返回 JSON"));
@@ -36,7 +38,6 @@ Deno.test("benchmark rejects incomplete combined outputs rather than counting fa
   const response = (extra: object) => JSON.stringify({
     image_descriptions: Array.from({ length: 3 }, () => ({ ...sentence, ...extra })),
     scene_and_feelings: Array.from({ length: 3 }, () => ({ ...sentence, ...extra })),
-    tags: ["美食"],
   });
   strictEqual(validateGeneration(response({}), false).length, 6);
   strictEqual(validateGeneration(response(metadata), true).length, 6);

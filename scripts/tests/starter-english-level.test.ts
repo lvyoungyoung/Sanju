@@ -13,7 +13,7 @@ const { buildPromptText } = await import(
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   ${
     source.slice(
-      source.indexOf("const MEMORY_TAGS"),
+      source.indexOf("const LEARNING_TOPICS"),
       source.indexOf("function buildPromptText"),
     )
   }

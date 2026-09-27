@@ -17,6 +17,7 @@ const timingHelper = new URL(
   import.meta.url,
 ).href;
 const harness = `
+import { strictEqual } from "node:assert";
 import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
 import { GenerationTiming, withGenerationTiming } from ${
   JSON.stringify(timingHelper)
@@ -53,8 +54,9 @@ const fetch = (async (input: any, init?: RequestInit) => {
   const sentence = { english:'This is a cat.', chinese:'这是一只猫。',
     ...(state.missingMetadata ? {} : {learning_topic_ids:['pet_life'], expression_purpose:'Describing a cat.'}) };
   const payload = state.dual
-    ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence],tags:['动物']}
-    : {sentences:[sentence,sentence,sentence],tags:['动物']};
+    ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence]}
+    : {sentences:[sentence,sentence,sentence]};
+  if (state.unsolicitedTags) Object.assign(payload, {tags:['动物']});
   return Response.json({choices:[{message:{content:JSON.stringify(payload)}}]});
 }) as typeof globalThis.fetch;
 const fetchWithTimeout = (input: any, init: any, timeout: number, fetcher = fetch) => boundedFetch(input,init,timeout,fetcher);
@@ -96,6 +98,7 @@ function createClient(_url:string,key:string,_options?:unknown):any {
       return {data:'acquired',error:null};
     }
     if (name.startsWith('finalize_')) {
+      strictEqual(Array.isArray(args.p_tags) && args.p_tags.length === 0, true);
       state.finalizedSentences = args.p_sentences;
       const guest=name==='finalize_guest_generation';
       const job=(guest?state.guests:state.jobs).get(guest?args.p_guest_job_id:args.p_client_request_id);
@@ -131,6 +134,7 @@ function reset(options: Record<string, unknown> = {}) {
     modelRequests: [],
     finalizedSentences: [],
     missingMetadata: false,
+    unsolicitedTags: false,
     removed: 0,
     debits: 0,
     dual: true,
@@ -191,7 +195,9 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     }
     const completed = await first;
     strictEqual(completed.status, 200);
-    const delivered = (await completed.json()).memory.sentences;
+    const result = await completed.json();
+    strictEqual(result.memory.tags.length, 0);
+    const delivered = result.memory.sentences;
     strictEqual(delivered.length, 6);
     strictEqual(
       delivered.every((s: any) =>
@@ -225,6 +231,24 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
       1,
       "reading a completed result must not trigger compensation",
     );
+  }
+});
+
+Deno.test("extra photo tags never reach storage for either account or provider", async () => {
+  for (const anonymous of [false, true]) {
+    for (const stallMimo of [false, true]) {
+      reset({anonymous, stallMimo, unsolicitedTags: true});
+      const response = await handler(request());
+      strictEqual(response.status, 200);
+      const result = await response.json();
+      strictEqual(result.memory.tags.length, 0);
+      strictEqual(result.memory.sentences.length, 6);
+      strictEqual(result.memory.sentences[0].learning_topic_ids[0], "pet_life");
+      strictEqual(state.finalizedSentences[0].expression_purpose, "Describing a cat.");
+      strictEqual(state.debits, 1);
+      strictEqual(state.backgroundScopes.length, 1);
+      strictEqual(state.modelRequests.every((body: any) => !JSON.stringify(body.messages).includes("tags")), true);
+    }
   }
 });
 

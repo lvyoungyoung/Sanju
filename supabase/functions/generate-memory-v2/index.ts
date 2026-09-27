@@ -22,24 +22,9 @@ type FinalizedSentence = Sentence & {
 
 interface GeneratedContent {
   sentences: Sentence[]
-  tags: string[]
 }
 
 type ProviderName = "mimo" | "kimi"
-
-const MEMORY_TAGS = [
-  "人物",
-  "风景",
-  "旅行",
-  "美食",
-  "生活场景",
-  "动物",
-  "植物",
-  "建筑",
-  "活动",
-  "物品",
-  "截图/信息",
-] as const
 
 const LEARNING_TOPICS = [
   ["self_and_style", "自己与穿搭"],
@@ -115,15 +100,14 @@ ${buildSentenceMetadataRules()}
 
 你必须严格遵守以下输出规则：
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
-2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags
+2. 顶层字段必须且只能是 image_descriptions 和 scene_and_feelings
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
 4. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段
 5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
-6. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择且不可重复：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
-7. 不要输出任何多余字段或 JSON 前后的任何字符
+6. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["人物","生活场景"]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}]}
 `.trim()
   }
 
@@ -144,20 +128,18 @@ ${buildSentenceMetadataRules()}
 3. 不要返回 markdown
 4. 不要使用 \`\`\` 或 \`\`\`json 代码块
 5. 不要写任何解释、前言、结尾、备注
-6. 顶层字段必须且只能是 sentences 和 tags
+6. 顶层字段必须且只能是 sentences
 7. sentences 必须是长度为 3 的数组
 8. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english、chinese 必须是非空字符串
-10. tags 必须是长度为 1 到 3 的数组，只能从以下分类中选择：人物、风景、旅行、美食、生活场景、动物、植物、建筑、活动、物品、截图/信息
-11. tags 中不要重复分类，不要自创分类
-12. 不要输出任何多余字段
-13. 不要转义整个 JSON 对象
-14. 不要在 JSON 前后添加任何字符
-15. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
-16. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
+10. 不要输出任何多余字段
+11. 不要转义整个 JSON 对象
+12. 不要在 JSON 前后添加任何字符
+13. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
+14. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":["动物","生活场景"]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}]}
 `.trim()
 }
 
@@ -258,7 +240,6 @@ function parseGeneratedContent(
 
     return {
       sentences: [...descriptions, ...sceneAndFeelings],
-      tags: parseMemoryTagsFromPayload(payload),
     }
   }
 
@@ -269,30 +250,7 @@ function parseGeneratedContent(
 
   return {
     sentences,
-    tags: parseMemoryTags(content),
   }
-}
-
-function parseMemoryTags(content: string): string[] {
-  return parseMemoryTagsFromPayload(parseJSONObject(content))
-}
-
-function parseMemoryTagsFromPayload(payload: any): string[] {
-  const rawTags = Array.isArray(payload?.tags) ? payload.tags : []
-  const validTags = new Set<string>(MEMORY_TAGS)
-  const tags: string[] = []
-
-  for (const rawTag of rawTags) {
-    const tag = String(rawTag ?? "").trim()
-    if (validTags.has(tag) && !tags.includes(tag)) {
-      tags.push(tag)
-    }
-    if (tags.length == 3) {
-      break
-    }
-  }
-
-  return tags
 }
 
 function parseJSONObject(content: string): any | null {
@@ -964,7 +922,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
     }
 
     timing.start("result_prepare")
-    const { sentences, tags, provider, mimoFailureReason } = completionResult
+    const { sentences, provider, mimoFailureReason } = completionResult
     const finalizedSentences: FinalizedSentence[] = sentences.map((sentence) => ({
       id: crypto.randomUUID(),
       english: sentence.english,
@@ -985,7 +943,6 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
         createdAt,
         provider,
         sentences: finalizedSentences,
-        tags,
       })
 
       if (!finalizeResult.ok) {
@@ -1065,7 +1022,6 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
       createdAt,
       provider,
       sentences: finalizedSentences,
-      tags,
     })
 
     if (!finalizeResult.ok) {
@@ -1122,7 +1078,7 @@ async function handleGenerationRequest(req: Request, timing: GenerationTiming): 
         imagePath,
         createdAt,
         provider,
-        tags,
+        tags: [],
         sentences: toClientSentences(finalizedSentences, generationFormat),
       },
       remainingCredits: finalizeResult.remainingCredits,
@@ -1199,7 +1155,6 @@ async function requestWithFallback(args: {
   | {
       ok: true
       sentences: Sentence[]
-      tags: string[]
       provider: ProviderName
       mimoFailureReason: string | null
     }
@@ -1356,7 +1311,7 @@ async function requestMimoOnce(
   generationFormat: GenerationFormat,
   fetcher: typeof fetch
 ): Promise<
-  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -1483,7 +1438,6 @@ async function requestMimoOnce(
   return {
     ok: true,
     sentences: generatedContent.sentences,
-    tags: generatedContent.tags,
     provider: "mimo",
   }
 }
@@ -1495,7 +1449,7 @@ async function requestKimiOnce(
   generationFormat: GenerationFormat,
   fetcher: typeof fetch
 ): Promise<
-  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -1604,7 +1558,6 @@ async function requestKimiOnce(
   return {
     ok: true,
     sentences: generatedContent.sentences,
-    tags: generatedContent.tags,
     provider: "kimi",
   }
 }
@@ -1619,7 +1572,6 @@ async function finalizeAuthenticatedGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
-    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -1640,7 +1592,8 @@ async function finalizeAuthenticatedGeneration(
     p_created_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
-    p_tags: args.tags,
+    // The existing finalize RPC requires this parameter; photo tags are no longer generated.
+    p_tags: [],
   })
 
   if (error) {
@@ -1661,7 +1614,6 @@ async function finalizeGuestGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
-    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -1680,7 +1632,7 @@ async function finalizeGuestGeneration(
     p_completed_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
-    p_tags: args.tags,
+    p_tags: [],
   })
 
   if (error) {

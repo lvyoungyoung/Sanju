@@ -6,7 +6,7 @@ const source = await Deno.readTextFile(
     import.meta.url,
   ),
 );
-const { buildPromptText, MEMORY_TAGS, parseGeneratedContent } = await import(
+const { buildPromptText, parseGeneratedContent } = await import(
   "data:application/typescript," + encodeURIComponent(`
     import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
     ${
@@ -15,7 +15,7 @@ const { buildPromptText, MEMORY_TAGS, parseGeneratedContent } = await import(
       source.indexOf("const MIMO_TIMEOUT_MS"),
     )
   }
-    export { buildPromptText, MEMORY_TAGS, parseGeneratedContent };
+    export { buildPromptText, parseGeneratedContent };
   `)
 );
 const levels = ["启蒙", "简单", "中等", "高级"];
@@ -33,7 +33,7 @@ Deno.test("combined generation requests sentence text, categories and purposes t
           : ["image_descriptions", "scene_and_feelings"];
         deepStrictEqual(
           Object.keys(example).sort(),
-          [...groups, "tags"].sort(),
+          [...groups].sort(),
         );
         for (const group of groups) {
           strictEqual(example[group].length, 3);
@@ -47,10 +47,9 @@ Deno.test("combined generation requests sentence text, categories and purposes t
         ok(prompt.includes("expression_purpose"));
         ok(prompt.includes("learning_topic_ids"));
         ok(prompt.includes("self_and_style"));
-        for (const tag of MEMORY_TAGS) {
-          ok(prompt.includes(tag));
-        }
+        ok(!prompt.includes("tags"));
         const parsed = parseGeneratedContent(JSON.stringify(example), format);
+        strictEqual(parsed.tags, undefined);
         strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
         for (const item of parsed.sentences) {
           deepStrictEqual(
@@ -80,6 +79,17 @@ Deno.test("combined generation requests sentence text, categories and purposes t
         }
       }
     }
+  }
+});
+
+Deno.test("unsolicited photo tags are ignored without discarding sentence metadata", () => {
+  for (const format of formats) {
+    const prompt = buildPromptText("简单", "平铺直叙", format);
+    const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+    const parsed = parseGeneratedContent(JSON.stringify({...example, tags: ["风景", "旅行"]}), format);
+    strictEqual(parsed.tags, undefined);
+    strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
+    strictEqual(parsed.sentences.every((s: any) => s.expression_purpose && Array.isArray(s.learning_topic_ids)), true);
   }
 });
 

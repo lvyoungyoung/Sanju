@@ -59,7 +59,7 @@ type Sentence = { id: string; english: string; chinese: string };
 export function validateGeneration(content: string, combined: boolean): Sentence[] {
   const result = generation.parseGeneratedContent(content, "dual_tabs_v1");
   const raw = generation.parseJSONObject(content);
-  if (!result || !raw || result.sentences.length !== 6 || !result.tags.length) throw new Error("Invalid generation output");
+  if (!result || !raw || result.sentences.length !== 6) throw new Error("Invalid generation output");
   const sentences = result.sentences.map((s: Sentence) => ({ id: crypto.randomUUID(), english: s.english, chinese: s.chinese }));
   if (combined) {
     const items = [...raw.image_descriptions, ...raw.scene_and_feelings];
