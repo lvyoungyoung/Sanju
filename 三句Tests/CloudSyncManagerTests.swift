@@ -50,7 +50,7 @@ final class CloudSyncManagerTests: XCTestCase {
 
     func testReconcileLocalMemoriesMarksExistingRemoteMemoryAsSynced() {
         let localMemory = makeMemory(syncedToAccount: false)
-        let remoteMemory = makeMemory(id: UUID(), sentences: localMemory.sentences, syncedToAccount: true)
+        let remoteMemory = makeMemory(id: localMemory.id, sentences: localMemory.sentences, syncedToAccount: true)
 
         let result = manager.reconcileLocalMemories(
             localMemories: [localMemory],
@@ -65,7 +65,7 @@ final class CloudSyncManagerTests: XCTestCase {
 
     func testReconcileLocalMemoriesKeepsReconciledMemoryForCurrentAccount() {
         let localMemory = makeMemory(syncedToAccount: false)
-        let remoteMemory = makeMemory(id: UUID(), sentences: localMemory.sentences, syncedToAccount: true)
+        let remoteMemory = makeMemory(id: localMemory.id, sentences: localMemory.sentences, syncedToAccount: true)
 
         let result = manager.reconcileLocalMemories(
             localMemories: [localMemory],

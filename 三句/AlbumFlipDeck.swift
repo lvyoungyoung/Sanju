@@ -33,6 +33,9 @@ struct AlbumFlipCard: Identifiable {
 
 @MainActor
 final class AlbumFlipDeck: ObservableObject {
+    // Avoid the implicit MainActor deinit back-deployment bug on iOS 26.2 and older.
+    nonisolated deinit {}
+
     static let lookaheadCount = 5
     @Published private(set) var cards: [AlbumFlipCard] = []
     @Published private(set) var viewedCount = 0

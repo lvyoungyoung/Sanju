@@ -46,32 +46,40 @@ extension AppModel {
         isStartingPurchase = true
         defer { isStartingPurchase = false }
 
+        var revision = purchaseConfirmationScope.revision
         do {
             let purchaseSession = try await preparePurchaseSession()
+            revision = purchaseConfirmationScope.revision
             let appAccountToken = try purchaseAppAccountToken(for: purchaseSession)
             let grant = try await purchaseManager.purchase(
                 productID: productID,
                 appAccountToken: appAccountToken
             )
+            guard purchaseConfirmationScope.revision == revision, !Task.isCancelled else { return }
             isCompletingPurchase = true
             defer { isCompletingPurchase = false }
             let didApply = await applyPurchaseGrantIfNeeded(grant)
-            if didApply {
+            if didApply, purchaseConfirmationScope.revision == revision {
                 purchaseErrorMessage = nil
             }
         } catch {
+            guard !(error is CancellationError), purchaseConfirmationScope.revision == revision else { return }
             isCompletingPurchase = false
             purchaseErrorMessage = error.localizedDescription
         }
     }
 
-    func syncPurchase(_ grant: PurchaseGrant) async throws -> Int {
+    private func syncPurchase(_ grant: PurchaseGrant) async throws -> (credits: Int, revision: UUID) {
         let session = try await validatedSession(for: grant)
-        return try await supabaseService.confirmPurchase(
-            session: session,
-            transactionID: grant.transactionID,
-            productID: grant.productID
-        )
+        let revision = purchaseConfirmationScope.revision
+        let credits = try await purchaseConfirmationScope.perform(session: session) {
+            try await supabaseService.confirmPurchase(
+                session: session,
+                transactionID: grant.transactionID,
+                productID: grant.productID
+            )
+        }
+        return (credits, revision)
     }
 
     func processUnfinishedPurchases() async {
@@ -108,9 +116,12 @@ extension AppModel {
             processingPurchaseTransactionIDs.remove(grant.transactionID)
         }
 
+        let revision = purchaseConfirmationScope.revision
         do {
-            let updatedCredits = try await syncPurchase(grant)
-            remainingCredits = updatedCredits
+            let confirmation = try await syncPurchase(grant)
+            // Recheck at the write site: resuming an awaited helper can yield again.
+            guard purchaseConfirmationScope.revision == confirmation.revision, !Task.isCancelled else { return false }
+            remainingCredits = confirmation.credits
             persistCredits()
             processedPurchaseTransactionIDs.insert(grant.transactionID)
             defaults.set(
@@ -121,11 +132,15 @@ extension AppModel {
             await grant.finish()
             return true
         } catch {
+            guard !(error is CancellationError), !Task.isCancelled,
+                  purchaseConfirmationScope.revision == revision else { return false }
             if let applicationError = error as? PurchaseGrantApplicationError {
                 if case .appAccountTokenMismatch = applicationError {
                     if await finishOrphanedAnonymousPurchaseIfEligible(grant) {
                         return true
                     }
+
+                    guard purchaseConfirmationScope.revision == revision, !Task.isCancelled else { return false }
 
                     ignoredUnfinishedPurchaseTransactionIDs.insert(grant.transactionID)
                     defaults.set(
@@ -164,7 +179,9 @@ extension AppModel {
     }
 
     private func finishOrphanedAnonymousPurchaseIfEligible(_ grant: PurchaseGrant) async -> Bool {
-        guard await discardOrphanedAnonymousPurchaseIfEligible(grant) else {
+        let revision = purchaseConfirmationScope.revision
+        guard await discardOrphanedAnonymousPurchaseIfEligible(grant),
+              purchaseConfirmationScope.revision == revision, !Task.isCancelled else {
             return false
         }
 
@@ -189,11 +206,13 @@ extension AppModel {
                 return false
             }
 
-            return try await supabaseService.discardOrphanedAnonymousPurchase(
-                session: session,
-                transactionID: grant.transactionID,
-                productID: grant.productID
-            )
+            return try await purchaseConfirmationScope.perform(session: session) {
+                try await supabaseService.discardOrphanedAnonymousPurchase(
+                    session: session,
+                    transactionID: grant.transactionID,
+                    productID: grant.productID
+                )
+            }
         } catch {
             return false
         }

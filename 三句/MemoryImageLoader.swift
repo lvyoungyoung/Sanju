@@ -21,6 +21,8 @@ struct MemoryImageLoadRequest: Hashable {
 
 @MainActor
 final class MemoryImageLoader {
+    nonisolated deinit {}
+
     private var tasks: [MemoryImageLoadRequest: Task<Data, Error>] = [:]
 
     func load(

@@ -183,6 +183,8 @@ Git tag：
 
 ## 当前部署函数
 
+以 `scripts/edge-functions.txt` 为准，新增函数时同步更新 Actions 选项。
+
 - `generate-memory-v2`
 - `moderate-image-v1`
 - `recover-guest-generation`
@@ -191,3 +193,23 @@ Git tag：
 - `delete-account`
 - `migrate-guest-credits`
 - `cleanup-guest-generation-jobs`
+- `extract-study-topic-expressions`
+- `process-generation-enrichment`
+- `review-study-scene`
+- `synthesize-speech`
+- `update-profile-avatar`
+
+### 维护接口鉴权
+
+`cleanup-guest-generation-jobs` 仅接受 POST，`Authorization` 必须是
+`Bearer <当前环境 SUPABASE_SERVICE_ROLE_KEY>`。凭据只留在服务端或运维任务中，
+不要放进 App、公开配置、URL 或日志。原有调度若使用普通 JWT，需要改用此服务端凭据。
+无需新增环境变量或 Nginx 配置。每批最多处理 100 条过期记录，`hasMore=true` 时可再次调用。
+Storage 删除失败会保留任务；数据库删除失败会返回 500，重试可继续清理。
+
+### 购买函数基线缺口
+
+仓库暂未保存线上 `confirm_purchase_atomically(uuid,text,text,integer)` 的创建定义。
+不要凭猜测重建或覆盖生产函数。新环境初始化前，应在获得授权后从已验证环境导出
+函数定义及其依赖，去除敏感信息、复核权限，再补入版本管理并测试事务原子性。
+本次稳定性修复没有更改该购买事务或购买 Edge Function。

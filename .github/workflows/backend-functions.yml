@@ -16,6 +16,7 @@ on:
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
+      - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -36,6 +37,7 @@ on:
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
+      - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
@@ -103,6 +105,9 @@ jobs:
 
       - name: Test speech streaming and request limits
         run: deno test --no-lock --allow-read scripts/tests/speech-synthesis.test.ts
+
+      - name: Test cleanup authorization, migration guards and purchase validation
+        run: deno test --no-lock --allow-read scripts/tests/stability-boundaries.test.ts
 
   deploy:
     name: Deploy Edge Functions

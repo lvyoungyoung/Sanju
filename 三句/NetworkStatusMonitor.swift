@@ -2,6 +2,8 @@ import Foundation
 import Network
 
 final class NetworkStatusMonitor {
+    nonisolated deinit { monitor.cancel() }
+
     private let monitor = NWPathMonitor()
     private let queue = DispatchQueue(label: "sanju.network.monitor")
 

@@ -2,13 +2,9 @@ import Foundation
 
 enum MemoryIdentity {
     static func matches(_ lhs: MemoryEntry, _ rhs: MemoryEntry) -> Bool {
-        if lhs.id == rhs.id {
-            return true
-        }
-
-        let lhsContent = lhs.sentences.map { normalizedSentenceIdentity(for: $0) }
-        let rhsContent = rhs.sentences.map { normalizedSentenceIdentity(for: $0) }
-        return lhsContent == rhsContent
+        // Generation recovery and guest migration preserve the memory ID.
+        // Equal sentences (or image bytes) do not identify the same generation.
+        lhs.id == rhs.id
     }
 
     static func isContentComplete(_ memory: MemoryEntry) -> Bool {
@@ -18,17 +14,5 @@ enum MemoryIdentity {
             !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !$0.chinese.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-    }
-
-    private static func normalizedSentenceIdentity(for sentence: SentenceRecord) -> String {
-        "\(normalizeSentenceComponent(sentence.english))\u{001F}\(normalizeSentenceComponent(sentence.chinese))"
-    }
-
-    private static func normalizeSentenceComponent(_ value: String) -> String {
-        value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
     }
 }

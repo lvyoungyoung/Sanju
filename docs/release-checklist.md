@@ -9,7 +9,10 @@
 - 数据库 workflow 会设置 `SUPABASE_PLATFORM=aliyun`；本地手动跑阿里云 Supabase CLI 时也要设置这个变量，否则部分命令会误走官方 Supabase token 校验。
 - 手动运行 `Backend Functions` 时，默认先选 `staging`，测试通过后再选 `production`。
 - 手动运行 `Backend Database` 时，默认先选 `staging`，测试通过后再选 `production`。
-- 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 7 个函数都能通过 `deno check`。
+- 发布前本地运行 `bash scripts/check-edge-functions.sh`，确认 `scripts/edge-functions.txt` 中的全部函数都能通过 `deno check`（当前 13 个）。
+- 清理访客任务只能由运维服务调用：`cleanup-guest-generation-jobs` 要求 POST 和当前环境的 service-role Bearer 凭据；不能用普通用户令牌或客户端公开 key。每批最多 100 个任务，按 `hasMore` 继续，失败应重试而不是认定已清理。
+- 本地跑 `deno test --no-lock --allow-read scripts/tests/stability-boundaries.test.ts scripts/tests/guest-credit-migration.test.ts`，验证维护接口权限、次数迁移边界和事务回滚。
+- 客户端至少覆盖一个旧系统与当前系统的模拟器测试，不能只验证最新系统；购买回包跨账号、相同文本不同照片的测试不得跳过。
 - 部署 staging 后运行 `node scripts/check-client-compatibility.mjs`，确认旧客户端兼容测试通过。
 - 本地验证 iOS 构建时，默认按 `docs/ios-build-workflow.md` 执行，使用 `bash scripts/build-ios.sh simulator`。如果在 Codex 内验证，优先使用沙箱外构建。
 

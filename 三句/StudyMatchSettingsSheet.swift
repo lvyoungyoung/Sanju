@@ -3,6 +3,8 @@ import Combine
 
 @MainActor
 final class StudyMatchSettingsEditor: ObservableObject {
+    nonisolated deinit {}
+
     @Published var position: Double
     @Published private(set) var settings: StudySceneMatchSettings
     @Published private(set) var isSaving = false

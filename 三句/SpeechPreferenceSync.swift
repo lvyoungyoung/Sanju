@@ -7,6 +7,8 @@ nonisolated enum SpeechPreferenceSyncStatus {
 /// Serializes preference requests and ignores responses for an account we left.
 @MainActor
 final class SpeechPreferenceSync {
+    nonisolated deinit { task?.cancel() }
+
     typealias Fetch = (String) async throws -> SpeechVoice?
     typealias Save = (String, SpeechVoice, Bool) async throws -> SpeechVoice
 

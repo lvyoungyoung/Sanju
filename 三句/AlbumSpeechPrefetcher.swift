@@ -4,6 +4,8 @@ import Foundation
 /// adopt an in-flight stream, including its prefix, without another HTTP request.
 @MainActor
 final class AlbumSpeechPrefetcher {
+    nonisolated deinit {}
+
     struct Request: Equatable {
         let text: String
         let voice: SpeechVoice
@@ -14,6 +16,11 @@ final class AlbumSpeechPrefetcher {
     typealias AudioStream = AsyncThrowingStream<Data, Error>
 
     private final class Flight {
+        nonisolated deinit {
+            task?.cancel()
+            deadline?.cancel()
+        }
+
         let request: Request
         var task: Task<Void, Never>?
         var deadline: Task<Void, Never>?

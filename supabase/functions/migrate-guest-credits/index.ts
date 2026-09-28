@@ -43,12 +43,20 @@ Deno.serve(async (req) => {
       )
     }
 
+    if (user.is_anonymous !== false) {
+      return jsonResponse({ error: "A signed-in account is required for migration" }, 403)
+    }
+
     const body = (await req.json()) as RequestBody
     const guestRefreshToken = body.guestRefreshToken?.trim()
     const guestUserID = body.guestUserID?.trim()
 
     if (!guestRefreshToken || !guestUserID) {
       return jsonResponse({ error: "guestRefreshToken and guestUserID are required" }, 400)
+    }
+
+    if (guestUserID.toLowerCase() === user.id.toLowerCase()) {
+      return jsonResponse({ error: "Guest and account must be different users" }, 400)
     }
 
     const refreshResponse = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {

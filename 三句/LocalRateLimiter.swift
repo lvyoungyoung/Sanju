@@ -18,6 +18,8 @@ enum LocalRateLimitError: LocalizedError {
 }
 
 final class LocalRateLimiter {
+    nonisolated deinit {}
+
     private struct Policy {
         let limit: Int
         let interval: TimeInterval

@@ -512,6 +512,7 @@ final class AppModel: ObservableObject {
     var albumFlipHistorySync: AlbumFlipHistorySync?
     @Published var albumFlipHistoryRevision = 0
     let purchaseManager = PurchaseManager()
+    let purchaseConfirmationScope = PurchaseConfirmationScope()
     let supabaseService: SupabaseServicing
     let cloudSyncManager = CloudSyncManager()
     let defaults = UserDefaults.standard
@@ -519,6 +520,7 @@ final class AppModel: ObservableObject {
     let networkStatusMonitor = NetworkStatusMonitor()
     var supabaseSession: SupabaseSession? {
         didSet {
+            purchaseConfirmationScope.activate(supabaseSession)
             let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
             speechPreferenceSync?.activate(userID: speechOwner)
             albumFlipHistorySync?.activate(userID: speechOwner)

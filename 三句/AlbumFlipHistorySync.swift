@@ -2,6 +2,8 @@ import Foundation
 
 @MainActor
 final class AlbumFlipHistorySync {
+    nonisolated deinit { task?.cancel() }
+
     typealias Fetch = (String) async throws -> [AlbumFlipProgress]
     typealias Upload = (String, [AlbumFlipEvent]) async throws -> [AlbumFlipProgress]
 

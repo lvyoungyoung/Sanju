@@ -59,6 +59,9 @@ jobs:
       - name: Test device-local study days
         run: deno test --no-lock --allow-read --allow-env scripts/tests/study-time-zone.test.ts
 
+      - name: Test guest credit transfer guards and atomic retry semantics
+        run: deno test --no-lock --allow-read scripts/tests/guest-credit-migration.test.ts scripts/tests/stability-boundaries.test.ts
+
       - name: Test starter difficulty
         run: deno test --no-lock --allow-read --allow-env scripts/tests/starter-english-level.test.ts
 
