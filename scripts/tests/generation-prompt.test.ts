@@ -83,7 +83,7 @@ Deno.test("difficulty changes preserve grounded humor and lyrical boundaries", (
     const plain = buildPromptText("简单", "平铺直叙", format);
     for (
       const text of [
-        "每句尽量控制在 6 到 10 个英文单词之间",
+        "每句必须使用 6 到 10 个英文单词，最多 10 个，不能超过",
         "不要使用从句、完成时、被动语态、分词修饰结构、抽象书面词、生僻习语、比喻或拟人",
         "允许加入轻微的幽默、俏皮观察或令人会心一笑的措辞",
         "幽默必须来自画面中真实可见的对比、动作或细节",
@@ -116,6 +116,28 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
       "不做数据分析或涨跌解读",
     ]
   ) ok(prompt.includes(text), text);
+});
+
+Deno.test("beginner word limits are explicit per sentence across both styles and formats", () => {
+  for (const format of formats) {
+    for (const style of styles) {
+      const prompt = buildPromptText("简单", style, format);
+      for (const rule of [
+        "每句必须使用 6 到 10 个英文单词，最多 10 个，不能超过",
+        "逐句适用于所有 english 字段，不是整组句子的平均词数",
+        "不得为了语言风格、幽默或细节而突破上限",
+        "输出前逐句按空格检查英文词数",
+        "缩写（如 don't）算一个词，标点不计",
+        "超长时删减次要信息并改写为完整短句，不要直接截断",
+        "不输出词数或检查过程",
+      ]) ok(prompt.includes(rule), `${format}/${style}: ${rule}`);
+      ok(!prompt.includes("尽量控制在 6 到 10"));
+
+      for (const level of ["启蒙", "中等", "高级"] as const) {
+        ok(!buildPromptText(level, style, format).includes("最多 10 个，不能超过"));
+      }
+    }
+  }
 });
 
 Deno.test("active difficulty tiers keep one English length range across styles and formats", () => {
