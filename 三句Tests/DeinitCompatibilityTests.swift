@@ -26,9 +26,9 @@ final class DeinitCompatibilityTests: XCTestCase {
 
     private func assertReleased<T: AnyObject>(_ make: () -> T, file: StaticString = #filePath, line: UInt = #line) {
         var object: T? = make()
-        weak var reference = object
-        XCTAssertNotNil(reference, file: file, line: line)
+        let isReleased = { [weak object] in object == nil }
+        XCTAssertFalse(isReleased(), file: file, line: line)
         object = nil
-        XCTAssertNil(reference, file: file, line: line)
+        XCTAssertTrue(isReleased(), file: file, line: line)
     }
 }
