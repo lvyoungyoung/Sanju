@@ -25,31 +25,30 @@ const LEARNING_TOPICS = [
 ] as const
 
 const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
-const LEARNING_TOPIC_PROMPT = LEARNING_TOPICS.map(([id, title]) => `${id}（${title}）`).join("、")
-const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：为每句写一条简短的英文表达用途，说明用户可以用这句话表达什么，最多 30 个英文单词且不超过 240 个字符。依据句子本身，不是照片整体，不得加入原句没有表达的人物、关系、背景、感受或场景。保留关键对象、动作、感受及限制；不要只写宽泛分类，不要简单重复或翻译原句，不要罗列多个猜测用途。例如 The lake reflected the snow-covered mountains. 的用途是 Describing a lake reflecting snow-covered mountains.；We enjoyed a delicious meal by the lake. 的用途是 Sharing an enjoyable meal beside a lake.，不是描述山水风景。每句必须返回非空的 expression_purpose 字符串。"
+const EXPRESSION_PURPOSE_PROMPT = "expression_purpose：非空英文用途，说明这句话能表达什么，最多 30 个英文单词且不超过 240 个字符。保留对象、动作、感受及限制，不补充原句没有的人物、关系、背景、情绪或场景；不写宽泛分类，不重复或翻译原句，不罗列猜测用途。"
 const LEARNING_TOPIC_CLASSIFICATION_GUIDANCE = [
-  "self_and_style：自拍、个人形象、衣着、发型或配饰；只是出现人物不等于这个场景",
-  "family_time：家人相伴、家庭合影、陪伴父母；重点是孩子成长选 children_growing_up",
-  "children_growing_up：孩子玩耍、成长里程碑、亲子活动；学校课程本身选 school_and_study",
-  "friends_gatherings：朋友见面、相伴、普通聚餐或一起活动；明确庆生过节选 festivals_and_celebrations",
-  "romance_and_companionship：约会、情侣相处、恋爱或亲密陪伴；不要仅凭照片中有两个人臆造情侣关系",
-  "pet_life：宠物睡觉、玩耍、喂养或遛宠物；野生或动物园动物选 plants_and_wildlife",
-  "food_and_drinks：菜品、饮料、咖啡、甜品的外观、味道、口感或吃喝体验；制作过程选 cooking",
-  "cooking：备菜、烹调、烘焙及制作过程；只描述成品味道选 food_and_drinks",
-  "home_life：房间、家具、家居布置、搬家、家务或居家日常；强调家人互动选 family_time",
-  "city_life：街道、建筑、商店外观或城市夜景；购买行为选 shopping",
-  "natural_scenery：山川、湖海、日落、天气、季节、雪景等自然环境；具体花草动物选 plants_and_wildlife",
-  "plants_and_wildlife：鲜花、树木、鸟、野生动物或动物园；宠物相处选 pet_life",
-  "travel：旅行经历、景点游览、酒店住宿、当地见闻；交通过程选 transport，不因旅游照片就把所有句子归旅行",
-  "transport：机场、车站、乘车、通勤、自驾或旅途中的交通过程",
-  "sports_and_outdoors：健身、跑步、骑行、徒步、露营或其他户外活动；单纯描写山景选 natural_scenery",
-  "festivals_and_celebrations：生日、婚礼、过节、纪念日庆祝或毕业庆典；普通朋友见面选 friends_gatherings",
-  "arts_and_entertainment：演出、展览、电影、游乐园、阅读、音乐、游戏或其他文化娱乐活动",
-  "school_and_study：课堂、校园、书本、课程、作业或学习过程；毕业庆祝选 festivals_and_celebrations",
-  "work_life：工位、同事、会议、任务或工作成果；只描述室内布置不能据此臆造工作场景",
-  "shopping：买东西、挑选商品、试穿、价格、购买体验或新购物品；单纯描述穿着选 self_and_style",
-  "health_and_wellness：身体状况、医院、体检、康复、休息或健康照护；锻炼动作选 sports_and_outdoors",
-].join("；")
+  "self_and_style：自拍、形象、穿搭发型配饰，非泛指人物",
+  "family_time：家人相伴、合影、陪父母；孩子成长优先归孩子",
+  "children_growing_up：孩子玩耍、成长、亲子活动；课程归学校",
+  "friends_gatherings：朋友相伴、普通聚餐或活动；庆生过节归庆祝",
+  "romance_and_companionship：约会、情侣、亲密陪伴，不凭两个人臆造恋爱",
+  "pet_life：宠物睡觉、玩耍、喂养、遛宠；野生或动物园动物归花草动物",
+  "food_and_drinks：食物饮料的外观、味道、口感、吃喝体验；制作归下厨",
+  "cooking：备菜、烹调、烘焙；成品味道归吃喝",
+  "home_life：房间家具、布置搬家、家务日常；家人互动归家人相处",
+  "city_life：街道建筑、商店外观、夜景；购买归购物",
+  "natural_scenery：山川湖海、日落天气、季节雪景；具体花草动物归花草动物",
+  "plants_and_wildlife：花草树木、鸟、野生或动物园动物；宠物相处归宠物",
+  "travel：旅行经历、景点、酒店、当地见闻；交通归出行，不把旅游照所有句子归旅行",
+  "transport：机场车站、乘车通勤、自驾、旅途交通",
+  "sports_and_outdoors：健身跑步、骑行徒步、露营等户外活动；纯山景归风景",
+  "festivals_and_celebrations：生日婚礼、节日纪念日、毕业庆典；普通聚会归朋友",
+  "arts_and_entertainment：演出展览、电影游乐园、阅读音乐游戏",
+  "school_and_study：课堂校园、书本课程作业、学习；毕业庆典归庆祝",
+  "work_life：工位同事、会议任务、工作成果，不凭室内布置臆造工作",
+  "shopping：购买、挑选试穿、价格、新购物品；仅穿着归穿搭",
+  "health_and_wellness：身体、医院体检、康复休息照护；锻炼动作归运动",
+].join("\n")
 
 
 export interface MetadataSentence {
@@ -66,11 +65,9 @@ export interface SentenceMetadata {
 
 export function buildSentenceMetadataRules(): string {
   return `
-learning_topic_ids 是句子的分类，不是照片的分类。每句选择 1–2 个不重复的生活场景 ID，只能来自：${LEARNING_TOPIC_PROMPT}。
-第一个必须是最匹配的主场景；只有句子本身明确涉及另一个独立场景时才添加第二个，否则只返回一个，不强行凑数。不要自创 ID，不要机械地给所有句子相同分类。
-分类边界用于优先确定主场景：${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}。
-例如单纯描述蛋糕味道的句子只选 food_and_drinks，表达庆生的句子选 festivals_and_celebrations；“We went camping with our family.” 可选 ["sports_and_outdoors","family_time"]，但没有提到家人的露营句子不要添加 family_time。
-没有合适场景的句子（如仅记录票据、证件、备忘截图或无场景指向的感叹）返回空数组 []；不要新增“实用记录”分类。每句最多 2 个分类。
+分类和用途仅依据该句，不依据整张照片或其他句子。
+learning_topic_ids：选 1–2 个不重复 ID，最贴切的主场景在前；仅明确涉及第二个独立场景才添加，不凑数、不机械统一。无合适场景（如票据、证件、备忘、无场景感叹）返回 []。只用下列 ID，不自创；按边界优先确定主场景：
+${LEARNING_TOPIC_CLASSIFICATION_GUIDANCE}
 
 ${EXPRESSION_PURPOSE_PROMPT}
 `.trim()

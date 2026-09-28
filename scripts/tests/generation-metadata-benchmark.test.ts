@@ -1,5 +1,6 @@
 import { deepStrictEqual, ok, strictEqual, throws } from "node:assert";
 import { buildBenchmarkPrompts, imageRequest, stats, validateGeneration } from "../benchmark-generation-metadata.ts";
+import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 Deno.test("benchmark preserves generation rules and shares full metadata semantics", () => {
   for (const level of ["启蒙", "简单", "中等"]) {
@@ -8,7 +9,8 @@ Deno.test("benchmark preserves generation rules and shares full metadata semanti
     ok(!separate.includes("tags"));
     ok(!separate.includes("expression_purpose"));
     ok(!separate.includes("learning_topic_ids"));
-    const rules = metadata.slice(metadata.indexOf("learning_topic_ids 是句子的分类"), metadata.indexOf("\n\n仅返回 JSON"));
+    const rules = buildSentenceMetadataRules();
+    ok(metadata.includes(rules));
     ok(combined.includes(rules));
     const beforeRules = separate.slice(0, separate.indexOf("你必须严格遵守以下输出规则："));
     ok(combined.startsWith(beforeRules));

@@ -10,12 +10,12 @@ Deno.test("starter overrides lyrical style in both generation formats", () => {
     const prompt = buildPromptText("启蒙", "抒情优美", format);
     strictEqual(prompt, buildPromptText("启蒙", "平铺直叙", format));
     ok(prompt.includes("3 到 6 个英文单词"));
-    ok(prompt.includes("不要使用从句、抽象词、习语"));
+    ok(prompt.includes("不用从句、抽象词、习语"));
     ok(prompt.includes("风格固定为平铺直叙"));
     ok(prompt.includes("3 到 15 个汉字"));
-    ok(!prompt.includes("整体风格请明显更细腻"));
+    ok(!prompt.includes("抒情优美：细腻温柔"));
     if (format === "dual_tabs_v1") {
-      ok(prompt.includes("场景表达与画面描述遵守同一档难度"));
+      ok(prompt.includes("两组遵守同一档难度"));
       ok(
         prompt.includes(
           "image_descriptions 和 scene_and_feelings 都必须恰好有 3 项",
@@ -40,8 +40,8 @@ Deno.test("non-starter levels support lyrical style within their difficulty", ()
     for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
       const prompt = buildPromptText(level as Parameters<typeof buildPromptText>[0], "抒情优美", format);
       ok(prompt.includes(length));
-      ok(prompt.includes("整体风格请明显更细腻"));
-      ok(!prompt.includes("启蒙难度："));
+      ok(prompt.includes("抒情优美：细腻温柔"));
+      ok(!prompt.includes("启蒙："));
     }
   }
 });

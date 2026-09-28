@@ -1,4 +1,5 @@
 import { deepStrictEqual, ok, strictEqual } from "node:assert";
+import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
@@ -37,6 +38,18 @@ const expected = [
 ];
 const quotedIDs = (source: string) =>
   [...source.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]);
+
+Deno.test("compact classification guidance lists all 21 IDs exactly once with their boundaries", () => {
+  const rules = buildSentenceMetadataRules();
+  const catalog = [...rules.matchAll(/^([a-z_]+)：(.+)$/gm)]
+    .filter(([_, id]) => id !== "learning_topic_ids" && id !== "expression_purpose");
+  deepStrictEqual(catalog.map(([_, id]) => id), expected);
+  for (const [_, id, boundary] of catalog) {
+    strictEqual(rules.match(new RegExp(`\\b${id}\\b`, "g"))?.length, 1, id);
+    ok(boundary.length >= 10, `Missing classification guidance for ${id}`);
+  }
+  ok(rules.includes("只用下列 ID，不自创"));
+});
 
 Deno.test("all active topic catalogs contain the same 21 life scenes", () => {
   const generatedIDs = [...generation.matchAll(/^  \["([a-z_]+)",/gm)].map((

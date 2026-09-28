@@ -103,18 +103,17 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
       const eventIndex = prompt.indexOf("3. 发生了什么：");
       ok(feelingIndex >= 0 && conversationIndex > feelingIndex);
       ok(eventIndex > conversationIndex);
-      ok(prompt.includes("直接输出用户会说的那一句"));
-      ok(prompt.includes("不要输出双方对话"));
-      ok(prompt.includes("不要使用 I would say 等解释性开头"));
-      ok(prompt.includes("不能把假设的对话写成真实发生过的事实"));
-      ok(prompt.includes("第二句不受前面“不要虚构对话”的限制"));
-      ok(prompt.includes("第一句和第三句优先使用 I 或 we"));
-      ok(prompt.includes("第二句可自然使用 you、we、祈使句或疑问句"));
+      ok(prompt.includes("只写用户那一句及直译"));
+      ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
+      ok(prompt.includes("不能声称对话已发生"));
+      ok(prompt.includes("此组允许基于画面的推测和假设口语"));
+      ok(prompt.includes("第一、三句优先 I/we"));
+      ok(prompt.includes("第二句可用 you/we、祈使句或问句"));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
-      ok(prompt.includes("不必总是问句或请求"));
-      ok(prompt.includes("不要因为输入是一张照片就默认请求别人帮忙拍照"));
+      ok(prompt.includes("不总是问句或请求"));
+      ok(prompt.includes("仅画面明确涉及拍照才考虑请人拍照"));
       for (
         const example of [
           "I had such a lovely time with my friends.",
@@ -133,11 +132,11 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
 });
 Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
   const prompt = api.buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
-  ok(prompt.includes("每句只表达一个意思"));
-  ok(prompt.includes("只用极常见的具体词和简单感受词"));
+  ok(prompt.includes("只表达一个事物、动作或简单感受"));
+  ok(prompt.includes("极常见的具体词、简单感受词"));
   ok(prompt.includes("3 到 6 个英文单词"));
-  ok(prompt.includes("场景表达与画面描述遵守同一档难度"));
-  ok(prompt.includes("优先于语言风格、幽默和表达层次要求"));
+  ok(prompt.includes("两组遵守同一档难度"));
+  ok(prompt.includes("优先于风格、幽默和细节"));
   ok(!prompt.includes("I like this day."));
   strictEqual(prompt, api.buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
 });

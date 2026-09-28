@@ -16,7 +16,7 @@ const generationSource = await Deno.readTextFile(new URL("supabase/functions/gen
 export function buildBenchmarkPrompts(level = "简单") {
   const combined: string = generation.buildPromptText(level as Parameters<typeof generation.buildPromptText>[0], "平铺直叙", "dual_tabs_v1");
   const metadata = buildSentenceMetadataPrompt();
-  const rules = buildSentenceMetadataRules() + "\n分类和表达用途仅依据该句本身，不借用其他句子的背景；句子难度限制适用于 english 字段。\n\n";
+  const rules = buildSentenceMetadataRules() + "\n\n";
   const exampleStart = combined.lastIndexOf("\n{");
   const fieldRule = "每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段";
   if (exampleStart < 0 || !combined.includes(rules) || !combined.includes(fieldRule)) {
