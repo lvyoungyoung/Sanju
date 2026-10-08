@@ -131,14 +131,14 @@ The upstream server is timing out
    git push origin backend-YYYYMMDD-N
    ```
 
-## Staging 图片生成模型
+## 图片生成模型
 
-自 2026-10-08 起，`generate-memory-v2` 在 staging 的生成顺序为
+自 2026-10-08 起，`generate-memory-v2` 在 staging 和 production 的生成顺序为
 DeepSeek (`deepseek-flash`，关闭思考) -> MiMo (`mimo-v2.6-flash`) -> Kimi。
 每个模型的请求上限为 20 秒，包含读取响应体；保持原有 90 秒总请求预算。
-production 仍为 MiMo -> Kimi，不需要 DeepSeek 配置，即使配置了也不会优先调用。
+仅图片生成切换模型；朗读、主题意图解释及缺失元数据的后台修复仍沿用原有模型。
 
-发布前，先在 **staging Edge Functions 运行环境变量** 中添加：
+发布前，先在 **目标环境的 Edge Functions 运行环境变量** 中添加（两套环境独立配置）：
 
 ```text
 DEEPSEEK_API_KEY=<DeepSeek API key>
@@ -148,20 +148,25 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
 这里的 URL 必须是完整接口地址；代码没有默认地址。密钥不要提交到 GitHub，
 也不要仅配置在本地测试文件或 GitHub Actions Secrets 中：函数需要运行环境中的值。
 已有 `MIMO_API_KEY` / `MIMO_BASE_URL` / `KIMI_API_KEY` / `KIMI_BASE_URL` 继续保留用于兜底。
-缺少 DeepSeek 配置时，staging 会在启动生成前明确返回配置错误，不创建任务、不扣次数。
+缺少 DeepSeek 配置时，目标环境会在启动生成前明确返回配置错误，不创建任务、不扣次数。
 
-环境只根据服务端 `SUPABASE_URL` 的可信 staging 域名判断：
-`spb-bp1364k407p37qn7.supabase.opentrust.net` 或 `api-staging.sanju.cc`。
+环境只根据服务端 `SUPABASE_URL` 的可信项目域名判断：
+- staging：`spb-bp1364k407p37qn7.supabase.opentrust.net` 或 `api-staging.sanju.cc`。
+- production：`spb-bp103246ivn7q0nl.supabase.opentrust.net` 或 `api.sanju.cc`。
+
+其他未知项目仍走 MiMo -> Kimi。
 不能用请求 URL、客户端 Header 或 `SUPABASE_LOCAL_URL` 改变模型选择。
 
-先在 Backend Database 对 staging 应用
+先在 Backend Database 对目标环境应用
 `20261008000000_allow_deepseek_generation_provider.sql`，让数据库接受 `provider=deepseek`。
 原始托管 schema 的 `memories_provider_check` 只允许 MiMo/Kimi；漏跑此迁移会导致
 模型成功、图片上传成功，但最终保存报 `23514`。迁移不改保存/扣次数事务，
 也会扩展已经存在的同名匿名任务/生成任务 provider 约束，保留空值及原有提供方。
-完成配置和迁移后，在 Backend Functions 中选择 `staging` 和 `generate-memory-v2` 发布。
-若已经部署该版本的函数，只需应用迁移，不需要再次发布函数。
-**无需修改 Nginx；不必更新其他 Edge Function。**
+完成配置和迁移后，在 Backend Functions 中选择目标环境和 `generate-memory-v2` 发布。
+先验证 staging，再把同一 commit 发布到 production。此次 production 模型切换
+没有新增 migration，但 production 必须已应用上面的已有迁移。
+若目标环境已经应用此迁移，无需重复执行；仍需部署最新 `generate-memory-v2` 来切换默认模型。
+**无需更新客户端或修改 Nginx；不必更新其他 Edge Function。**
 客户端收到的句子、分类和表达用途格式不变，原有事务保存/扣次数、恢复、后台向量化不变。
 成功结果的 `provider` 为实际生成方；`mimo_failure_reason` 仍只记录 MiMo 的失败，
 DeepSeek 的失败原因写入 Edge Function 日志。staging Xcode 耗时日志会出现
@@ -171,6 +176,17 @@ DeepSeek 的失败原因写入 Edge Function 日志。staging Xcode 耗时日志
 部署后分别验证匿名与登录用户生成、播放及学习主题匹配。
 本地离线测试覆盖两种账号、环境隔离、鉴权请求格式、超时/无效 JSON/HTTP 错误兜底、
 审核拒绝、全部模型失败不扣次数、重复请求及提交后断线恢复；这些不等于线上部署验证。
+
+### Production 切换核对
+
+1. 确认 production 的待执行 migration 清单；如有其他未验证迁移，不要一并盲目发布。
+2. 应用 `20261008000000_allow_deepseek_generation_provider.sql`（若尚未应用）。
+3. 配置 production 的 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`，保留 MiMo/Kimi 兜底配置。
+4. 部署 production 的最新 `generate-memory-v2`。
+5. 验证登录与匿名用户生成、扣一次、回忆保存和恢复；旧客户端仍返回三句，新客户端返回两组三句。
+
+回滚模型顺序可将 `generate-memory-v2` 重新部署为 `584a901` 的版本，production 会恢复
+MiMo -> Kimi；不必回滚放宽 provider 的迁移，也不应删除已有 DeepSeek 生成记录。
 
 ## SQL Migration 手动发布
 

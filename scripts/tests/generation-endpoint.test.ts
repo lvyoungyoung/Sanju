@@ -460,9 +460,10 @@ Deno.test("a stalled MiMo body falls back to Kimi; two stalled bodies never debi
 });
 
 const stagingURL = "https://spb-bp1364k407p37qn7.supabase.opentrust.net";
+const productionURL = "https://spb-bp103246ivn7q0nl.supabase.opentrust.net";
 
-Deno.test("only trusted staging projects use DeepSeek, independent of local gateway and request URL", async () => {
-  for (const projectURL of [stagingURL, "https://api-staging.sanju.cc"]) {
+Deno.test("trusted staging and production projects use DeepSeek, independent of local gateway and request URL", async () => {
+  for (const projectURL of [stagingURL, "https://api-staging.sanju.cc", productionURL, "https://api.sanju.cc"]) {
     for (const anonymous of [false, true]) {
       reset({projectURL, anonymous, localURL: "http://kong:8000"});
       const response = await handler(request("owner", false, true));
@@ -488,8 +489,8 @@ Deno.test("only trusted staging projects use DeepSeek, independent of local gate
     }
   }
   for (const projectURL of [
-    "https://spb-bp103246ivn7q0nl.supabase.opentrust.net", "https://api.sanju.cc",
-    "https://api-staging.sanju.cc.attacker.invalid", "http://api-staging.sanju.cc", "not a URL",
+    "https://api-staging.sanju.cc.attacker.invalid", "http://api-staging.sanju.cc",
+    "https://api.sanju.cc.attacker.invalid", "http://api.sanju.cc", "not a URL",
   ]) {
     reset({projectURL, localURL: stagingURL, deepseekMissingKey: true, deepseekMissingURL: true});
     const incoming = request();
@@ -504,65 +505,114 @@ Deno.test("only trusted staging projects use DeepSeek, independent of local gate
   }
 });
 
-Deno.test("staging missing DeepSeek configuration fails before model, job claim or debit", async () => {
-  for (const option of ["deepseekMissingKey", "deepseekMissingURL"]) {
-    reset({projectURL: stagingURL, [option]: true});
-    const response = await handler(request());
-    strictEqual(response.status, 500);
-    strictEqual((await response.json()).error, "Missing DeepSeek generation configuration");
-    strictEqual(state.calls, 0);
-    strictEqual(state.jobs.size, 0);
-    strictEqual(state.debits, 0);
+Deno.test("both environments require DeepSeek configuration before model, job claim or debit", async () => {
+  for (const projectURL of [stagingURL, productionURL]) {
+    for (const option of ["deepseekMissingKey", "deepseekMissingURL"]) {
+      reset({projectURL, [option]: true});
+      const response = await handler(request());
+      strictEqual(response.status, 500);
+      strictEqual((await response.json()).error, "Missing DeepSeek generation configuration");
+      strictEqual(state.calls, 0);
+      strictEqual(state.jobs.size, 0);
+      strictEqual(state.debits, 0);
+    }
   }
 });
 
 Deno.test("DeepSeek timeout, malformed response and HTTP errors fall back without mislabeling MiMo failure", async () => {
-  for (const failure of [{stallDeepseek: true}, {deepseekMalformed: true}, {deepseekStatus: 429}, {deepseekStatus: 503}]) {
+  for (const projectURL of [stagingURL, productionURL]) {
+    for (const failure of [{stallDeepseek: true}, {deepseekMalformed: true}, {deepseekStatus: 429}, {deepseekStatus: 503}]) {
+      for (const anonymous of [false, true]) {
+        reset({projectURL, anonymous, ...failure});
+        const response = await handler(request());
+        strictEqual(response.status, 200);
+        strictEqual((await response.json()).memory.provider, "mimo");
+        strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash");
+        strictEqual(state.debits, 1);
+        const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
+        strictEqual(record.mimo_failure_reason, null);
+      }
+    }
+    reset({projectURL, stallDeepseek: true, stallMimo: true});
+    const response = await handler(request());
+    strictEqual(response.status, 200);
+    strictEqual((await response.json()).memory.provider, "kimi");
+    strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash,kimi-k2.5");
+    strictEqual([...state.memories.values()][0].mimo_failure_reason.includes("MiMo request timeout"), true);
+    strictEqual(state.debits, 1);
+  }
+});
+
+Deno.test("both environments reject moderation or complete provider failure without debits", async () => {
+  for (const projectURL of [stagingURL, productionURL]) {
     for (const anonymous of [false, true]) {
-      reset({projectURL: stagingURL, anonymous, ...failure});
-      const response = await handler(request());
-      strictEqual(response.status, 200);
-      strictEqual((await response.json()).memory.provider, "mimo");
-      strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash");
-      strictEqual(state.debits, 1);
-      const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
-      strictEqual(record.mimo_failure_reason, null);
+      reset({projectURL, anonymous, blocked: true});
+      strictEqual((await handler(request())).status, 403);
+      strictEqual(state.calls, 0);
+      strictEqual(state.debits, 0);
+      reset({projectURL, anonymous, stallDeepseek: true, stallMimo: true, stallKimi: true});
+      strictEqual((await handler(request())).status, 500);
+      strictEqual(state.calls, 3);
+      strictEqual(state.debits, 0);
+      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
+      strictEqual(state.released, 1);
     }
   }
-  reset({projectURL: stagingURL, stallDeepseek: true, stallMimo: true});
-  const response = await handler(request());
-  strictEqual(response.status, 200);
-  strictEqual((await response.json()).memory.provider, "kimi");
-  strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash,kimi-k2.5");
-  strictEqual([...state.memories.values()][0].mimo_failure_reason.includes("MiMo request timeout"), true);
-  strictEqual(state.debits, 1);
 });
 
-Deno.test("staging moderation rejection and complete provider failure never debit", async () => {
-  for (const anonymous of [false, true]) {
-    reset({projectURL: stagingURL, anonymous, blocked: true});
-    strictEqual((await handler(request())).status, 403);
-    strictEqual(state.calls, 0);
-    strictEqual(state.debits, 0);
-    reset({projectURL: stagingURL, anonymous, stallDeepseek: true, stallMimo: true, stallKimi: true});
-    strictEqual((await handler(request())).status, 500);
-    strictEqual(state.calls, 3);
-    strictEqual(state.debits, 0);
-    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
-    strictEqual(state.released, 1);
+Deno.test("DeepSeek preserves committed results after a lost finalize response in both environments", async () => {
+  for (const projectURL of [stagingURL, productionURL]) {
+    for (const anonymous of [false, true]) {
+      reset({projectURL, anonymous, finalizeResponseLost: true});
+      strictEqual((await handler(request())).status, 504);
+      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
+      strictEqual(state.removed, 0);
+      const replay = await handler(request());
+      strictEqual(replay.status, 200);
+      strictEqual((await replay.json()).memory.provider, "deepseek");
+      strictEqual(state.calls, 1);
+      strictEqual(state.debits, 1);
+    }
   }
 });
 
-Deno.test("staging DeepSeek preserves committed results after a lost finalize response", async () => {
+Deno.test("production DeepSeek keeps legacy three-sentence responses for both account types", async () => {
   for (const anonymous of [false, true]) {
-    reset({projectURL: stagingURL, anonymous, finalizeResponseLost: true});
-    strictEqual((await handler(request())).status, 504);
-    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
-    strictEqual(state.removed, 0);
-    const replay = await handler(request());
-    strictEqual(replay.status, 200);
-    strictEqual((await replay.json()).memory.provider, "deepseek");
+    reset({projectURL: productionURL, anonymous, dual: false});
+    const response = await handler(request("owner", true));
+    strictEqual(response.status, 200);
+    const result = await response.json();
+    strictEqual(result.memory.provider, "deepseek");
+    strictEqual(result.memory.sentences.length, 3);
+    strictEqual(result.memory.tags.length, 0);
+    strictEqual(response.headers.get("Server-Timing"), null);
+    strictEqual(state.modelRequests[0].model, "deepseek-flash");
+    strictEqual(state.debits, 1);
+    strictEqual(state.backgroundScopes.length, 1);
+  }
+});
+
+Deno.test("overlapping production DeepSeek requests generate and debit once", async () => {
+  for (const anonymous of [false, true]) {
+    reset({projectURL: productionURL, anonymous});
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { state.modelStarted = resolve; });
+    state.modelWait = new Promise<void>((resolve) => { release = resolve; });
+    const first = handler(request());
+    await started;
+    try {
+      const duplicate = await handler(request());
+      strictEqual(duplicate.status, 409);
+      strictEqual((await duplicate.json()).code, "generation_in_progress");
+    } finally {
+      release();
+    }
+    const response = await first;
+    strictEqual(response.status, 200);
+    strictEqual((await response.json()).memory.provider, "deepseek");
+    strictEqual((await handler(request())).status, 200);
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
+    strictEqual(state.backgroundScopes.length, 1);
   }
 });

@@ -13,6 +13,8 @@ export function usesDeepSeekGeneration(projectURL: string | undefined): boolean 
     return url.protocol === "https:" && [
       "spb-bp1364k407p37qn7.supabase.opentrust.net",
       "api-staging.sanju.cc",
+      "spb-bp103246ivn7q0nl.supabase.opentrust.net",
+      "api.sanju.cc",
     ].includes(url.hostname)
   } catch {
     return false
