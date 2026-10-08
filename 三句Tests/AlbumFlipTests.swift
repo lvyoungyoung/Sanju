@@ -408,7 +408,7 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(decoded.size.width, decoded.size.height), 1280)
     }
 
-    func testPreloadedPhotoRevealsWhenCardMovesToFront() async throws {
+    func testPreloadedPhotoStaysVisibleWhenCardMovesToFront() async throws {
         let state = PhotoRevealTestState(image: samplePhoto, isFront: false)
         let image = try await renderInWindow(
             PhotoRevealTestView(state: state).ignoresSafeArea(), size: CGSize(width: 120, height: 160)
@@ -416,7 +416,24 @@ final class AlbumFlipTests: XCTestCase {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) { state.isFront = true }
-            try await Task.sleep(for: .seconds(1))
+            // Inspect the next frames, not the final image after a new fade could finish.
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        XCTAssertEqual(try pixel(in: image, at: CGPoint(x: 60, y: 40)),
+                       try pixel(in: samplePhoto, at: CGPoint(x: 320, y: 80)),
+                       "A photo exposed during a swipe must not disappear when it becomes the front card")
+    }
+
+    func testPreloadedPhotoStaysVisibleWhenPromotedImmediately() async throws {
+        let state = PhotoRevealTestState(image: samplePhoto, isFront: false)
+        let image = try await renderInWindow(
+            PhotoRevealTestView(state: state).ignoresSafeArea(), size: CGSize(width: 120, height: 160),
+            settleDuration: .zero
+        ) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { state.isFront = true }
+            try await Task.sleep(for: .milliseconds(40))
         }
         XCTAssertEqual(try pixel(in: image, at: CGPoint(x: 60, y: 40)),
                        try pixel(in: samplePhoto, at: CGPoint(x: 320, y: 80)))

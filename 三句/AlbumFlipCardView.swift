@@ -125,9 +125,15 @@ struct AlbumFlipPhoto: View {
 
 struct AlbumFlipPhotoImage: View {
     let image: UIImage
-    let isFront: Bool
     let reduceMotion: Bool
-    @State private var hasRevealed = false
+    @State private var hasRevealed: Bool
+
+    init(image: UIImage, isFront: Bool, reduceMotion: Bool) {
+        self.image = image
+        self.reduceMotion = reduceMotion
+        // Buffered photos are already visible during a swipe; never hide them on promotion.
+        _hasRevealed = State(initialValue: !isFront || reduceMotion)
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -136,12 +142,12 @@ struct AlbumFlipPhotoImage: View {
                 .scaledToFill()
                 .frame(width: proxy.size.width, height: proxy.size.height)
                 .clipped()
-                .opacity(!isFront || reduceMotion || hasRevealed ? 1 : 0)
+                .opacity(reduceMotion || hasRevealed ? 1 : 0)
         }
-        .task(id: isFront) {
-            guard isFront, !hasRevealed else { return }
+        .task {
+            guard !hasRevealed else { return }
             if !reduceMotion {
-                // Establish the transparent frame before revealing a cached or newly loaded photo.
+                // Establish the transparent frame before a newly loaded photo fades in.
                 do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
             }
             guard !Task.isCancelled else { return }
