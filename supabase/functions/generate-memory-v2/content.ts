@@ -52,67 +52,38 @@ export function buildPromptText(
   englishLevel: "启蒙" | "简单" | "中等" | "高级",
   generationFormat: GenerationFormat
 ): string {
-  const difficultyLabel = englishLevel === "启蒙" ? "启蒙" : englishLevel === "简单" ? "初级" : "中级"
   const englishLevelPrompt =
     englishLevel === "启蒙"
-      ? `【启蒙】 (Beginner / Kids)
-- 每句 3 到 6 个英文单词。
-- 仅使用极其基础的日常名词和动词，如 see, like, red, cat, milk, big。
-- 仅限一般现在时，主谓宾或主系表极简结构。拒绝任何从句、介词短语堆叠或高级时态。
-- 示例：I see a coffee cup. / The light is warm.`
+      ? "启蒙：儿童及零基础。每句 3 到 6 个英文单词，优先 3 到 5 个；只表达一个事物、动作或简单感受，不叠加背景细节。用极常见的具体词、简单感受词及主谓、主谓宾、be 句，主要用一般现在时，也可描述正在发生的动作。不用从句、抽象词、习语、俚语、比喻、拟人、双关、复杂时态或文学表达。中文短而直接，适合儿童。"
       : englishLevel === "简单"
-      ? `【初级】 (Elementary / Daily)
-- 每句 7 到 12 个英文单词。
-- 使用初中核心词汇，允许常见的具体生活细节词，如 condensation, cozy, messy, sunrise。
-- 允许一般过去时、现在进行时及简单的介词短语，如 on the table。避免复杂的定语从句。
-- 示例：There are water drops on my cold coffee glass. / I need a short break from work.`
-      : `【中级】 (Intermediate / Native Vibe)
-- 每句 10 到 18 个英文单词，注重句式丰富度。
-- 使用大学四六级/雅思核心词，或母语者地道的口语习语、短语动词，如 drench, dapple, catch up, run out of。
-- 可灵活运用过去完成时、过去进行时、定语从句、分词短语作状语或后置定语，展现画面张力和情感深度。
-- 示例：Bathed in the golden afternoon light, my messy desk actually looks peaceful. / Just running on an iced americano and pure willpower today.`
+      ? "初级：每句必须 6 到 10 个英文单词，逐句限制、不是平均，最多 10 个。输出前按空格逐句检查，缩写算一个词、标点不计；超长则删次要信息并改写，不直接截断，不输出词数或检查过程。用高频日常词、常见动作和简单感受词，一个简单分句表达一个意思及一个具体细节。可用一般现在时、现在进行时、常见动词的一般过去时、简单问句、祈使句或 can；不用从句、完成时、被动语态、分词修饰、抽象书面词、生僻习语、比喻或拟人。"
+      : englishLevel === "高级"
+        ? "高级：每句尽量 14 到 24 个单词；词汇、结构、信息层次更丰富，可适度修辞，但须自然准确易懂，不写诗或炫技。"
+        : "中级：每句尽量 10 到 16 个英文单词。用常见而准确的动作、感受词和日常搭配，表达一个意思及一两个细节，或一种原因、时间、对比关系。可用一个简短 because/when/that 从句或简单并列，不强求从句、不嵌套。不靠堆形容词拉长句子，不用生僻词、抽象书面词、复杂语法或文学修辞。"
 
-  const roleAndDifficultyPrompt = `# Role
-你是一个极简、克制且懂人性的多模态英语教学助手。根据用户上传的照片，生成 ${generationFormat === "dual_tabs_v1" ? "6" : "3"} 个纯正、地道的英语句子及中文翻译，帮助用户学会用英语描述自己的生活。
+  const difficultyPriorityPrompt = englishLevel === "高级" ? "" :
+    "难度限制适用于所有 english 字段，优先于风格、幽默和细节；信息过多就删减，保持自然完整，不凑字数、不省略必要成分。"
 
-# Active Constraint: Difficulty Level
-当前用户选择的英语难度级别为：【${difficultyLabel}】。
-严格按照以下规范控制每个 english 字段的词汇、语法和长度：
-${englishLevelPrompt}
-难度限制优先于风格与细节，${generationFormat === "dual_tabs_v1" ? "两组遵守同一档难度" : "每句遵守同一档难度"}。词数按空格逐句检查，缩写算一个词、标点不计，不是平均值；超出范围就自然改写，不截断、不凑字数、不输出检查过程。示例仅示范难度，不要脱离照片套用。`
-
-  const objectiveRules = `扮演严谨、敏锐的摄影师，捕捉客观事实：光线、材质、具体物件、动作、空间关系等。避免泛泛而谈的宏观词汇，如 beautiful；在当前难度范围内深挖画面细节。只说可见内容，不推测关系、背景或内心感受。`
-
-  const adaptiveStylePrompt = `# Adaptive Style Routing
-仅对维度二，先分析照片的场景、色调与氛围，自动选择最契合的一种风格，拒绝千篇一律的机械化翻译：
-1. 吐槽/丧萌风 (Satirical & Humorous)
-线索：办公格子间、电脑屏幕、深夜灯光、堆满文件的办公桌、咖啡/能量饮料、周一早晨或天气阴沉。
-语气：带点幽默、自嘲的打工人/学生党视角，接地气，使用地道的高频吐槽口语。
-2. 温暖/治愈风 (Cozy & Warm)
-线索：美食、咖啡厅探店、宠物、阳光洒进窗台、暖色调室内、聚会、日常小确幸。
-语气：温柔、惬意、享受当下，适合朋友圈或 Instagram 的质感短句。
-3. 诗意/探索风 (Poetic & Mindful)
-线索：大自然、徒步、日落、建筑细节、空无一人的街道、极简冷色调、深夜独自一人。
-语气：略显克制，富有哲理或空间感，平静地表达与内心或世界的对话。
-4. 标准/轻快风 (Casual Daily)
-线索：不符合上述特殊场景的普通生活抓拍，如路边随手拍、超市购物、交通工具。
-语气：自然、爽朗，母语者日常闲聊。
-以上是判断线索，结合整体氛围择一，不仅凭一个物件套用；无论何种风格，词汇、语法及句长都不能超出当前难度。`
+  const naturalSpeechPrompt =
+    englishLevel === "启蒙"
+      ? "友好自然直接，适合儿童及零基础，不使用抒情风格。"
+      : "生动活泼自然的日常口语，动词具体、搭配自然、有节奏。可轻微幽默或俏皮，但须来自可见的对比、动作或细节；不用段子、网络梗、夸张笑话或生硬拟人，不虚构动作、对话、情绪或细节。"
 
   if (generationFormat === "dual_tabs_v1") {
     return `
-${roleAndDifficultyPrompt}
+根据图片生成两组英语学习句子及中文翻译。
+${englishLevelPrompt}
+${naturalSpeechPrompt}
+${difficultyPriorityPrompt}
 
-${adaptiveStylePrompt}
-
-# Rules
-image_descriptions（维度一：客观世界，描述照片中有什么）：生成 3 句话。
-${objectiveRules}
-
-scene_and_feelings（维度二：主观心声，场景下可能说什么）：生成 3 句话。
-扮演感性、懂用户的朋友，按选定风格推测拍摄时的心理状态，写出用户当时最可能说的日常口语或内心独白；必须严格符合当前难度。三句角度不同，不换词重复，不必固定为感受、对话和事件各一句。
-允许基于画面推测最可能的场景、关系和感受，但不编造无依据的具体姓名、地点、时间、经历或事实。可以写假设口语，不能声称对话已发生，不输出双方对话或 I would say 开头。仅画面明确涉及拍照才考虑请人拍照。
-截图、界面、图表、股票、网页、文档等信息图只作描述或场景心声，不分析数据或涨跌、不逐项抄写文字。不要输出风格名称、判断过程或其他分析。
+image_descriptions：三句客观描述，只说可见的人、物、动作、环境或文字，不推测关系、背景和内心感受。
+scene_and_feelings：三句用户会说的日常英语。此组允许基于画面的推测和假设口语：大胆推测最可能的场景、关系和感受，无须标注推测；不编造无依据的具体姓名、地点、时间、经历或事实。严格依次：
+1. 我当时的感受：情绪、反应或氛围。
+2. 当时会对别人说什么：围绕具体对象或活动，说一句发现、建议、邀请、提问、请求、提醒或回应，不总是问句或请求。允许假设口语，但不能声称对话已发生；不用通用寒暄、感受复述或事后配文。仅画面明确涉及拍照才考虑请人拍照。只写用户那一句及直译，不写双方对话、标签、额外引号或 I would say 开头。
+3. 发生了什么：最可能的日常场景或动作。
+第一、三句优先 I/we，第二句可用 you/we、祈使句或问句。三句角度不同，像母语者对朋友说话或发照片配文，不列物体、不换词重复、不写鸡汤。
+${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文单词；用地道搭配、准确感受词和自然节奏，不用复杂从句、书面词、文学修辞或刻意难词。' : '两组遵守同一档难度。'}场景表达保持日常口语，不写诗、散文、文艺腔。
+截图、界面、图表、股票、网页、文档等信息图，场景表达只说看到、记录或分享信息，不分析数据或涨跌。
 
 ${buildSentenceMetadataRules()}
 
@@ -130,12 +101,10 @@ ${buildSentenceMetadataRules()}
   }
 
   return `
-${roleAndDifficultyPrompt}
-
-# Rules
-sentences（客观世界，描述照片中有什么）：仅生成 3 句话。
-${objectiveRules}
-截图、界面、图表、股票、网页、文档等信息图也只描述最直接可见的内容，不分析涨跌、不总结数据、不逐项抄写文字。不生成主观心声或风格判断。
+根据图片最直接可见的内容生成三句自然、可模仿的英文描述及中文翻译。截图、界面、图表、股票、网页、文档等信息图也只作简洁描述，不分析涨跌、不总结数据、不逐项抄写文字。
+${englishLevelPrompt}
+${naturalSpeechPrompt}
+${difficultyPriorityPrompt}
 
 ${buildSentenceMetadataRules()}
 

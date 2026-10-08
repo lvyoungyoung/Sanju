@@ -9,8 +9,8 @@ Deno.test("starter keeps natural child-safe speech in both generation formats", 
   for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
     const prompt = buildPromptText("启蒙", format);
     ok(prompt.includes("3 到 6 个英文单词"));
-    ok(prompt.includes("拒绝任何从句、介词短语堆叠或高级时态"));
-    ok(prompt.includes("仅限一般现在时"));
+    ok(prompt.includes("不用从句、抽象词、习语"));
+    ok(prompt.includes("友好自然直接"));
     ok(prompt.includes("3 到 15 个汉字"));
     ok(!prompt.includes("抒情优美：细腻温柔"));
     if (format === "dual_tabs_v1") {
@@ -28,12 +28,12 @@ Deno.test("starter keeps natural child-safe speech in both generation formats", 
 
 Deno.test("non-starter levels keep natural speech within their difficulty", () => {
   for (
-    const [level, length] of [["简单", "7 到 12 个英文单词"], [
+    const [level, length] of [["简单", "6 到 10 个英文单词"], [
       "中等",
-      "10 到 18 个英文单词",
+      "10 到 16 个英文单词",
     ], [
       "高级",
-      "10 到 18 个英文单词",
+      "14 到 24 个单词",
     ]]
   ) {
     for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
@@ -42,7 +42,7 @@ Deno.test("non-starter levels keep natural speech within their difficulty", () =
         format,
       );
       ok(prompt.includes(length));
-      ok(prompt.includes("帮助用户学会用英语描述自己的生活"));
+      ok(prompt.includes("自然的日常口语"));
       ok(!prompt.includes("启蒙："));
     }
   }
