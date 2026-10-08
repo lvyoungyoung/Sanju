@@ -356,49 +356,60 @@ struct AlbumFlipCompletionView: View {
     let onChooseAnotherPhoto: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Image(systemName: "photo.on.rectangle.angled")
-                    .font(.system(size: 56, weight: .light))
-                    .foregroundStyle(AppPalette.accentText)
-                    .padding(28)
-                    .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
-                    .accessibilityHidden(true)
-
-                VStack(spacing: 12) {
-                    Text(L10n.string("album_flip.complete.title", "这张照片，已经翻完了"))
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(AppTextColor.primary)
-                    Text(L10n.string("album_flip.complete.body", "换一张照片，继续翻你的英语相册。"))
-                        .font(.body)
-                        .foregroundStyle(AppTextColor.secondary)
-                }
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-
+        GeometryReader { proxy in
+            ScrollView {
                 Button(action: onChooseAnotherPhoto) {
-                    Label(L10n.string("album_flip.complete.choose_another", "再上传一张"), systemImage: "plus")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppPalette.onAccent)
-                        .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
-                        .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+                    VStack(spacing: 12) {
+                        Text(L10n.string("album_flip.complete.title", "这张已经翻完了，再来一张吧"))
+                            .font(.body.weight(.medium))
+                        if !isPhotoSelectionEnabled {
+                            Text(L10n.string("new.photo_selection.network_required", "请连接网络"))
+                                .font(.subheadline)
+                        }
+                    }
+                    .foregroundStyle(AppTextColor.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(28)
+                    .frame(maxWidth: .infinity, minHeight: max(280, proxy.size.height - 42))
+                    .background {
+                        AlbumFlipCompletionHatching()
+                            .stroke(AppTextColor.secondary.opacity(0.13), lineWidth: 1)
+                            .background(AppSurfaceColor.card.opacity(0.5))
+                            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
+                            .strokeBorder(AppTextColor.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [7, 6]))
+                            .allowsHitTesting(false)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                 }
                 .buttonStyle(StudioPressStyle())
                 .disabled(!isPhotoSelectionEnabled)
-                .opacity(isPhotoSelectionEnabled ? 1 : 0.52)
-
-                if !isPhotoSelectionEnabled {
-                    Text(L10n.string("new.photo_selection.network_required", "请连接网络"))
-                        .font(.subheadline)
-                        .foregroundStyle(AppTextColor.secondary)
-                }
+                .accessibilityHint(L10n.string("album_flip.complete.choose_another", "再上传一张"))
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.top, 18)
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: 420)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 48)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
+    }
+}
+
+private struct AlbumFlipCompletionHatching: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        guard rect.width > 0, rect.height > 0 else { return path }
+        var x = rect.minX - rect.height
+        while x <= rect.maxX {
+            path.move(to: CGPoint(x: x, y: rect.maxY))
+            path.addLine(to: CGPoint(x: x + rect.height, y: rect.minY))
+            x += 12
+        }
+        return path
     }
 }
 

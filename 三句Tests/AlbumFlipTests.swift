@@ -417,6 +417,11 @@ final class AlbumFlipTests: XCTestCase {
                 let size = CGSize(width: 320, height: 568)
                 let image = try await renderInWindow(view, size: size)
                 XCTAssertEqual(image.size, size)
+                var stripeColors = Set<[UInt8]>()
+                for x in stride(from: 50, through: 260, by: 3) {
+                    stripeColors.insert(try pixel(in: image, at: CGPoint(x: CGFloat(x), y: 140)))
+                }
+                XCTAssertGreaterThan(stripeColors.count, 1, "The completion card should have a visible diagonal hatch, not a flat background")
                 let attachment = XCTAttachment(image: image)
                 attachment.name = "AlbumFlip-Completion-\(scheme)-\(isOnline ? "online" : "offline")"
                 attachment.lifetime = .keepAlways

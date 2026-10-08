@@ -213,7 +213,7 @@
 "new.recovery.retry_hint" = "不会重新生成，只会尝试获取刚才那次生成的结果。";
 "new.recovery.waiting_network_hint" = "网络恢复后会自动尝试获取结果。";
 "new.result.choose_another" = "再来一张";
-"new.result.saved_hint" = "内容已生成，建议收藏 1 到 2 句反复学习。";
+"new.result.saved_hint" = "内容已生成，试试翻一翻吧";
 "new.result.favorite" = "收藏";
 "new.result.saved" = "已收藏";
 "new.result.play" = "播放";
@@ -488,6 +488,6 @@
 "album_flip.photo_unavailable" = "照片暂时无法加载";
 "album_flip.show_translation" = "查看翻译";
 "album_flip.hide_translation" = "收起翻译";
-"album_flip.complete.title" = "这张照片，已经翻完了";
+"album_flip.complete.title" = "这张已经翻完了，再来一张吧";
 "album_flip.complete.body" = "换一张照片，继续翻你的英语相册。";
 "album_flip.complete.choose_another" = "再上传一张";

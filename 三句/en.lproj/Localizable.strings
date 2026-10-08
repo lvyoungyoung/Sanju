@@ -213,7 +213,7 @@
 "new.recovery.retry_hint" = "This will not generate again. It only tries to fetch the result from your last request.";
 "new.recovery.waiting_network_hint" = "We will automatically try to fetch the result once the network comes back.";
 "new.result.choose_another" = "Choose Another Photo";
-"new.result.saved_hint" = "Content generated. Save 1 or 2 sentences to practice again and again.";
+"new.result.saved_hint" = "Your sentences are ready. Try flipping through them.";
 "new.result.favorite" = "Save";
 "new.result.saved" = "Saved";
 "new.result.play" = "Play";
@@ -488,6 +488,6 @@
 "album_flip.photo_unavailable" = "Photo unavailable right now";
 "album_flip.show_translation" = "Show translation";
 "album_flip.hide_translation" = "Hide translation";
-"album_flip.complete.title" = "You've flipped through this photo";
+"album_flip.complete.title" = "You've flipped through this one. Try another photo.";
 "album_flip.complete.body" = "Pick another photo to keep exploring your English album.";
 "album_flip.complete.choose_another" = "Add another photo";
