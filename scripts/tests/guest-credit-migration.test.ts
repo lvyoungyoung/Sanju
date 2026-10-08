@@ -7,6 +7,12 @@ const migration = await Deno.readTextFile(
     import.meta.url,
   ),
 );
+const ledgerMigration = await Deno.readTextFile(
+  new URL(
+    "../../supabase/migrations/20261008001000_allow_guest_credit_merge_transactions.sql",
+    import.meta.url,
+  ),
+);
 const guest = "10000000-0000-0000-0000-000000000001";
 const owner = "10000000-0000-0000-0000-000000000002";
 const other = "10000000-0000-0000-0000-000000000003";
@@ -16,7 +22,12 @@ Deno.test("guest credit transfer preserves balance, ownership and atomic retry s
   try {
     await db.exec(`
       create table profiles(id uuid primary key, available_generations integer not null);
-      create table generation_transactions(user_id uuid, delta integer, balance_after integer, reason text, note text);
+      create table generation_transactions(
+        user_id uuid, delta integer, balance_after integer, reason text, note text,
+        constraint generation_transactions_balance_after_check check (balance_after >= 0),
+        constraint generation_transactions_reason_check
+          check (reason in ('init', 'generate', 'purchase', 'admin_adjust'))
+      );
       create role anon; create role authenticated; create role service_role;
     `);
     await db.exec(migration);
@@ -48,6 +59,77 @@ Deno.test("guest credit transfer preserves balance, ownership and atomic retry s
     const ledger = async () =>
       (await db.query("select * from generation_transactions")).rows;
 
+    await t.step(
+      "the deployed reason constraint rejects positive transfers atomically",
+      async () => {
+        await reset();
+        await rejects(() => transfer(), {
+          code: "23514",
+          constraint: "generation_transactions_reason_check",
+        });
+        strictEqual(await balance(guest), 9);
+        strictEqual(await balance(owner), 200);
+        deepStrictEqual(
+          (await db.query(
+            "select credits_merged_into_user_id, credits_merged_at from profiles where id=$1",
+            [guest],
+          )).rows,
+          [{ credits_merged_into_user_id: null, credits_merged_at: null }],
+        );
+        deepStrictEqual(await ledger(), []);
+        await reset(0);
+        deepStrictEqual((await transfer()).rows, [{
+          available_generations: 200,
+          merged: false,
+        }]);
+        deepStrictEqual(await ledger(), []);
+      },
+    );
+    await t.step(
+      "the allowlist migration preserves history and is safe to apply twice",
+      async () => {
+        await reset();
+        for (const reason of ["init", "generate", "purchase", "admin_adjust"]) {
+          await db.query(
+            "insert into generation_transactions values ($1, 1, 200, $2, 'historical')",
+            [owner, reason],
+          );
+        }
+        const history = await ledger();
+        await db.exec(ledgerMigration);
+        await db.exec(ledgerMigration);
+        deepStrictEqual(await ledger(), history);
+        strictEqual(await balance(guest), 9);
+        strictEqual(await balance(owner), 200);
+        await transfer();
+        strictEqual(await balance(owner), 209);
+        strictEqual((await ledger()).length, 5);
+        for (
+          const reason of [
+            "init",
+            "generate",
+            "purchase",
+            "admin_adjust",
+            "merge_local",
+          ]
+        ) {
+          await db.query(
+            "insert into generation_transactions values ($1, 1, 209, $2, 'allowed')",
+            [owner, reason],
+          );
+        }
+        await rejects(() =>
+          db.query(
+            "insert into generation_transactions values ($1, 1, 209, 'unknown', null)",
+            [owner],
+          ), /generation_transactions_reason_check/);
+        await rejects(() =>
+          db.query(
+            "insert into generation_transactions values ($1, -210, -1, 'generate', null)",
+            [owner],
+          ), /generation_transactions_balance_after_check/);
+      },
+    );
     await t.step(
       "existing account keeps purchases and receives only the guest remainder",
       async () => {

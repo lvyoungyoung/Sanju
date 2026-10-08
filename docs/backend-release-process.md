@@ -270,3 +270,12 @@ Storage 删除失败会保留任务；数据库删除失败会返回 500，重�
 不要凭猜测重建或覆盖生产函数。新环境初始化前，应在获得授权后从已验证环境导出
 函数定义及其依赖，去除敏感信息、复核权限，再补入版本管理并测试事务原子性。
 本次稳定性修复没有更改该购买事务或购买 Edge Function。
+
+### 匿名次数迁移流水
+
+`20261008001000_allow_guest_credit_merge_transactions.sql` 将 `merge_local` 加入
+`generation_transactions_reason_check`，保留原有四种流水类型和非负余额约束。
+旧约束会拒绝有剩余次数的匿名迁移；失败事务会回滚余额及迁移标记，不需要手动修正次数。
+先通过 `Backend Database` 在 staging 执行 `apply`，验证有剩余次数的匿名用户登录已有账号，
+再按发布流程应用到 production。执行后重新登录即可重试，重复迁移不会重复加次数。
+本次只需这个新增数据库迁移，无需更新 Edge Function、客户端、环境变量或 Nginx。
