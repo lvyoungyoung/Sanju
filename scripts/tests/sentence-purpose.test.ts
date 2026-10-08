@@ -113,25 +113,33 @@ Deno.test("foreground generation requests metadata without changing the sentence
     }
   }
 });
-Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
+Deno.test("scene expressions adapt to the photo without a fixed feeling, dialogue, event order", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"]) {
     {
       const prompt = api.buildPromptText(level, "dual_tabs_v1");
-      const feelingIndex = prompt.indexOf("1. 我当时的感受：");
-      const conversationIndex = prompt.indexOf("2. 当时会对别人说什么：");
-      const eventIndex = prompt.indexOf("3. 发生了什么：");
-      ok(feelingIndex >= 0 && conversationIndex > feelingIndex);
-      ok(eventIndex > conversationIndex);
-      ok(prompt.includes("只写用户那一句及直译"));
-      ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
+      ok(prompt.includes("不必固定为感受、对话和事件各一句"));
+      ok(prompt.includes("日常口语或内心独白"));
+      ok(prompt.includes("按选定风格推测拍摄时的心理状态"));
+      ok(prompt.includes("不输出双方对话或 I would say 开头"));
       ok(prompt.includes("不能声称对话已发生"));
-      ok(prompt.includes("此组允许基于画面的推测和假设口语"));
-      ok(prompt.includes("第一、三句优先 I/we"));
-      ok(prompt.includes("第二句可用 you/we、祈使句或问句"));
+      ok(prompt.includes("允许基于画面推测最可能的场景、关系和感受"));
+      for (
+        const style of [
+          "吐槽/丧萌风",
+          "温暖/治愈风",
+          "诗意/探索风",
+          "标准/轻快风",
+        ]
+      ) {
+        ok(prompt.includes(style));
+      }
+      ok(!prompt.includes("1. 我当时的感受："));
+      ok(!prompt.includes("2. 当时会对别人说什么："));
+      ok(!prompt.includes("3. 发生了什么："));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
-      ok(prompt.includes("不总是问句或请求"));
+      ok(prompt.includes("不换词重复"));
       ok(prompt.includes("仅画面明确涉及拍照才考虑请人拍照"));
       for (
         const example of [
@@ -151,13 +159,13 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
 });
 Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
   const prompt = api.buildPromptText("启蒙", "dual_tabs_v1");
-  ok(prompt.includes("只表达一个事物、动作或简单感受"));
-  ok(prompt.includes("极常见的具体词、简单感受词"));
+  ok(prompt.includes("主谓宾或主系表极简结构"));
+  ok(prompt.includes("极其基础的日常名词和动词"));
   ok(prompt.includes("3 到 6 个英文单词"));
   ok(prompt.includes("两组遵守同一档难度"));
-  ok(prompt.includes("优先于风格、幽默和细节"));
+  ok(prompt.includes("难度限制优先于风格与细节"));
   ok(!prompt.includes("I like this day."));
-  ok(prompt.includes("友好自然直接"));
+  ok(prompt.includes("仅限一般现在时"));
 });
 Deno.test("legacy image descriptions do not gain the hypothetical dialogue instruction", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"]) {

@@ -8,7 +8,7 @@ import {
 const levels = ["启蒙", "简单", "中等", "高级"] as const;
 const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 
-Deno.test("removing style selection leaves the entire output contract byte-for-byte unchanged", () => {
+Deno.test("Gemini template adaptation leaves the entire output contract byte-for-byte unchanged", () => {
   const hashes = {
     dual_tabs_v1: {
       starter:
@@ -35,10 +35,24 @@ Deno.test("removing style selection leaves the entire output contract byte-for-b
   }
 });
 
-Deno.test("natural beginner guidance stays compact without shrinking output rules", () => {
-  const prompt = buildPromptText("简单", "dual_tabs_v1");
-  ok(prompt.indexOf("你必须严格遵守以下输出规则：") <= (5066 - 861) / 2);
-  ok(prompt.length <= 2900, `Prompt grew to ${prompt.length} characters`);
+Deno.test("only the selected difficulty is injected without duplicating the full template", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    const label = level === "启蒙"
+      ? "启蒙"
+      : level === "简单"
+      ? "初级"
+      : "中级";
+    ok(prompt.includes(`当前用户选择的英语难度级别为：【${label}】`));
+    strictEqual(
+      prompt.match(
+        /\((Beginner \/ Kids|Elementary \/ Daily|Intermediate \/ Native Vibe)\)/g,
+      )?.length,
+      1,
+    );
+    ok(prompt.length <= 3600, `Prompt grew to ${prompt.length} characters`);
+    ok(!prompt.includes("[User_Selected_Difficulty]"));
+  }
 });
 
 Deno.test("combined generation preserves sentence groups, categories and purposes", () => {
@@ -116,29 +130,30 @@ Deno.test("unsolicited photo tags are ignored without discarding sentence metada
   }
 });
 
-Deno.test("one natural conversational style keeps grounded humor and child-safe simplicity", () => {
-  for (const format of formats) {
-    for (const level of levels) {
-      const prompt = buildPromptText(level, format);
-      ok(!prompt.includes("抒情优美："));
-      ok(!prompt.includes("用户选择的风格"));
-      if (level === "启蒙") {
-        ok(prompt.includes("友好自然直接"));
-        ok(prompt.includes("中文短而直接，适合儿童"));
-        ok(!prompt.includes("可轻微幽默或俏皮"));
-      } else {
-        for (
-          const text of [
-            "自然的日常口语",
-            "可轻微幽默或俏皮",
-            "须来自可见的对比、动作或细节",
-            "不虚构动作、对话、情绪或细节",
-          ]
-        ) {
-          ok(prompt.includes(text), `${level}: ${text}`);
-        }
-      }
-    }
+Deno.test("subjective expressions route by scene, palette and atmosphere without a client style setting", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    for (
+      const text of [
+        "极简、克制且懂人性",
+        "场景、色调与氛围",
+        "吐槽/丧萌风",
+        "温暖/治愈风",
+        "诗意/探索风",
+        "标准/轻快风",
+        "办公格子间",
+        "咖啡厅探店",
+        "空无一人的街道",
+        "超市购物",
+        "结合整体氛围择一",
+        "拒绝千篇一律的机械化翻译",
+        "词汇、语法及句长都不能超出当前难度",
+        "不要输出风格名称",
+      ]
+    ) ok(prompt.includes(text), text);
+    ok(!prompt.includes("抒情优美："));
+    ok(!prompt.includes("用户选择的风格"));
+    ok(!prompt.includes("languageStyle"));
   }
 });
 
@@ -146,37 +161,45 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   const prompt = buildPromptText("中等", "dual_tabs_v1");
   for (
     const text of [
-      "不推测关系、背景和内心感受",
-      "大胆推测最可能的场景、关系和感受",
+      "严谨、敏锐的摄影师",
+      "光线、材质、具体物件、动作、空间关系",
+      "避免泛泛而谈的宏观词汇",
+      "不推测关系、背景或内心感受",
+      "感性、懂用户的朋友",
+      "推测拍摄时的心理状态",
+      "日常口语或内心独白",
       "不编造无依据的具体姓名、地点、时间、经历或事实",
       "不能声称对话已发生",
       "仅画面明确涉及拍照才考虑请人拍照",
       "两组遵守同一档难度",
-      "难度限制适用于所有 english 字段，优先于风格、幽默和细节",
-      "不写诗、散文、文艺腔",
+      "难度限制优先于风格与细节",
+      "不必固定为感受、对话和事件各一句",
       "不分析数据或涨跌",
     ]
   ) ok(prompt.includes(text), text);
 });
 
-Deno.test("beginner word limits remain explicit per sentence in both formats", () => {
+Deno.test("elementary word limits and everyday detail vocabulary follow the new template", () => {
   for (const format of formats) {
     const prompt = buildPromptText("简单", format);
     for (
       const rule of [
-        "每句必须 6 到 10 个英文单词，逐句限制、不是平均，最多 10 个",
-        "难度限制适用于所有 english 字段",
-        "优先于风格、幽默和细节",
-        "输出前按空格逐句检查",
+        "每句 7 到 12 个英文单词",
+        "每个 english 字段",
+        "难度限制优先于风格与细节",
+        "词数按空格逐句检查",
         "缩写算一个词、标点不计",
-        "超长则删次要信息并改写，不直接截断",
-        "不输出词数或检查过程",
-        "不用从句、完成时、被动语态、分词修饰、抽象书面词、生僻习语、比喻或拟人",
+        "不是平均值",
+        "超出范围就自然改写，不截断、不凑字数、不输出检查过程",
+        "初中核心词汇",
+        "condensation, cozy, messy, sunrise",
+        "一般过去时、现在进行时及简单的介词短语",
+        "避免复杂的定语从句",
       ]
     ) ok(prompt.includes(rule), `${format}: ${rule}`);
-    ok(!prompt.includes("尽量控制在 6 到 10"));
+    ok(!prompt.includes("6 到 10 个英文单词"));
     for (const level of ["启蒙", "中等", "高级"] as const) {
-      ok(!buildPromptText(level, format).includes("最多 10 个"));
+      ok(!buildPromptText(level, format).includes("7 到 12 个英文单词"));
     }
   }
 });
@@ -184,23 +207,24 @@ Deno.test("beginner word limits remain explicit per sentence in both formats", (
 Deno.test("active difficulty tiers keep their length, information and grammar rules", () => {
   const guidance = [
     ["启蒙", "3 到 6 个英文单词", [
-      "只表达一个事物、动作或简单感受",
-      "不叠加背景细节",
-      "极常见的具体词、简单感受词",
-      "不用从句、抽象词、习语",
+      "仅使用极其基础的日常名词和动词",
+      "see, like, red, cat, milk, big",
+      "仅限一般现在时",
+      "主谓宾或主系表极简结构",
+      "拒绝任何从句、介词短语堆叠或高级时态",
     ]],
-    ["简单", "6 到 10 个英文单词", [
-      "一个意思及一个具体细节",
-      "一个简单分句",
-      "常见动词的一般过去时",
-      "高频日常词、常见动作和简单感受词",
+    ["简单", "7 到 12 个英文单词", [
+      "初中核心词汇",
+      "常见的具体生活细节词",
+      "一般过去时、现在进行时",
+      "避免复杂的定语从句",
     ]],
-    ["中等", "10 到 16 个英文单词", [
-      "常见而准确的动作、感受词和日常搭配",
-      "一个意思及一两个细节",
-      "一个简短 because/when/that 从句",
-      "不强求从句、不嵌套",
-      "不靠堆形容词拉长句子",
+    ["中等", "10 到 18 个英文单词", [
+      "大学四六级/雅思核心词",
+      "母语者地道的口语习语、短语动词",
+      "drench, dapple, catch up, run out of",
+      "过去完成时、过去进行时、定语从句、分词短语",
+      "画面张力和情感深度",
     ]],
   ] as const;
   for (const [level, range, rules] of guidance) {
@@ -209,19 +233,48 @@ Deno.test("active difficulty tiers keep their length, information and grammar ru
       deepStrictEqual(prompt.match(/\d+ 到 \d+ 个英文单词/g), [range]);
       for (const rule of rules) ok(prompt.includes(rule), `${level}: ${rule}`);
       for (
-        const rule of ["适用于所有 english 字段", "不凑字数", "不省略必要成分"]
+        const rule of ["每个 english 字段", "不凑字数", "不要脱离照片套用"]
       ) ok(prompt.includes(rule));
       if (format === "dual_tabs_v1") ok(prompt.includes("两组遵守同一档难度"));
     }
   }
 });
 
-Deno.test("legacy advanced requests retain their description and conversational ranges", () => {
-  const legacy = buildPromptText("高级", "legacy_v1");
-  ok(legacy.includes("14 到 24 个单词"));
-  ok(!legacy.includes("8 到 18 个英文单词"));
-  const dual = buildPromptText("高级", "dual_tabs_v1");
-  ok(dual.includes("14 到 24 个单词"));
-  ok(dual.includes("8 到 18 个英文单词"));
-  ok(!dual.includes("中级："));
+Deno.test("historical advanced values use the current intermediate tier", () => {
+  for (const format of formats) {
+    strictEqual(
+      buildPromptText("高级", format),
+      buildPromptText("中等", format),
+    );
+  }
+});
+
+Deno.test("difficulty examples fit their own word ranges", () => {
+  for (
+    const [level, min, max] of [["启蒙", 3, 6], ["简单", 7, 12], [
+      "中等",
+      10,
+      18,
+    ]] as const
+  ) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    const examples = prompt.match(/- 示例：([^\n]+)/)?.[1].split(" / ");
+    ok(examples);
+    strictEqual(examples.length, 2);
+    for (const example of examples) {
+      const count = example.trim().split(/\s+/).length;
+      ok(count >= min && count <= max, `${level}: ${example} (${count})`);
+    }
+  }
+});
+
+Deno.test("legacy responses keep only three objective sentences, not subjective routing", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "legacy_v1");
+    ok(prompt.includes("生成 3 个纯正、地道的英语句子"));
+    ok(prompt.includes("仅生成 3 句话"));
+    ok(!prompt.includes("生成 6 个"));
+    ok(!prompt.includes("# Adaptive Style Routing"));
+    ok(!prompt.includes("两组遵守"));
+  }
 });
