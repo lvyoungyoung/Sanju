@@ -30,6 +30,8 @@ struct NewLearningView: View {
     @State private var recoveryCancelButtonRevealTask: Task<Void, Never>?
     @State private var activePendingRecoveryTask: Task<Void, Never>?
     @State private var photoLoadRequestID = UUID()
+    @State private var albumFlipSession: GeneratedAlbumFlipSession?
+    @State private var shouldChoosePhotoAfterAlbumFlip = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -87,16 +89,33 @@ struct NewLearningView: View {
                                         .multilineTextAlignment(.center)
 
                                     Button {
+                                        appModel.speech.stop()
+                                        shouldChoosePhotoAfterAlbumFlip = false
+                                        albumFlipSession = GeneratedAlbumFlipSession(
+                                            items: AlbumFlipItem.makeItems(from: [displayedMemory]),
+                                            ownerID: appModel.albumFlipOwnerID
+                                        )
+                                    } label: {
+                                        Label(L10n.string("album_flip.open", "翻一翻"), systemImage: "rectangle.on.rectangle.angled")
+                                            .font(.system(.body, weight: .semibold))
+                                            .foregroundStyle(AppPalette.onAccent)
+                                            .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
+                                            .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+                                    }
+                                    .buttonStyle(StudioPressStyle())
+                                    .disabled(AlbumFlipItem.makeItems(from: [displayedMemory]).isEmpty)
+
+                                    Button {
                                         beginPhotoSelection(clearingGeneratedMemory: true)
                                     } label: {
                                         Text(L10n.string("new.result.choose_another", "再来一张"))
                                             .font(.system(.body, weight: .semibold))
-                                            .foregroundStyle(AppPalette.onAccent)
+                                            .foregroundStyle(AppTextColor.primary)
                                             .padding(.horizontal, AppSpacing.section)
                                             .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
                                             .background(
                                                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                                    .fill(AppPalette.accent)
+                                                    .fill(AppSurfaceColor.elevated)
                                             )
                                     }
                                     .buttonStyle(StudioPressStyle())
@@ -191,6 +210,17 @@ struct NewLearningView: View {
         .sheet(isPresented: $isShowingPurchaseSheet) {
             PurchaseSheet()
                 .environmentObject(appModel)
+        }
+        .fullScreenCover(item: $albumFlipSession, onDismiss: {
+            guard shouldChoosePhotoAfterAlbumFlip else { return }
+            shouldChoosePhotoAfterAlbumFlip = false
+            // Wait until the album is dismissed before presenting the system photo picker.
+            beginPhotoSelection(clearingGeneratedMemory: true)
+        }) { session in
+            AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .singlePass) {
+                shouldChoosePhotoAfterAlbumFlip = true
+            }
+            .environmentObject(appModel)
         }
         .alert(L10n.string("new.purchase_prompt.title", "可用生成次数不足，是否购买"), isPresented: $isShowingPurchasePrompt) {
             Button(L10n.string("common.cancel", "取消"), role: .cancel) { }
@@ -779,6 +809,12 @@ struct NewLearningView: View {
             normalized.contains("timed out")
     }
 
+}
+
+private struct GeneratedAlbumFlipSession: Identifiable {
+    let id = UUID()
+    let items: [AlbumFlipItem]
+    let ownerID: String
 }
 
 private struct NewLearningResultPanel<Content: View>: View {

@@ -488,3 +488,6 @@
 "album_flip.photo_unavailable" = "照片暂时无法加载";
 "album_flip.show_translation" = "查看翻译";
 "album_flip.hide_translation" = "收起翻译";
+"album_flip.complete.title" = "这张照片，已经翻完了";
+"album_flip.complete.body" = "换一张照片，继续翻你的英语相册。";
+"album_flip.complete.choose_another" = "再上传一张";

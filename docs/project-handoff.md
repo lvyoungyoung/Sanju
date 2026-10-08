@@ -606,6 +606,12 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 `generate-memory-v2` 和 `moderate-image-v1` 使用 `_shared/fetch-with-timeout.ts`，计时覆盖完整响应体读取，原单阶段 10/20/8 秒等参数不变。生成函数所有出站请求另共享 90 秒网络预算，失败标记及释放名额各有独立 5 秒清理额度。客户端识别 `generation_in_progress` 并查询旧任务。部署顺序：数据库迁移 -> 两个函数 -> 客户端；无需修改 `recover-guest-generation`。完整链路及边界见 `docs/image-generation-flow.md`。
 
+## 生成完成后的单轮翻看
+
+“新的”生成结果底部提供主要按钮“翻一翻”，只传入当前回忆的句子，以 `AlbumFlipMode.singlePass` 随机无放回翻看，两组共六句全部展示一次后结束。左滑和右滑沿用独立的翻看熟悉度记录、持久化和登录用户云端同步，不改变填空学习掌握度；本轮即使左滑也不重复插入句子。语音自动播放、接下来最多五句预取及共享缓存复用既有实现，结束时停止朗读及预取。
+
+结束页提供“再上传一张”。先关闭全屏翻看窗口，在 `fullScreenCover.onDismiss` 后开启系统选图；取消选图保留旧结果，选择成功后走原读取照片流程，不自动发起新的生成或扣次。网络不可用时禁用继续选图并提示连接网络，中英文文案均已接入。回忆页保持默认 `continuous` 模式，仍可以无限翻看。此功能只改客户端，无需数据库迁移、函数部署或环境变量变更。
+
 ## 24. 当前高价值待办
 
 这些不是必须立刻做，但长期有价值：

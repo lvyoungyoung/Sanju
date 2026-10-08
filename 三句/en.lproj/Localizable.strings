@@ -488,3 +488,6 @@
 "album_flip.photo_unavailable" = "Photo unavailable right now";
 "album_flip.show_translation" = "Show translation";
 "album_flip.hide_translation" = "Hide translation";
+"album_flip.complete.title" = "You've flipped through this photo";
+"album_flip.complete.body" = "Pick another photo to keep exploring your English album.";
+"album_flip.complete.choose_another" = "Add another photo";

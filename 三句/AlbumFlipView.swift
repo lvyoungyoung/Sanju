@@ -16,11 +16,16 @@ struct AlbumFlipView: View {
     @State private var spokenCardID: UUID?
     @State private var speechPrefetchID: UUID?
     private let ownerID: String
+    private let onChooseAnotherPhoto: (() -> Void)?
 
-    init(items: [AlbumFlipItem], ownerID: String, defaults: UserDefaults = .standard) {
+    init(
+        items: [AlbumFlipItem], ownerID: String, defaults: UserDefaults = .standard,
+        mode: AlbumFlipMode = .continuous, onChooseAnotherPhoto: (() -> Void)? = nil
+    ) {
         self.ownerID = ownerID
+        self.onChooseAnotherPhoto = onChooseAnotherPhoto
         _deck = StateObject(wrappedValue: AlbumFlipDeck(
-            items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: ownerID)
+            items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: ownerID), mode: mode
         ))
     }
 
@@ -28,7 +33,14 @@ struct AlbumFlipView: View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 header
-                if deck.cards.isEmpty {
+                if deck.hasFinishedSinglePass {
+                    AlbumFlipCompletionView(isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
+                        guard isVisible, appModel.albumFlipOwnerID == ownerID,
+                              appModel.isNetworkAvailable else { return }
+                        onChooseAnotherPhoto?()
+                        close()
+                    }
+                } else if deck.cards.isEmpty {
                     ContentUnavailableView(
                         L10n.string("album_flip.empty", "还没有可以翻看的句子"),
                         systemImage: "photo.on.rectangle"
@@ -61,7 +73,11 @@ struct AlbumFlipView: View {
             speechPrefetchID = appModel.speech.beginAlbumSpeechPrefetch()
         }
         .task(id: deck.cards.first?.id) {
-            guard deck.cards.first != nil else { return }
+            guard deck.cards.first != nil else {
+                endSpeechLookahead()
+                appModel.speech.stop()
+                return
+            }
             if isVisible, scenePhase == .active, !isMuted,
                spokenCardID != deck.cards.first?.id, let speechPrefetchID {
                 appModel.speech.prioritizeAlbumCurrentSentence(id: speechPrefetchID)
@@ -130,6 +146,7 @@ struct AlbumFlipView: View {
             .accessibilityLabel(isMuted
                 ? L10n.string("album_flip.unmute", "开启自动朗读")
                 : L10n.string("album_flip.mute", "关闭自动朗读"))
+            .disabled(deck.cards.isEmpty)
         }
         .foregroundStyle(AppTextColor.primary)
         .buttonStyle(StudioPressStyle())
@@ -331,6 +348,57 @@ struct AlbumFlipView: View {
     private func endSpeechLookahead() {
         if let speechPrefetchID { appModel.speech.endAlbumSpeechPrefetch(id: speechPrefetchID) }
         speechPrefetchID = nil
+    }
+}
+
+struct AlbumFlipCompletionView: View {
+    let isPhotoSelectionEnabled: Bool
+    let onChooseAnotherPhoto: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 56, weight: .light))
+                    .foregroundStyle(AppPalette.accentText)
+                    .padding(28)
+                    .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
+                    .accessibilityHidden(true)
+
+                VStack(spacing: 12) {
+                    Text(L10n.string("album_flip.complete.title", "这张照片，已经翻完了"))
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(AppTextColor.primary)
+                    Text(L10n.string("album_flip.complete.body", "换一张照片，继续翻你的英语相册。"))
+                        .font(.body)
+                        .foregroundStyle(AppTextColor.secondary)
+                }
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Button(action: onChooseAnotherPhoto) {
+                    Label(L10n.string("album_flip.complete.choose_another", "再上传一张"), systemImage: "plus")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppPalette.onAccent)
+                        .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
+                        .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
+                }
+                .buttonStyle(StudioPressStyle())
+                .disabled(!isPhotoSelectionEnabled)
+                .opacity(isPhotoSelectionEnabled ? 1 : 0.52)
+
+                if !isPhotoSelectionEnabled {
+                    Text(L10n.string("new.photo_selection.network_required", "请连接网络"))
+                        .font(.subheadline)
+                        .foregroundStyle(AppTextColor.secondary)
+                }
+            }
+            .frame(maxWidth: 420)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 48)
+        }
+        .scrollBounceBehavior(.basedOnSize)
     }
 }
 

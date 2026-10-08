@@ -108,6 +108,90 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertTrue(makeDeck([]).cards.isEmpty)
     }
 
+    func testSinglePassOnlyVisitsTheGeneratedPhotosSixSentencesOnce() throws {
+        let currentMemory = makeMemory()
+        let otherMemory = makeMemory()
+        let items = AlbumFlipItem.makeItems(from: [currentMemory])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass, randomIndex: { $0 - 1 })
+        XCTAssertFalse(deck.hasFinishedSinglePass)
+        XCTAssertEqual(deck.cards.count, 6)
+        XCTAssertEqual(deck.upcomingSpeechTexts.count, 5)
+        var visited = Set<String>()
+        for index in 0..<6 {
+            let current = try XCTUnwrap(deck.cards.first)
+            XCTAssertEqual(current.item.memoryID, currentMemory.id)
+            XCTAssertNotEqual(current.item.memoryID, otherMemory.id)
+            XCTAssertTrue(visited.insert(current.item.id).inserted)
+            XCTAssertEqual(current.item.id, items[5 - index].id)
+            let lookahead = Array(deck.cards.dropFirst())
+            XCTAssertEqual(deck.upcomingSpeechTexts, lookahead.map { $0.item.sentence.english })
+            deck.advance(index.isMultiple(of: 2) ? .again : .familiar, cardID: current.id)
+            XCTAssertEqual(deck.cards.map(\.id), lookahead.map(\.id))
+            XCTAssertEqual(deck.hasFinishedSinglePass, index == 5)
+        }
+        XCTAssertEqual(visited, Set(items.map(\.id)))
+        XCTAssertEqual(deck.viewedCount, 6)
+        XCTAssertTrue(deck.cards.isEmpty)
+        XCTAssertTrue(deck.upcomingSpeechTexts.isEmpty)
+        XCTAssertEqual(store.read().pending.count, 6)
+        XCTAssertEqual(store.read().records.count, 6)
+        XCTAssertTrue(currentMemory.sentences.allSatisfy { !$0.isFavorite })
+    }
+
+    func testSinglePassDeduplicatesAndIgnoresStaleAdvancesAfterCompletion() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: items + items, store: store, mode: .singlePass)
+        XCTAssertEqual(deck.cards.count, 1)
+        let card = try XCTUnwrap(deck.cards.first)
+        deck.advance(.again, cardID: UUID())
+        XCTAssertEqual(deck.viewedCount, 0)
+        deck.advance(.again, cardID: card.id)
+        XCTAssertTrue(deck.hasFinishedSinglePass)
+        deck.advance(.familiar, cardID: card.id)
+        deck.reloadHistory()
+        XCTAssertTrue(deck.hasFinishedSinglePass)
+        XCTAssertEqual(deck.viewedCount, 1)
+        XCTAssertEqual(store.read().pending.count, 1)
+        XCTAssertEqual(deck.feedback[items[0].id], .again)
+    }
+
+    func testEmptySinglePassIsNotReportedAsCompleted() {
+        let deck = AlbumFlipDeck(items: [], store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), mode: .singlePass)
+        XCTAssertTrue(deck.cards.isEmpty)
+        XCTAssertFalse(deck.hasFinishedSinglePass)
+    }
+
+    func testSinglePassRefillsLookaheadWithoutRepeatingAndKeepsBufferedCardsStable() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 10)])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass, randomIndex: { _ in 0 })
+        let initialCards = deck.cards.map(\.id)
+        deck.reloadHistory()
+        XCTAssertEqual(deck.cards.map(\.id), initialCards)
+        var visited = Set<String>()
+        for index in 0..<items.count {
+            XCTAssertEqual(deck.cards.count, min(6, items.count - index))
+            let current = try XCTUnwrap(deck.cards.first)
+            XCTAssertTrue(visited.insert(current.item.id).inserted)
+            deck.advance(.again, cardID: current.id)
+        }
+        XCTAssertTrue(deck.hasFinishedSinglePass)
+        XCTAssertEqual(visited.count, items.count)
+    }
+
+    func testSinglePassFeedbackIsAvailableToSubsequentContinuousBrowsing() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass)
+        deck.advance(.familiar, cardID: try XCTUnwrap(deck.cards.first).id)
+        let continuous = AlbumFlipDeck(items: items, store: store)
+        XCTAssertEqual(continuous.feedback[items[0].id], .familiar)
+        XCTAssertEqual(continuous.cards.count, 6)
+        XCTAssertFalse(continuous.hasFinishedSinglePass)
+    }
+
     func testOneSentenceCanBeBrowsedIndefinitelyWithFreshPresentationIdentity() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
         let deck = makeDeck(items)
@@ -321,6 +405,24 @@ final class AlbumFlipTests: XCTestCase {
         }
         let decoded = try XCTUnwrap(AlbumFlipPhotoDecoder.decode(try XCTUnwrap(source.jpegData(compressionQuality: 0.8))))
         XCTAssertLessThanOrEqual(max(decoded.size.width, decoded.size.height), 1280)
+    }
+
+    func testSinglePassCompletionRendersInBothThemesAndWithoutNetwork() async throws {
+        for scheme in [ColorScheme.light, .dark] {
+            for isOnline in [true, false] {
+                let view = AlbumFlipCompletionView(isPhotoSelectionEnabled: isOnline, onChooseAnotherPhoto: {})
+                    .background(AppSurfaceColor.page)
+                    .environment(\.colorScheme, scheme)
+                    .environment(\.dynamicTypeSize, isOnline ? .large : .accessibility3)
+                let size = CGSize(width: 320, height: 568)
+                let image = try await renderInWindow(view, size: size)
+                XCTAssertEqual(image.size, size)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "AlbumFlip-Completion-\(scheme)-\(isOnline ? "online" : "offline")"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
     }
 
     private var samplePhoto: UIImage {

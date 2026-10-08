@@ -40,6 +40,11 @@ struct AlbumFlipCard: Identifiable {
     let item: AlbumFlipItem
 }
 
+enum AlbumFlipMode {
+    case continuous
+    case singlePass
+}
+
 @MainActor
 final class AlbumFlipDeck: ObservableObject {
     // Avoid the implicit MainActor deinit back-deployment bug on iOS 26.2 and older.
@@ -52,6 +57,8 @@ final class AlbumFlipDeck: ObservableObject {
     var feedback: [String: AlbumFlipFeedback] { progress.mapValues(\.lastFeedback) }
     var onFeedback: (() -> Void)?
     private let items: [AlbumFlipItem]
+    private let mode: AlbumFlipMode
+    private var remainingSinglePassItems: [AlbumFlipItem]
     private let store: AlbumFlipHistoryStore
     private let randomIndex: (Int) -> Int
     private let now: () -> Date
@@ -62,6 +69,9 @@ final class AlbumFlipDeck: ObservableObject {
     private let recentMemoryLimit: Int
 
     var visibleCards: [AlbumFlipCard] { Array(cards.prefix(2)) }
+    var hasFinishedSinglePass: Bool {
+        mode == .singlePass && !items.isEmpty && cards.isEmpty && viewedCount == items.count
+    }
     var upcomingSpeechTexts: [String] {
         cards.dropFirst().prefix(Self.lookaheadCount).map { $0.item.sentence.english }
     }
@@ -69,16 +79,21 @@ final class AlbumFlipDeck: ObservableObject {
     init(
         items: [AlbumFlipItem],
         store: AlbumFlipHistoryStore,
+        mode: AlbumFlipMode = .continuous,
         now: @escaping () -> Date = Date.init,
         randomIndex: @escaping (Int) -> Int = { Int.random(in: 0..<$0) }
     ) {
-        self.items = items
+        var seen = Set<String>()
+        let sessionItems = mode == .singlePass ? items.filter { seen.insert($0.id).inserted } : items
+        self.items = sessionItems
+        self.mode = mode
+        remainingSinglePassItems = mode == .singlePass ? sessionItems : []
         self.store = store
         self.randomIndex = randomIndex
         self.now = now
-        let validIDs = Set(items.map(\.id))
+        let validIDs = Set(sessionItems.map(\.id))
         progress = store.read().records.filter { validIDs.contains($0.key) }
-        recentMemoryLimit = min(2, max(0, Set(items.map(\.memoryID)).count - 1))
+        recentMemoryLimit = min(2, max(0, Set(sessionItems.map(\.memoryID)).count - 1))
         for _ in 0...Self.lookaheadCount { appendCard() }
     }
 
@@ -109,6 +124,12 @@ final class AlbumFlipDeck: ObservableObject {
     }
 
     private func appendCard() {
+        if mode == .singlePass {
+            guard !remainingSinglePassItems.isEmpty else { return }
+            let index = randomIndex(remainingSinglePassItems.count)
+            cards.append(AlbumFlipCard(item: remainingSinglePassItems.remove(at: index)))
+            return
+        }
         guard !items.isEmpty else { return }
         let queued = Set(cards.map { $0.item.id })
         var candidates = items.filter { !queued.contains($0.id) }
