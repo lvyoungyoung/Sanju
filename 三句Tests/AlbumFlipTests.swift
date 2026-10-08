@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 import XCTest
 @testable import 三句
@@ -407,6 +408,43 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(decoded.size.width, decoded.size.height), 1280)
     }
 
+    func testPreloadedPhotoRevealsWhenCardMovesToFront() async throws {
+        let state = PhotoRevealTestState(image: samplePhoto, isFront: false)
+        let image = try await renderInWindow(
+            PhotoRevealTestView(state: state).ignoresSafeArea(), size: CGSize(width: 120, height: 160)
+        ) {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { state.isFront = true }
+            try await Task.sleep(for: .seconds(1))
+        }
+        XCTAssertEqual(try pixel(in: image, at: CGPoint(x: 60, y: 40)),
+                       try pixel(in: samplePhoto, at: CGPoint(x: 320, y: 80)))
+    }
+
+    func testLatePhotoRevealsAfterLoadingWithoutRemainingTransparent() async throws {
+        let state = PhotoRevealTestState(image: nil, isFront: true)
+        let image = try await renderInWindow(
+            PhotoRevealTestView(state: state).ignoresSafeArea(), size: CGSize(width: 120, height: 160)
+        ) {
+            state.image = self.samplePhoto
+            try await Task.sleep(for: .seconds(1))
+        }
+        XCTAssertEqual(try pixel(in: image, at: CGPoint(x: 60, y: 40)),
+                       try pixel(in: samplePhoto, at: CGPoint(x: 320, y: 80)))
+    }
+
+    func testPhotoImmediatelyVisibleWithReducedMotionAndOnBufferedCards() async throws {
+        for (isFront, reduceMotion) in [(true, true), (false, false)] {
+            let view = AlbumFlipPhotoImage(image: samplePhoto, isFront: isFront, reduceMotion: reduceMotion)
+                .background(Color.white)
+                .ignoresSafeArea()
+            let image = try await renderInWindow(view, size: CGSize(width: 120, height: 160), settleDuration: .zero)
+            XCTAssertEqual(try pixel(in: image, at: CGPoint(x: 60, y: 40)),
+                           try pixel(in: samplePhoto, at: CGPoint(x: 320, y: 80)))
+        }
+    }
+
     func testFlipCardSizeAdaptsToAvailableArea() {
         XCTAssertEqual(AlbumFlipLayout.cardSize(in: CGSize(width: 320, height: 430)), CGSize(width: 272, height: 394))
         XCTAssertEqual(AlbumFlipLayout.cardSize(in: CGSize(width: 393, height: 600)), CGSize(width: 345, height: 564))
@@ -459,7 +497,8 @@ final class AlbumFlipTests: XCTestCase {
     }
 
     private func renderInWindow<Content: View>(
-        _ content: Content, size: CGSize, safeAreaInsets: UIEdgeInsets = .zero
+        _ content: Content, size: CGSize, safeAreaInsets: UIEdgeInsets = .zero,
+        settleDuration: Duration = .milliseconds(450), beforeSnapshot: (() async throws -> Void)? = nil
     ) async throws -> UIImage {
         // ScrollView needs a mounted view hierarchy; ImageRenderer omits its contents.
         let controller = UIHostingController(rootView: content)
@@ -477,7 +516,8 @@ final class AlbumFlipTests: XCTestCase {
         controller.view.frame = window.bounds
         controller.view.setNeedsLayout()
         controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(450))
+        try await Task.sleep(for: settleDuration)
+        try await beforeSnapshot?()
         return UIGraphicsImageRenderer(size: size).image { _ in
             controller.view.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
@@ -507,5 +547,29 @@ final class AlbumFlipTests: XCTestCase {
                 presentationGroup: index < 3 ? .whatISee : .whatIDSay
             )
         })
+    }
+}
+
+@MainActor
+private final class PhotoRevealTestState: ObservableObject {
+    @Published var image: UIImage?
+    @Published var isFront: Bool
+
+    init(image: UIImage?, isFront: Bool) {
+        self.image = image
+        self.isFront = isFront
+    }
+}
+
+private struct PhotoRevealTestView: View {
+    @ObservedObject var state: PhotoRevealTestState
+
+    var body: some View {
+        ZStack {
+            Color.white
+            if let image = state.image {
+                AlbumFlipPhotoImage(image: image, isFront: state.isFront, reduceMotion: false)
+            }
+        }
     }
 }

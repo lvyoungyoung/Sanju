@@ -184,7 +184,7 @@ struct AlbumFlipView: View {
                         }
                     }
                 ) {
-                    AlbumFlipPhoto(memoryID: card.item.memoryID)
+                    AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
                 }
                 .overlay(alignment: .top) {
                     if isFront {

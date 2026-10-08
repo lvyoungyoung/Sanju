@@ -63,7 +63,9 @@ struct AlbumFlipSentenceCard<Photo: View>: View {
 
 struct AlbumFlipPhoto: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let memoryID: UUID
+    let isFront: Bool
     @State private var image: UIImage?
     @State private var isLoading = true
     @State private var retry = 0
@@ -80,11 +82,7 @@ struct AlbumFlipPhoto: View {
             ZStack {
                 AppSurfaceColor.elevated
                 if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .clipped()
+                    AlbumFlipPhotoImage(image: image, isFront: isFront, reduceMotion: reduceMotion)
                 } else if isLoading {
                     ProgressView().tint(AppTextColor.secondary)
                 } else {
@@ -121,6 +119,36 @@ struct AlbumFlipPhoto: View {
             guard !Task.isCancelled else { return }
             image = decoded
             isLoading = false
+        }
+    }
+}
+
+struct AlbumFlipPhotoImage: View {
+    let image: UIImage
+    let isFront: Bool
+    let reduceMotion: Bool
+    @State private var hasRevealed = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+                .opacity(!isFront || reduceMotion || hasRevealed ? 1 : 0)
+        }
+        .task(id: isFront) {
+            guard isFront, !hasRevealed else { return }
+            if !reduceMotion {
+                // Establish the transparent frame before revealing a cached or newly loaded photo.
+                do { try await Task.sleep(for: .milliseconds(16)) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            // Deck advancement disables layout animations; only the photo should animate here.
+            var transaction = Transaction(animation: reduceMotion ? nil : .easeOut(duration: 0.18))
+            transaction.disablesAnimations = reduceMotion
+            withTransaction(transaction) { hasRevealed = true }
         }
     }
 }
