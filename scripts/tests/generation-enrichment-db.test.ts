@@ -155,6 +155,63 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
         [job.id, job.lease_token, JSON.stringify(value)],
       )).rows[0].saved;
 
+    await t.step("DeepSeek provider migration fixes hosted checks without weakening atomic completion", async () => {
+      // These checks exist in the hosted baseline, not in the old test fixture.
+      for (const table of ["memories", "guest_generation_jobs", "generation_jobs"]) {
+        await db.exec(`alter table ${table} add constraint ${table}_provider_check check(provider in ('mimo','kimi'))`);
+      }
+      const finishWithProvider = (provider: string, memory: string, request: string) => db.query<any>(
+        "select finalize_authenticated_generation($1,$2,$3,'photo.jpg',now(),$4,$5::jsonb,'{}') as balance",
+        [owner, memory, request, provider, JSON.stringify(payload())],
+      );
+      const finishGuest = (provider: string, request: string, sentences = payload()) => db.query<any>(
+        "select finalize_guest_generation($1,$2,now(),$3,$4::jsonb,'{}') as balance",
+        [guest, request, provider, JSON.stringify(sentences)],
+      );
+      const failedMemory = crypto.randomUUID(), failedRequest = crypto.randomUUID(), guestRequest = crypto.randomUUID();
+      await rejects(() => finishWithProvider("deepseek", failedMemory, failedRequest), /memories_provider_check/);
+      strictEqual(await balance(), 100);
+      for (const table of ["memories", "memory_sentences", "generation_jobs", "generation_transactions", "generation_enrichment_jobs"]) {
+        strictEqual(await count(table), 0, `${table} must roll back with provider rejection`);
+      }
+      await db.query("insert into guest_generation_jobs(id,user_id,status) values($1,$2,'pending')", [guestRequest, guest]);
+      await rejects(() => finishGuest("deepseek", guestRequest), /guest_generation_jobs_provider_check/);
+      strictEqual((await db.query<any>("select available_generations from profiles where id=$1", [guest])).rows[0].available_generations, 100);
+      strictEqual((await db.query<any>("select status from guest_generation_jobs where id=$1", [guestRequest])).rows[0].status, "pending");
+      strictEqual(await count("generation_transactions"), 0);
+      strictEqual(await count("generation_enrichment_jobs"), 0);
+
+      const migration = await Deno.readTextFile(new URL("20261008000000_allow_deepseek_generation_provider.sql", root));
+      await db.exec(migration);
+      await db.exec(migration);
+      for (const [index, provider] of ["deepseek", "mimo", "kimi"].entries()) {
+        const memory = crypto.randomUUID(), request = crypto.randomUUID();
+        const expectedBalance = 99 - index;
+        strictEqual((await finishWithProvider(provider, memory, request)).rows[0].balance, expectedBalance);
+        strictEqual((await finishWithProvider(provider, crypto.randomUUID(), request)).rows[0].balance, expectedBalance);
+        strictEqual((await db.query<any>("select provider from memories where id=$1", [memory])).rows[0].provider, provider);
+        deepStrictEqual((await db.query<any>("select status,provider from generation_jobs where client_request_id=$1", [request])).rows[0], {status: "completed", provider});
+        const guestID = index === 0 ? guestRequest : crypto.randomUUID();
+        if (index > 0) await db.query("insert into guest_generation_jobs(id,user_id,status) values($1,$2,'pending')", [guestID, guest]);
+        const sentences = payload();
+        strictEqual((await finishGuest(provider, guestID, sentences)).rows[0].balance, expectedBalance);
+        strictEqual((await finishGuest(provider, guestID, sentences)).rows[0].balance, expectedBalance);
+        deepStrictEqual((await db.query<any>("select status,provider from guest_generation_jobs where id=$1", [guestID])).rows[0], {status: "completed", provider});
+      }
+      strictEqual(await count("generation_transactions"), 6);
+      strictEqual(await count("generation_enrichment_jobs"), 6);
+      strictEqual(await count("memory_sentences"), 18);
+      await rejects(() => finishWithProvider("unknown", crypto.randomUUID(), crypto.randomUUID()), /memories_provider_check/);
+      strictEqual(await balance(), 97);
+      strictEqual(await count("generation_transactions"), 6);
+      await db.query("insert into memories(id,user_id,provider) values($1,$2,null)", [crypto.randomUUID(), owner]);
+      // Optional job checks remain optional; unrelated constraints stay intact.
+      await db.exec("alter table generation_jobs drop constraint generation_jobs_provider_check");
+      await db.exec(migration);
+      strictEqual((await db.query<any>("select count(*)::int as n from pg_constraint where conname='generation_jobs_provider_check'")).rows[0].n, 0);
+      await db.exec("truncate generation_enrichment_jobs, generation_jobs, guest_generation_jobs, memories, memory_sentences, generation_transactions cascade; update profiles set available_generations=100");
+    });
+
     await t.step(
       "result and debit commit before indexing; replay cannot debit or enqueue twice",
       async () => {

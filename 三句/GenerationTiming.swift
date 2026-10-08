@@ -44,7 +44,7 @@ final class GenerationTiming {
 
     static let serverStages: Set<String> = [
         "setup", "auth", "profile", "request_decode", "existing_result", "concurrency_slot",
-        "job_claim", "guest_image_upload", "moderation", "prompt", "mimo", "kimi",
+        "job_claim", "guest_image_upload", "moderation", "prompt", "deepseek", "mimo", "kimi",
         "model_result", "result_prepare", "image_upload", "finalize", "diagnostics",
         "read_result", "error_handling", "release_slot", "background_dispatch", "total"
     ]

@@ -18,6 +18,12 @@ final class GenerationTimingTests: XCTestCase {
         XCTAssertTrue(GenerationTiming.serverDurations(String(repeating: "auth;dur=1,", count: 1000)).isEmpty)
     }
 
+    func testIncludesDeepSeekAndFallbackDurations() {
+        let values = GenerationTiming.serverDurations("deepseek;dur=1800, model_result;dur=0.2, mimo;dur=20000, kimi;dur=2500, total;dur=24300")
+        XCTAssertEqual(values.map(\.stage), ["deepseek", "model_result", "mimo", "kimi", "total"])
+        XCTAssertEqual(values.map(\.milliseconds), [1800, 0.2, 20000, 2500, 24300])
+    }
+
     func testElapsedTimeIsMillisecondsNotSeconds() {
         XCTAssertEqual(GenerationTiming.milliseconds(.milliseconds(1250)), "1250.0")
         XCTAssertEqual(GenerationTiming.milliseconds(.microseconds(1500)), "1.5")

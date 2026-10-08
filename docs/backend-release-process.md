@@ -154,12 +154,19 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
 `spb-bp1364k407p37qn7.supabase.opentrust.net` 或 `api-staging.sanju.cc`。
 不能用请求 URL、客户端 Header 或 `SUPABASE_LOCAL_URL` 改变模型选择。
 
-完成配置后，在 Backend Functions 中选择 `staging` 和 `generate-memory-v2` 发布。
-**无需新增 migration、更新客户端或修改 Nginx；不必更新其他 Edge Function。**
+先在 Backend Database 对 staging 应用
+`20261008000000_allow_deepseek_generation_provider.sql`，让数据库接受 `provider=deepseek`。
+原始托管 schema 的 `memories_provider_check` 只允许 MiMo/Kimi；漏跑此迁移会导致
+模型成功、图片上传成功，但最终保存报 `23514`。迁移不改保存/扣次数事务，
+也会扩展已经存在的同名匿名任务/生成任务 provider 约束，保留空值及原有提供方。
+完成配置和迁移后，在 Backend Functions 中选择 `staging` 和 `generate-memory-v2` 发布。
+若已经部署该版本的函数，只需应用迁移，不需要再次发布函数。
+**无需修改 Nginx；不必更新其他 Edge Function。**
 客户端收到的句子、分类和表达用途格式不变，原有事务保存/扣次数、恢复、后台向量化不变。
 成功结果的 `provider` 为实际生成方；`mimo_failure_reason` 仍只记录 MiMo 的失败，
 DeepSeek 的失败原因写入 Edge Function 日志。staging Xcode 耗时日志会出现
 `server.deepseek`，兜底时还会显示 `server.mimo` / `server.kimi`。
+显示 `server.deepseek` 需客户端包含该阶段的日志白名单修复；旧客户端仍可正常生成。
 
 部署后分别验证匿名与登录用户生成、播放及学习主题匹配。
 本地离线测试覆盖两种账号、环境隔离、鉴权请求格式、超时/无效 JSON/HTTP 错误兜底、
