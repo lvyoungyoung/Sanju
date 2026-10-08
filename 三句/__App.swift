@@ -12,10 +12,11 @@ import UserNotifications
 @main
 struct __App: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @State private var isShowingOnboarding = OnboardingProgress.beginIfNeeded()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(isShowingOnboarding: $isShowingOnboarding)
         }
     }
 }

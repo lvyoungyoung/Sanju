@@ -14,7 +14,7 @@ const root = new URL("../", import.meta.url);
 const generationSource = await Deno.readTextFile(new URL("supabase/functions/generate-memory-v2/content.ts", root));
 
 export function buildBenchmarkPrompts(level = "简单") {
-  const combined: string = generation.buildPromptText(level as Parameters<typeof generation.buildPromptText>[0], "平铺直叙", "dual_tabs_v1");
+  const combined: string = generation.buildPromptText(level as Parameters<typeof generation.buildPromptText>[0], "dual_tabs_v1");
   const metadata = buildSentenceMetadataPrompt();
   const rules = buildSentenceMetadataRules() + "\n\n";
   const exampleStart = combined.lastIndexOf("\n{");

@@ -14,7 +14,6 @@ struct SupabaseProfileRecord: Codable {
     let nickname: String
     let email: String?
     let englishLevel: String
-    let languageStyle: String
     let availableGenerations: Int
 
     enum CodingKeys: String, CodingKey {
@@ -23,7 +22,6 @@ struct SupabaseProfileRecord: Codable {
         case nickname
         case email
         case englishLevel = "english_level"
-        case languageStyle = "language_style"
         case availableGenerations = "available_generations"
     }
 }

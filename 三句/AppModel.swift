@@ -17,7 +17,7 @@ enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
         case .whatISee:
             L10n.string("new.result.tab.what_i_see", "我看到的")
         case .whatIDSay:
-            L10n.string("new.result.tab.what_i_say", "我想说的")
+            L10n.string("new.result.tab.what_i_say", "场景表达")
         }
     }
 }
@@ -348,14 +348,6 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
 
     var id: String { rawValue }
 
-    func allows(_ style: LanguageStyle) -> Bool {
-        self != .starter || style != .lyrical
-    }
-
-    func resolvedStyle(_ style: LanguageStyle) -> LanguageStyle {
-        allows(style) ? style : .plain
-    }
-
     var displayTitle: String {
         switch self {
         case .starter:
@@ -364,22 +356,6 @@ enum EnglishLevel: String, CaseIterable, Codable, Identifiable {
             return L10n.string("english_level.simple", "初级")
         case .intermediate:
             return L10n.string("english_level.intermediate", "中级")
-        }
-    }
-}
-
-enum LanguageStyle: String, CaseIterable, Codable, Identifiable {
-    case plain = "平铺直叙"
-    case lyrical = "抒情优美"
-
-    var id: String { rawValue }
-
-    var displayTitle: String {
-        switch self {
-        case .plain:
-            return L10n.string("language_style.plain", "平铺直叙")
-        case .lyrical:
-            return L10n.string("language_style.lyrical", "抒情优雅")
         }
     }
 }
@@ -408,7 +384,6 @@ enum AppStorageKey {
     static let remainingCredits = "sanju.remainingCredits"
     static let remainingCreditsOwnerID = "sanju.remainingCreditsOwnerID"
     static let englishLevel = "sanju.englishLevel"
-    static let languageStyle = "sanju.languageStyle"
     static let learningReminderEnabled = "sanju.learningReminderEnabled"
     static let learningReminderHour = "sanju.learningReminderHour"
     static let learningReminderMinute = "sanju.learningReminderMinute"
@@ -455,7 +430,6 @@ final class AppModel: ObservableObject {
     @Published var memories: [MemoryEntry] = []
     @Published var remainingCredits: Int = AppModel.initialInstallCredits
     @Published var englishLevel: EnglishLevel = .simple
-    @Published var languageStyle: LanguageStyle = .plain
     @Published var isLearningReminderEnabled = false
     @Published var learningReminderHour = 20
     @Published var learningReminderMinute = 30
@@ -490,6 +464,9 @@ final class AppModel: ObservableObject {
     @Published var sentenceStudyReviewableTodayCount = 0
     @Published var sentenceStudyTopicSummaries: [SentenceStudyTopic: SentenceStudyTopicSummary] = [:]
     @Published var userStudySceneSummaries: [UserStudySceneSummary] = []
+    @Published var memoryLoadState: ContentLoadState = .idle
+    @Published var studyOverviewLoadState: ContentLoadState = .idle
+    @Published var studySceneLoadState: ContentLoadState = .idle
     var studyOverviewRefreshID = UUID()
     var studySceneSummariesRefreshID = UUID()
     var userStudySceneDetailSentenceCache: [UUID: [SentenceStudyQueueItem]] = [:]
@@ -509,8 +486,12 @@ final class AppModel: ObservableObject {
 
     let speech = SpeechService()
     var speechPreferenceSync: SpeechPreferenceSync?
+    var generationPreferenceSync: GenerationPreferenceSync?
     var albumFlipHistorySync: AlbumFlipHistorySync?
     @Published var albumFlipHistoryRevision = 0
+    let accountRequests = AccountRequestScope()
+    let sessionRefreshCoordinator = SessionRefreshCoordinator()
+    var authenticationAttemptID = UUID()
     let purchaseManager = PurchaseManager()
     let purchaseConfirmationScope = PurchaseConfirmationScope()
     let supabaseService: SupabaseServicing
@@ -521,9 +502,18 @@ final class AppModel: ObservableObject {
     var supabaseSession: SupabaseSession? {
         didSet {
             purchaseConfirmationScope.activate(supabaseSession)
+            let previousSession = oldValue ?? loadStoredSession()
+            if previousSession?.userID != supabaseSession?.userID || previousSession?.isAnonymous != supabaseSession?.isAnonymous {
+                accountRequests.invalidate()
+                sessionRefreshCoordinator.cancel()
+            }
             let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
             speechPreferenceSync?.activate(userID: speechOwner)
+            generationPreferenceSync?.activate(userID: speechOwner)
             albumFlipHistorySync?.activate(userID: speechOwner)
+            if oldValue?.userID != supabaseSession?.userID {
+                generationPreferenceSync?.refresh()
+            }
             if let previousOwner = oldValue?.userID, previousOwner != supabaseSession?.userID {
                 speech.cancelAlbumSpeechPrefetch()
                 speech.stop()
@@ -552,7 +542,6 @@ final class AppModel: ObservableObject {
     var remoteMemoryImageHydrationTask: Task<Void, Never>?
     var cachedMemoryImageHydrationTask: Task<Void, Never>?
     var memoryWidgetSnapshotUpdateTask: Task<Void, Never>?
-    var preferenceSyncTask: Task<Void, Never>?
     let memoryImageLoader = MemoryImageLoader()
     var remoteMemoryImageHydrationTargetCount = 0
     var hasStartedObservingPurchaseTransactions = false
@@ -572,19 +561,14 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             // Speech needs only Auth, not anonymous profile/credit reconciliation.
             guard let session = self.supabaseSession else { throw CloudSpeechError.noSession }
-            if session.expiresAt > Date().addingTimeInterval(60) { return session }
-            let refreshed = try await self.supabaseService.refreshSession(refreshToken: session.refreshToken)
-            try Task.checkCancellation()
-            guard self.supabaseSession?.userID == session.userID else { throw CancellationError() }
-            self.supabaseSession = refreshed
-            self.persistSession()
-            return refreshed
+            return try await self.ensureFreshSessionIfNeeded(session)
         }
 #if DEBUG
         // resetInitialCreditsGrantForDebug()
 #endif
         handleFreshInstallIfNeeded()
         loadPersistedState()
+        configureGenerationPreferenceSync()
         if loadStoredSession()?.isAnonymous == false {
             isRestoringAuthenticatedSession = true
         }
@@ -678,17 +662,17 @@ final class AppModel: ObservableObject {
         remoteMemoryImageHydrationTask?.cancel()
         cachedMemoryImageHydrationTask?.cancel()
         memoryWidgetSnapshotUpdateTask?.cancel()
-        preferenceSyncTask?.cancel()
     }
 
     func syncOnForegroundIfNeeded() {
         albumFlipHistorySync?.refresh()
         speechPreferenceSync?.refresh()
+        generationPreferenceSync?.refresh()
         guard foregroundSyncTask == nil else { return }
 
         foregroundSyncTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.foregroundSyncTask = nil }
+            defer { if !Task.isCancelled { self.foregroundSyncTask = nil } }
 
             await self.retryPendingPurchasesIfNeeded()
             guard !Task.isCancelled else { return }

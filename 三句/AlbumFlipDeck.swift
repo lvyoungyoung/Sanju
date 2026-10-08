@@ -3,6 +3,7 @@ import Foundation
 
 struct AlbumFlipItem: Identifiable, Equatable {
     let memoryID: UUID
+    let memoryCreatedAt: Date
     let sentence: SentenceRecord
 
     var id: String { "\(memoryID.uuidString):\(sentence.id.uuidString)" }
@@ -11,12 +12,20 @@ struct AlbumFlipItem: Identifiable, Equatable {
         var seen = Set<String>()
         return memories.flatMap { memory in
             memory.sentences.compactMap { sentence in
-                let item = AlbumFlipItem(memoryID: memory.id, sentence: sentence)
+                let item = AlbumFlipItem(memoryID: memory.id, memoryCreatedAt: memory.createdAt, sentence: sentence)
                 guard !sentence.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       seen.insert(item.id).inserted else { return nil }
                 return item
             }
         }
+    }
+
+    func selectionWeight(at now: Date, progress: AlbumFlipProgress?, timeZone: TimeZone = .current) -> Int {
+        let familiarityWeight = progress?.selectionWeight(at: now, timeZone: timeZone) ?? 12
+        let age = max(0, now.timeIntervalSince(memoryCreatedAt))
+        // The freshness bonus halves every 30 days; old memories keep their base chance.
+        let freshnessMultiplier = 1 + 3 * pow(0.5, age / (30 * 86_400))
+        return max(1, Int((Double(familiarityWeight) * freshnessMultiplier).rounded()))
     }
 }
 
@@ -118,10 +127,17 @@ final class AlbumFlipDeck: ObservableObject {
             if !notCoolingDown.isEmpty { candidates = notCoolingDown }
             let notRecent = candidates.filter { !recentItemIDs.contains($0.id) }
             if !notRecent.isEmpty { candidates = notRecent }
-            let weighted = candidates.flatMap { item in
-                Array(repeating: item, count: progress[item.id]?.selectionWeight(at: now(), timeZone: .current) ?? 12)
+            let date = now()
+            let weights = candidates.map { item in
+                item.selectionWeight(at: date, progress: progress[item.id])
             }
-            selected = weighted[randomIndex(weighted.count)]
+            var ticket = randomIndex(weights.reduce(0, +))
+            var selectedIndex = 0
+            while selectedIndex < weights.count - 1, ticket >= weights[selectedIndex] {
+                ticket -= weights[selectedIndex]
+                selectedIndex += 1
+            }
+            selected = candidates[selectedIndex]
         }
 
         if retryAfter[selected.id].map({ $0 <= drawCount }) == true {

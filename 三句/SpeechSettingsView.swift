@@ -1,5 +1,25 @@
 import SwiftUI
 
+struct SpeechSettingsSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let speech: SpeechService
+
+    var body: some View {
+        NavigationStack {
+            SpeechSettingsView(speech: speech)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(L10n.string("common.close", "关闭")) { dismiss() }
+                    }
+                }
+        }
+        // Keep this presentation independent of the compact study-settings sheet.
+        .presentationDetents([.large])
+        .presentationBackground(AppSurfaceColor.page)
+        .presentationDragIndicator(.visible)
+    }
+}
+
 struct SpeechSettingsView: View {
     @ObservedObject var speech: SpeechService
     @State private var hasPreviewed = false
@@ -17,27 +37,13 @@ struct SpeechSettingsView: View {
                             }
                         }
                     }
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                     .appCardBorder()
                 }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(L10n.string("speech.settings.scope", "用于所有页面的朗读与自动朗读。登录后音色随账号同步，未登录时仅保存在本机。"))
-                    Text(syncStatusMessage)
-                    Text(L10n.string("speech.settings.preview_hint", "试听使用同一句英文，首次需要联网，之后可使用缓存播放。"))
-                    Text(L10n.string("speech.settings.fallback_hint", "离线或云端服务不可用时，使用系统声音，音色可能不同。"))
-                }
-                .font(.footnote)
-                .foregroundStyle(AppTextColor.secondary)
-
-                if hasPreviewed && speech.isUsingSystemVoice {
-                    Label(L10n.string("speech.settings.fallback_active", "本次使用的是系统声音，并非所选音色。"), systemImage: "info.circle")
-                        .font(.footnote)
-                        .foregroundStyle(AppTextColor.primary)
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium))
-                }
+                Text(L10n.string("speech.settings.fallback_hint", "网络不可用时，使用系统声音，音色可能不同。"))
+                    .font(.footnote)
+                    .foregroundStyle(AppTextColor.secondary)
             }
             .padding(AppSpacing.section)
         }
@@ -55,19 +61,6 @@ struct SpeechSettingsView: View {
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(AppTextColor.secondary)
             .accessibilityAddTraits(.isHeader)
-    }
-
-    private var syncStatusMessage: String {
-        switch speech.preferenceSyncStatus {
-        case .local:
-            L10n.string("speech.settings.sync.local", "音色已保存在本机")
-        case .syncing:
-            L10n.string("speech.settings.sync.syncing", "正在同步音色设置…")
-        case .synced:
-            L10n.string("speech.settings.sync.synced", "音色已同步到账号")
-        case .pending:
-            L10n.string("speech.settings.sync.pending", "暂未同步，联网后会自动重试；仍可使用当前音色。")
-        }
     }
 
     private func voiceRow(_ voice: SpeechVoice) -> some View {

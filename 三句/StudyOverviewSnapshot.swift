@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 protocol StudyOverviewFetching {
     func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyTodayCount(session: SupabaseSession) async throws -> Int
@@ -23,23 +24,26 @@ struct StudyOverviewSnapshot {
     static func load(
         from service: StudyOverviewFetching,
         session: SupabaseSession,
-        favoriteSentenceIDs: Set<UUID>
+        favoriteSentenceIDs: Set<UUID>,
+        onScenesLoaded: (([UserStudySceneSummary]?) -> Void)? = nil,
+        onContentLoaded: (([UserStudySceneSummary]?, Int?) -> Void)? = nil
     ) async throws -> StudyOverviewSnapshot {
-        let dueCount = try await fetch { try await service.fetchSentenceStudyDueCount(session: session) }
-        let todayCount = try await fetch { try await service.fetchSentenceStudyTodayCount(session: session) }
-        let reviewableTodayCount = try await fetch { try await service.fetchSentenceStudyReviewableTodayCount(session: session) }
-        let sentenceCount = try await fetch { try await service.fetchMemorySentencesCount(session: session) }
-        let masteredCount = try await fetch { try await service.fetchMasteredSentenceCount(session: session) }
-        let favoriteCounts: [UUID: Int]?
-        if favoriteSentenceIDs.isEmpty {
-            favoriteCounts = [:]
-        } else {
-            favoriteCounts = try await fetch {
-                try await service.fetchSentenceStudyCounts(session: session, sentenceIDs: Array(favoriteSentenceIDs))
-            }
+        async let dueCount = fetch { try await service.fetchSentenceStudyDueCount(session: session) }
+        async let todayCount = fetch { try await service.fetchSentenceStudyTodayCount(session: session) }
+        async let reviewableTodayCount = fetch { try await service.fetchSentenceStudyReviewableTodayCount(session: session) }
+        async let sentenceCount = fetch { try await service.fetchMemorySentencesCount(session: session) }
+        async let masteredCount = fetch { try await service.fetchMasteredSentenceCount(session: session) }
+        async let favoriteCounts = fetch {
+            favoriteSentenceIDs.isEmpty ? [:] : try await service.fetchSentenceStudyCounts(session: session, sentenceIDs: Array(favoriteSentenceIDs))
         }
-        let scenes = try await fetch { try await service.fetchUserStudySceneSummaries(session: session) }
-        return StudyOverviewSnapshot(
+        async let scenes = fetch { try await service.fetchUserStudySceneSummaries(session: session) }
+        let loadedScenes = try await scenes
+        try Task.checkCancellation()
+        onScenesLoaded?(loadedScenes)
+        let content = try await (loadedScenes, sentenceCount)
+        try Task.checkCancellation()
+        onContentLoaded?(content.0, content.1)
+        return try await StudyOverviewSnapshot(
             dueCount: dueCount,
             todayCount: todayCount,
             reviewableTodayCount: reviewableTodayCount,
@@ -50,7 +54,7 @@ struct StudyOverviewSnapshot {
         )
     }
 
-    private static func fetch<Value>(_ operation: () async throws -> Value) async throws -> Value? {
+    private static func fetch<Value: Sendable>(_ operation: @MainActor @Sendable () async throws -> Value) async throws -> Value? {
         try Task.checkCancellation()
         do {
             let value = try await operation()

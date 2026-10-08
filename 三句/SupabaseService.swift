@@ -27,7 +27,6 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
         nickname: String,
         email: String?,
         englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle,
         initialAvailableGenerations: Int?
     ) async throws -> SupabaseProfileRecord
     func fetchProfile(session: SupabaseSession) async throws -> SupabaseProfileRecord?
@@ -36,8 +35,7 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
     func updateProfile(
         session: SupabaseSession,
         nickname: String?,
-        englishLevel: EnglishLevel?,
-        languageStyle: LanguageStyle?
+        englishLevel: EnglishLevel?
     ) async throws -> SupabaseProfileRecord?
     func updateAnonymousStarterCredits(
         session: SupabaseSession,
@@ -57,7 +55,6 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
         session: SupabaseSession,
         imageData: Data,
         englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle,
         guestJobID: String?,
         clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult
@@ -81,6 +78,7 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
     func deleteMemoryImage(session: SupabaseSession, path: String) async throws
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord]
     func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot?
+    func fetchStudySceneSuggestionTopicIDs(session: SupabaseSession) async throws -> Set<String>
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
@@ -153,8 +151,7 @@ extension SupabaseServicing {
         appleUserID: String,
         nickname: String,
         email: String?,
-        englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle
+        englishLevel: EnglishLevel
     ) async throws -> SupabaseProfileRecord {
         try await upsertProfile(
             session: session,
@@ -162,7 +159,6 @@ extension SupabaseServicing {
             nickname: nickname,
             email: email,
             englishLevel: englishLevel,
-            languageStyle: languageStyle,
             initialAvailableGenerations: nil
         )
     }
@@ -174,21 +170,18 @@ extension SupabaseServicing {
         try await updateProfile(
             session: session,
             nickname: nickname,
-            englishLevel: nil,
-            languageStyle: nil
+            englishLevel: nil
         )
     }
 
     func updateProfile(
         session: SupabaseSession,
-        englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle
+        englishLevel: EnglishLevel
     ) async throws -> SupabaseProfileRecord? {
         try await updateProfile(
             session: session,
             nickname: nil,
-            englishLevel: englishLevel,
-            languageStyle: languageStyle
+            englishLevel: englishLevel
         )
     }
 }
@@ -339,7 +332,6 @@ struct SupabaseService: SupabaseServicing {
         nickname: String,
         email: String?,
         englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle,
         initialAvailableGenerations: Int? = nil
     ) async throws -> SupabaseProfileRecord {
         let request = try makeRequest(
@@ -356,7 +348,6 @@ struct SupabaseService: SupabaseServicing {
                     nickname: nickname,
                     email: email,
                     englishLevel: englishLevel.rawValue,
-                    languageStyle: languageStyle.rawValue,
                     initialAvailableGenerations: initialAvailableGenerations
                 )
             ]
@@ -370,7 +361,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchProfile(session: SupabaseSession) async throws -> SupabaseProfileRecord? {
-        let select = "id,apple_user_id,nickname,email,english_level,language_style,available_generations"
+        let select = "id,apple_user_id,nickname,email,english_level,available_generations"
         let request = try makeRequest(
             path: "/rest/v1/profiles?id=eq.\(session.userID)&select=\(select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select)",
             method: "GET",
@@ -410,8 +401,7 @@ struct SupabaseService: SupabaseServicing {
     func updateProfile(
         session: SupabaseSession,
         nickname: String? = nil,
-        englishLevel: EnglishLevel? = nil,
-        languageStyle: LanguageStyle? = nil
+        englishLevel: EnglishLevel? = nil
     ) async throws -> SupabaseProfileRecord? {
         let request = try makeRequest(
             path: "/rest/v1/profiles?id=eq.\(session.userID)",
@@ -422,8 +412,7 @@ struct SupabaseService: SupabaseServicing {
             ],
             body: SupabaseProfilePatchPayload(
                 nickname: nickname,
-                englishLevel: englishLevel?.rawValue,
-                languageStyle: languageStyle?.rawValue
+                englishLevel: englishLevel?.rawValue
             )
         )
 
@@ -497,7 +486,6 @@ struct SupabaseService: SupabaseServicing {
         session: SupabaseSession,
         imageData: Data,
         englishLevel: EnglishLevel,
-        languageStyle: LanguageStyle,
         guestJobID: String?,
         clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult {
@@ -508,7 +496,6 @@ struct SupabaseService: SupabaseServicing {
             body: SupabaseGenerateMemoryRequest(
                 imageBase64: imageData.base64EncodedString(),
                 englishLevel: englishLevel.rawValue,
-                languageStyle: languageStyle.rawValue,
                 guestJobID: guestJobID,
                 clientRequestID: clientRequestID,
                 generationFormat: "dual_tabs_v1"
@@ -761,6 +748,25 @@ struct SupabaseService: SupabaseServicing {
         }
 
         return allRecords
+    }
+
+    func fetchStudySceneSuggestionTopicIDs(session: SupabaseSession) async throws -> Set<String> {
+        let select = "learning_topic_ids,memories!inner(id)"
+        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
+        let path = "/rest/v1/memory_sentences?select=\(encodedSelect)&memories.user_id=eq.\(session.userID)&order=id.asc"
+        return try await StudySceneTopicReader.load { range in
+            var request = try makeRequest(
+                path: path,
+                method: "GET",
+                bearerToken: session.accessToken,
+                additionalHeaders: [
+                    "Range-Unit": "items",
+                    "Range": "\(range.lowerBound)-\(range.upperBound - 1)"
+                ]
+            )
+            request.timeoutInterval = 15
+            return try await perform(request)
+        }
     }
 
     func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot? {

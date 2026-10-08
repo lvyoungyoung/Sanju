@@ -25,9 +25,23 @@ const helper = new URL(
 ).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
-  import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
+  import { buildSentenceMetadataRules } from ${
+    JSON.stringify(
+      new URL(
+        "../../supabase/functions/_shared/sentence-metadata.ts",
+        import.meta.url,
+      ).href,
+    )
+  };
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
-  import type { EnrichmentTiming, EnrichmentStage } from ${JSON.stringify(new URL("../../supabase/functions/_shared/generation-enrichment-timing.ts", import.meta.url).href)};
+  import type { EnrichmentTiming, EnrichmentStage } from ${
+    JSON.stringify(
+      new URL(
+        "../../supabase/functions/_shared/generation-enrichment-timing.ts",
+        import.meta.url,
+      ).href,
+    )
+  };
   type Sentence = any; type FinalizedSentence = any; type IndexableSentence = any;
   type SentencePresentationGroup = "what_i_see" | "what_i_say";
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
@@ -82,7 +96,7 @@ const makeFetcher = (fail?: "sentence" | "purpose" | "both") =>
 
 Deno.test("foreground generation requests metadata without changing the sentence groups", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"]) {
-    const prompt = api.buildPromptText("中等", "平铺直叙", format);
+    const prompt = api.buildPromptText("中等", format);
     ok(prompt.includes("expression_purpose"));
     ok(prompt.includes("learning_topic_ids"));
     const json = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
@@ -90,14 +104,19 @@ Deno.test("foreground generation requests metadata without changing the sentence
       [...json.image_descriptions, ...json.scene_and_feelings];
     strictEqual(items.length, format === "legacy_v1" ? 3 : 6);
     for (const item of items) {
-      deepStrictEqual(Object.keys(item).sort(), ["chinese", "english", "expression_purpose", "learning_topic_ids"]);
+      deepStrictEqual(Object.keys(item).sort(), [
+        "chinese",
+        "english",
+        "expression_purpose",
+        "learning_topic_ids",
+      ]);
     }
   }
 });
 Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"]) {
-    for (const style of ["平铺直叙", "抒情优美"]) {
-      const prompt = api.buildPromptText(level, style, "dual_tabs_v1");
+    {
+      const prompt = api.buildPromptText(level, "dual_tabs_v1");
       const feelingIndex = prompt.indexOf("1. 我当时的感受：");
       const conversationIndex = prompt.indexOf("2. 当时会对别人说什么：");
       const eventIndex = prompt.indexOf("3. 发生了什么：");
@@ -131,19 +150,19 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
   }
 });
 Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
-  const prompt = api.buildPromptText("启蒙", "抒情优美", "dual_tabs_v1");
+  const prompt = api.buildPromptText("启蒙", "dual_tabs_v1");
   ok(prompt.includes("只表达一个事物、动作或简单感受"));
   ok(prompt.includes("极常见的具体词、简单感受词"));
   ok(prompt.includes("3 到 6 个英文单词"));
   ok(prompt.includes("两组遵守同一档难度"));
   ok(prompt.includes("优先于风格、幽默和细节"));
   ok(!prompt.includes("I like this day."));
-  strictEqual(prompt, api.buildPromptText("启蒙", "平铺直叙", "dual_tabs_v1"));
+  ok(prompt.includes("友好自然直接"));
 });
 Deno.test("legacy image descriptions do not gain the hypothetical dialogue instruction", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"]) {
-    for (const style of ["平铺直叙", "抒情优美"]) {
-      const prompt = api.buildPromptText(level, style, "legacy_v1");
+    {
+      const prompt = api.buildPromptText(level, "legacy_v1");
       ok(!prompt.includes("当时会对别人说什么"));
       ok(prompt.includes("最直接可见的内容"));
       const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
@@ -167,16 +186,34 @@ Deno.test("purpose parsing is bounded and missing purposes do not discard valid 
     learning_topic_ids: ["natural_scenery"],
   }]);
   strictEqual(parsed[0].expression_purpose, "Describing a lake.");
-  for (const topics of [undefined, null, ["invalid"], ["natural_scenery", "natural_scenery"]]) {
+  for (
+    const topics of [undefined, null, ["invalid"], [
+      "natural_scenery",
+      "natural_scenery",
+    ]]
+  ) {
     const incomplete = api.normalizeSentenceArray([{
-      english: "A lake.", chinese: "湖。", expression_purpose: "Describing a lake.", learning_topic_ids: topics,
+      english: "A lake.",
+      chinese: "湖。",
+      expression_purpose: "Describing a lake.",
+      learning_topic_ids: topics,
     }]);
     strictEqual(incomplete.length, 1);
-    strictEqual(incomplete[0].expression_purpose, undefined, "incomplete metadata must be repaired, not mistaken for intentional empty categories");
+    strictEqual(
+      incomplete[0].expression_purpose,
+      undefined,
+      "incomplete metadata must be repaired, not mistaken for intentional empty categories",
+    );
   }
-  strictEqual(api.normalizeSentenceArray([{
-    english: "A lake.", chinese: "湖。", expression_purpose: "Describing a lake.", learning_topic_ids: [],
-  }])[0].expression_purpose, "Describing a lake.");
+  strictEqual(
+    api.normalizeSentenceArray([{
+      english: "A lake.",
+      chinese: "湖。",
+      expression_purpose: "Describing a lake.",
+      learning_topic_ids: [],
+    }])[0].expression_purpose,
+    "Describing a lake.",
+  );
   strictEqual(
     api.normalizeSentenceArray([{ english: "A lake.", chinese: "湖。" }])
       .length,

@@ -21,9 +21,9 @@ struct SentenceStudyBlankTokenView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(filledWord == nil ? Color.clear : Color(red: 0.23, green: 0.62, blue: 0.36))
                     .frame(width: width, height: 32)
-                    .background(blankBackground)
+                    .background(blankShape.fill(blankBackground))
                     .overlay(blankOverlay)
-                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                    .clipShape(blankShape)
             }
             .buttonStyle(.plain)
 
@@ -33,6 +33,10 @@ struct SentenceStudyBlankTokenView: View {
                     .foregroundStyle(AppTextColor.title)
             }
         }
+    }
+
+    private var blankShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
     }
 
     private var blankBackground: some ShapeStyle {
@@ -54,8 +58,8 @@ struct SentenceStudyBlankTokenView: View {
     }
 
     private var blankOverlay: some View {
-        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-            .stroke(
+        blankShape
+            .strokeBorder(
                 filledWord != nil
                     ? Color.clear
                     : isFocused

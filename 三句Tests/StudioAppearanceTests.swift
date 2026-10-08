@@ -10,7 +10,13 @@ final class StudioAppearanceTests: XCTestCase {
             (AppTextColor.primary, AppSurfaceColor.card),
             (AppTextColor.secondary, AppPalette.apricot),
             (AppTextColor.tertiary, AppSurfaceColor.card),
+            (AppTextColor.primary, ProfileCardStyle.surface),
+            (AppTextColor.secondary, ProfileCardStyle.surface),
+            (AppTextColor.tertiary, ProfileCardStyle.surface),
+            (AppTextColor.secondary, ProfileCardStyle.page),
             (AppPalette.accentText, AppSurfaceColor.page),
+            (AppPalette.accentText, AppPalette.apricot),
+            (AppTextColor.secondary, AppSurfaceColor.elevated),
             (AppPalette.onAccent, AppPalette.accent),
             (AppHeroTextColor.title, AppPalette.profile)
         ]
@@ -22,6 +28,21 @@ final class StudioAppearanceTests: XCTestCase {
                     let b = luminance(UIColor(background).resolvedColor(with: traits))
                     XCTAssertGreaterThanOrEqual((max(a, b) + 0.05) / (min(a, b) + 0.05), 4.5)
                 }
+            }
+        }
+    }
+
+    func testBorderlessProfileCardsRemainDistinctFromPage() {
+        XCTAssertEqual(ProfileCardStyle.cornerRadius, AppCornerRadius.card)
+        XCTAssertEqual(AppCornerRadius.card, 18)
+        XCTAssertEqual(AppCornerRadius.cardImage + 7, AppCornerRadius.card)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            traits.performAsCurrent {
+                let card = luminance(UIColor(ProfileCardStyle.surface).resolvedColor(with: traits))
+                let page = luminance(UIColor(ProfileCardStyle.page).resolvedColor(with: traits))
+                XCTAssertGreaterThan(card, page)
+                XCTAssertGreaterThan((card + 0.05) / (page + 0.05), 1.1)
             }
         }
     }

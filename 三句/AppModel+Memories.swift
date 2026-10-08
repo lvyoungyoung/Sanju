@@ -64,6 +64,7 @@ extension AppModel {
     }
 
     func toggleFavorite(sentenceID: UUID) {
+        let revision = accountRequests.revision
         guard let location = locateSentence(sentenceID) else { return }
         memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite.toggle()
         let isFavorite = memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite
@@ -74,7 +75,9 @@ extension AppModel {
             return
         }
         Task {
+            guard (try? accountRequests.check(revision)) != nil else { return }
             let didSync = await syncFavorite(sentenceID: sentenceID, isFavorite: isFavorite)
+            guard (try? accountRequests.check(revision)) != nil else { return }
             if didSync {
                 clearPendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
                 await refreshSentenceStudyDueCount()
@@ -86,6 +89,7 @@ extension AppModel {
     }
 
     func deleteFavorite(sentenceID: UUID) {
+        let revision = accountRequests.revision
         guard let location = locateSentence(sentenceID) else { return }
         memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite = false
         favoriteSentencesCount = max(0, favoriteSentencesCount - 1)
@@ -95,7 +99,9 @@ extension AppModel {
             return
         }
         Task {
+            guard (try? accountRequests.check(revision)) != nil else { return }
             let didSync = await syncFavorite(sentenceID: sentenceID, isFavorite: false)
+            guard (try? accountRequests.check(revision)) != nil else { return }
             if didSync {
                 clearPendingFavoriteChange(sentenceID: sentenceID, isFavorite: false)
                 await refreshSentenceStudyDueCount()
@@ -107,6 +113,7 @@ extension AppModel {
     }
 
     func deleteMemory(memoryID: UUID) {
+        let revision = accountRequests.revision
         let deletedMemory = memories.first(where: { $0.id == memoryID })
         let imagePath = deletedMemory?.remoteImagePath
         let removedFavoriteCount = deletedMemory?.sentences.filter(\.isFavorite).count ?? 0
@@ -124,7 +131,9 @@ extension AppModel {
             return
         }
         Task {
+            guard (try? accountRequests.check(revision)) != nil else { return }
             let didSync = await syncDeleteMemory(memoryID: memoryID, imagePath: imagePath)
+            guard (try? accountRequests.check(revision)) != nil else { return }
             if didSync {
                 pendingMemoryDeletions.removeAll { $0.memoryID == memoryID }
                 persistPendingMemoryDeletions()
@@ -140,6 +149,7 @@ extension AppModel {
     }
 
     func refreshRemoteContent() async {
+        guard !Task.isCancelled else { return }
         if let remoteContentRefreshTask {
             await remoteContentRefreshTask.value
             return
@@ -147,7 +157,7 @@ extension AppModel {
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.remoteContentRefreshTask = nil }
+            defer { if !Task.isCancelled { self.remoteContentRefreshTask = nil } }
             await self.performRemoteContentRefresh()
         }
 
@@ -156,6 +166,15 @@ extension AppModel {
     }
 
     private func performRemoteContentRefresh() async {
+        guard supabaseSession != nil || loadStoredSession() != nil else { return }
+        memoryLoadState = .loading
+        var requestRevision = accountRequests.revision
+        defer {
+            if !Task.isCancelled, accountRequests.revision == requestRevision,
+               memories.isEmpty, memoryLoadState != .loaded {
+                memoryLoadState = .failed
+            }
+        }
         let session: SupabaseSession
         if let currentSession = supabaseSession {
             guard let validSession = try? await ensureFreshSessionIfNeeded(currentSession) else { return }
@@ -168,6 +187,7 @@ extension AppModel {
         } else {
             return
         }
+        requestRevision = accountRequests.revision
 
         if session.isAnonymous {
             refreshLocalSentenceStudyCounts()
@@ -175,7 +195,9 @@ extension AppModel {
             return
         }
 
+        let revision = accountRequests.revision
         if let migratedProfile = await retryPendingGuestCreditMigrationIfNeeded(for: session) {
+            guard (try? accountRequests.check(revision)) != nil else { return }
             applyRemoteProfile(
                 migratedProfile,
                 fallbackAppleUserID: profile?.appleUserID ?? "",
@@ -184,6 +206,7 @@ extension AppModel {
             persistProfile()
             persistCredits()
         } else if let remoteProfile = try? await supabaseService.fetchProfile(session: session) {
+            guard (try? accountRequests.check(revision)) != nil else { return }
             applyRemoteProfile(
                 remoteProfile,
                 fallbackAppleUserID: profile?.appleUserID ?? "",
@@ -193,9 +216,13 @@ extension AppModel {
             persistCredits()
         }
 
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncMemoriesFromRemote(refreshCounts: true)
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncPendingCloudChangesIfNeeded()
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncMemoriesFromRemote(refreshCounts: true)
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await refreshSentenceStudyDueCount()
     }
 
@@ -209,8 +236,11 @@ extension AppModel {
     }
 
     func syncMemoriesFromRemote(refreshCounts: Bool, downloadsImages: Bool = true) async {
+        guard !Task.isCancelled else { return }
+        let revision = accountRequests.revision
         if let remoteMemoriesSyncTask {
             await remoteMemoriesSyncTask.value
+            guard (try? accountRequests.check(revision)) != nil else { return }
             if !downloadsImages || !memories.contains(where: \.imageData.isEmpty) {
                 return
             }
@@ -218,7 +248,7 @@ extension AppModel {
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.remoteMemoriesSyncTask = nil }
+            defer { if !Task.isCancelled { self.remoteMemoriesSyncTask = nil } }
             await self.performSyncMemoriesFromRemote(
                 refreshCounts: refreshCounts,
                 downloadsImages: downloadsImages
@@ -233,7 +263,12 @@ extension AppModel {
         refreshCounts: Bool,
         downloadsImages: Bool = true
     ) async {
-        guard let session = try? await ensureValidSession() else { return }
+        memoryLoadState = .loading
+        guard let session = try? await ensureValidSession() else {
+            if !Task.isCancelled { memoryLoadState = .failed }
+            return
+        }
+        let revision = accountRequests.revision
 
         if session.isAnonymous {
             let localMemories = memories
@@ -250,6 +285,7 @@ extension AppModel {
             replacePendingGuestMemoryMigrationQueue(with: localMemories)
             refreshLocalFavoriteSentenceStudyCounts()
             persistMemories()
+            memoryLoadState = .loaded
             return
         }
 
@@ -257,10 +293,13 @@ extension AppModel {
         defer {
             if isSessionStillCurrent(session) { albumFlipHistorySync?.uploadPending() }
         }
-        defer { isSyncingRemoteMemories = false }
+        defer {
+            if accountRequests.revision == revision { isSyncingRemoteMemories = false }
+        }
 
         do {
             let remoteRecords = try await supabaseService.fetchMemories(session: session)
+            try accountRequests.check(revision)
             guard isSessionStillCurrent(session) else { return }
             let existingMemories = memories.memoryDictionaryByID()
             let remoteMemories = try remoteRecords.map { record -> MemoryEntry in
@@ -335,8 +374,10 @@ extension AppModel {
                 .deduplicatedByMemoryID()
                 .sorted { $0.createdAt > $1.createdAt }
             await reconcilePendingGeneratedMemoryImage(with: &loadedMemories, session: session)
+            try accountRequests.check(revision)
             guard isSessionStillCurrent(session) else { return }
             memories = loadedMemories
+            memoryLoadState = .loaded
             if refreshCounts {
                 recordedMemoriesCount = loadedMemories.count
                 favoriteSentencesCount = loadedMemories.reduce(into: 0) { partialResult, memory in
@@ -361,6 +402,7 @@ extension AppModel {
                     }
                 }
                 await refreshFavoriteSentenceStudyCounts()
+                try accountRequests.check(revision)
                 persistMemories()
                 await MemoryWidgetSnapshotStore.refreshImmediately(with: loadedMemories)
                 return
@@ -372,6 +414,7 @@ extension AppModel {
                 sourceMemories: loadedMemories,
                 through: remoteMemoryImageHydrationTargetCount
             )
+            try accountRequests.check(revision)
 
             guard isSessionStillCurrent(session) else { return }
             memories = loadedMemories
@@ -386,9 +429,12 @@ extension AppModel {
                 }
             }
             await refreshFavoriteSentenceStudyCounts()
+            try accountRequests.check(revision)
             persistMemories()
             await MemoryWidgetSnapshotStore.refreshImmediately(with: loadedMemories)
         } catch {
+            guard !Task.isCancelled, accountRequests.revision == revision else { return }
+            memoryLoadState = .failed
             authErrorMessage = error.localizedDescription
         }
     }
@@ -536,6 +582,7 @@ extension AppModel {
     }
 
     func isSessionStillCurrent(_ session: SupabaseSession) -> Bool {
+        guard !Task.isCancelled else { return false }
         guard let currentSession = supabaseSession else { return false }
         return currentSession.userID == session.userID && currentSession.isAnonymous == session.isAnonymous
     }
@@ -755,10 +802,16 @@ extension AppModel {
     }
 
     func refreshSentenceStudyDueCount() async {
+        guard !Task.isCancelled else { return }
         let refreshID = UUID()
         studyOverviewRefreshID = refreshID
         studySceneSummariesRefreshID = refreshID
         guard !isRestoringAuthenticatedSession else { return }
+        if !isSignedIn, loadStoredSession()?.isAnonymous == false {
+            studyOverviewLoadState = .failed
+            studySceneLoadState = .failed
+            return
+        }
         guard isSignedIn else {
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
@@ -767,9 +820,14 @@ extension AppModel {
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
+            studyOverviewLoadState = .loaded
+            studySceneLoadState = .loaded
             return
         }
 
+        studyOverviewLoadState = .loading
+        studySceneLoadState = .loading
+        let revision = accountRequests.revision
         let requestedUserID = supabaseSession?.userID
         do {
             let session = try await ensureValidSession()
@@ -779,7 +837,23 @@ extension AppModel {
             let snapshot = try await StudyOverviewSnapshot.load(
                 from: supabaseService,
                 session: session,
-                favoriteSentenceIDs: favoriteSentenceIDs
+                favoriteSentenceIDs: favoriteSentenceIDs,
+                onScenesLoaded: { [weak self] scenes in
+                    guard let self, !Task.isCancelled, accountRequests.revision == revision,
+                          studySceneSummariesRefreshID == refreshID else { return }
+                    if let scenes { userStudySceneSummaries = scenes }
+                    studySceneLoadState = scenes == nil ? .failed : .loaded
+                },
+                onContentLoaded: { [weak self] scenes, count in
+                    guard let self, !Task.isCancelled, accountRequests.revision == revision,
+                          studyOverviewRefreshID == refreshID else { return }
+                    if let count { memorySentenceCount = count }
+                    studyOverviewLoadState = scenes != nil && count != nil ? .loaded : .failed
+                    if studySceneSummariesRefreshID == refreshID {
+                        if let scenes { userStudySceneSummaries = scenes }
+                        studySceneLoadState = scenes == nil ? .failed : .loaded
+                    }
+                }
             )
             guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
                   studyOverviewRefreshID == refreshID else { return }
@@ -803,6 +877,10 @@ extension AppModel {
             }
         } catch {
             // Network failures and view cancellation must not erase the last successful overview.
+            if accountRequests.revision == revision, studyOverviewRefreshID == refreshID {
+                if studyOverviewLoadState == .loading { studyOverviewLoadState = .failed }
+                if studySceneSummariesRefreshID == refreshID, studySceneLoadState == .loading { studySceneLoadState = .failed }
+            }
             return
         }
     }

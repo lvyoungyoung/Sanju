@@ -29,28 +29,19 @@ final class GenerationPreferenceTests: XCTestCase {
         }
     }
 
-    func testOnlyStarterDisablesLyricalAndResolvesToPlain() {
-        for level in EnglishLevel.allCases {
-            XCTAssertTrue(level.allows(.plain))
-            XCTAssertEqual(level.resolvedStyle(.plain), .plain)
-            XCTAssertEqual(level.allows(.lyrical), level != .starter)
-            XCTAssertEqual(level.resolvedStyle(.lyrical), level == .starter ? .plain : .lyrical)
-        }
-    }
-
     func testStarterSurvivesPreferenceCodableRoundTrip() throws {
         let data = try JSONEncoder().encode(EnglishLevel.starter)
         XCTAssertEqual(try JSONDecoder().decode(EnglishLevel.self, from: data), .starter)
     }
 
     @MainActor
-    func testNativePickerDisablesAndDimsLyricalOnlyForStarter() async throws {
+    func testNativePickerKeepsAllThreeDifficultyOptionsEnabled() async throws {
         func findControl(in view: UIView) -> UISegmentedControl? {
             if let control = view as? UISegmentedControl { return control }
             return view.subviews.lazy.compactMap { findControl(in: $0) }.first
         }
         for level in EnglishLevel.allCases {
-            let host = UIHostingController(rootView: LanguageStylePicker(selection: .constant(.plain), englishLevel: level))
+            let host = UIHostingController(rootView: EnglishLevelPicker(selection: .constant(level)))
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 100))
             window.rootViewController = host
             window.isHidden = false
@@ -58,18 +49,56 @@ final class GenerationPreferenceTests: XCTestCase {
             await Task.yield()
             host.view.layoutIfNeeded()
             let control = try XCTUnwrap(findControl(in: host.view))
-            XCTAssertTrue(control.isEnabledForSegment(at: 0))
-            XCTAssertEqual(control.isEnabledForSegment(at: 1), level != .starter)
-            XCTAssertNotNil(control.titleTextAttributes(for: .disabled)?[.foregroundColor])
+            XCTAssertEqual(control.numberOfSegments, 3)
+            for index in 0..<3 { XCTAssertTrue(control.isEnabledForSegment(at: index)) }
+            XCTAssertEqual(control.selectedSegmentIndex, EnglishLevel.allCases.firstIndex(of: level))
         }
     }
 
     @MainActor
-    func testPickerRestoresSelectionWhenBindingRejectsChange() {
-        let picker = LanguageStylePicker(selection: .constant(.plain), englishLevel: .simple)
-        let control = UISegmentedControl(items: ["Plain", "Lyrical"])
-        control.selectedSegmentIndex = 1
-        picker.makeCoordinator().changed(control)
-        XCTAssertEqual(control.selectedSegmentIndex, 0)
+    func testPickerRestoresSelectionWhenBindingRejectsChange() async throws {
+        func findControl(in view: UIView) -> UISegmentedControl? {
+            if let control = view as? UISegmentedControl { return control }
+            return view.subviews.lazy.compactMap { findControl(in: $0) }.first
+        }
+        let host = UIHostingController(rootView: EnglishLevelPicker(selection: .constant(.simple)))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 100))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        await Task.yield()
+        host.view.layoutIfNeeded()
+        let control = try XCTUnwrap(findControl(in: host.view))
+        control.selectedSegmentIndex = 2
+        control.sendActions(for: .valueChanged)
+        XCTAssertEqual(control.selectedSegmentIndex, 1)
+    }
+
+    func testGenerationRequestAndProfilePatchContainNoStyleSetting() throws {
+        let request = SupabaseGenerateMemoryRequest(
+            imageBase64: "AA==", englishLevel: "简单", guestJobID: nil,
+            clientRequestID: "request", generationFormat: "dual_tabs_v1"
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        XCTAssertNil(json["languageStyle"])
+        XCTAssertEqual(json["englishLevel"] as? String, "简单")
+        let patch = SupabaseProfilePatchPayload(nickname: nil, englishLevel: "中等")
+        let patchJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(patch)) as? [String: Any])
+        XCTAssertEqual(patchJSON["english_level"] as? String, "中等")
+        XCTAssertNil(patchJSON["language_style"])
+    }
+
+    func testProfileCreationRetainsTheLegacyColumnWithoutASelectableStyle() throws {
+        let payload = SupabaseProfileUpsertPayload(
+            id: "user", appleUserID: "email:user", nickname: "name", email: nil,
+            englishLevel: "启蒙", initialAvailableGenerations: nil
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any])
+        XCTAssertEqual(json["language_style"] as? String, "平铺直叙")
+        let profile = try JSONDecoder().decode(SupabaseProfileRecord.self, from: Data(
+            #"{"id":"user","nickname":"name","english_level":"简单","available_generations":9,"language_style":"抒情优美"}"#.utf8
+        ))
+        XCTAssertEqual(profile.englishLevel, "简单")
+        XCTAssertEqual(profile.availableGenerations, 9)
     }
 }

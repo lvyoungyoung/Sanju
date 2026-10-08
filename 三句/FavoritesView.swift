@@ -130,7 +130,7 @@ struct FavoritesView: View {
 
     private var favoritesHero: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -242,7 +242,7 @@ struct FavoritesView: View {
         .padding(.horizontal, AppSpacing.xLarge)
         .padding(.vertical, AppSpacing.medium)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -255,7 +255,7 @@ struct FavoritesView: View {
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .stroke(AppStroke.highlight, lineWidth: 1)
         )
         .appCardShadow()
@@ -349,7 +349,7 @@ private struct FavoriteSentenceCard: View {
             }
         }
         .padding(AppSpacing.xLarge)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appCardShadow()
     }
 

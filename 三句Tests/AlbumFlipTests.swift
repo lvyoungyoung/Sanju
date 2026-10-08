@@ -19,12 +19,83 @@ final class AlbumFlipTests: XCTestCase {
         super.tearDown()
     }
 
+    func testPlaybackIndicatorFollowsCurrentSentenceFromLoadingToFinished() {
+        let text = "A quiet afternoon."
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: nil, loadingText: nil), .idle)
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: text, loadingText: text), .loading)
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: text, loadingText: nil), .playing)
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: nil, loadingText: nil), .idle)
+    }
+
+    func testPlaybackIndicatorIgnoresOtherSentencesAndNormalizesWhitespace() {
+        let text = "A quiet afternoon."
+        XCTAssertEqual(SpeechPlaybackState(text: " \(text)\n", activeText: text, loadingText: nil), .playing)
+        XCTAssertEqual(SpeechPlaybackState(text: " \(text)\n", activeText: text, loadingText: text), .loading)
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: "Another sentence.", loadingText: nil), .idle)
+        XCTAssertEqual(SpeechPlaybackState(text: text, activeText: "Another sentence.", loadingText: "Another sentence."), .idle)
+        XCTAssertEqual(SpeechPlaybackState(text: " \n", activeText: "", loadingText: ""), .idle)
+    }
+
     func testIncludesAllSixSentencesWithoutRequiringFavorites() {
         let memory = makeMemory()
         let items = AlbumFlipItem.makeItems(from: [memory])
         XCTAssertEqual(items.count, 6)
         XCTAssertEqual(Set(items.map(\.sentence.presentationGroup)), Set(SentencePresentationGroup.allCases))
         XCTAssertTrue(items.allSatisfy { !$0.sentence.isFavorite })
+        XCTAssertTrue(items.allSatisfy { $0.memoryCreatedAt == memory.createdAt })
+    }
+
+    func testRecencyWeightDecaysWithoutExcludingOldMemories() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let weights = [0, 7, 30, 90, 365].map { days in
+            let item = AlbumFlipItem(
+                memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(-Double(days) * 86_400),
+                sentence: SentenceRecord(english: "A quiet afternoon.", chinese: "安静的午后。")
+            )
+            return item.selectionWeight(at: now, progress: nil)
+        }
+        XCTAssertEqual(weights, [48, 43, 30, 17, 12])
+        for index in 1..<weights.count { XCTAssertLessThan(weights[index], weights[index - 1]) }
+
+        let future = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(86_400),
+                                   sentence: SentenceRecord(english: "Tomorrow.", chinese: "明天。"))
+        XCTAssertEqual(future.selectionWeight(at: now, progress: nil), weights[0])
+    }
+
+    func testRecencyStillPreservesFamiliarityWeighting() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        for days in [0, 30, 365] {
+            let item = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(-Double(days) * 86_400),
+                                     sentence: SentenceRecord(english: "A quiet afternoon.", chinese: "安静的午后。"))
+            func progress(_ feedback: AlbumFlipFeedback) -> AlbumFlipProgress {
+                .applying(AlbumFlipEvent(id: UUID(), memoryID: item.memoryID, sentenceID: item.sentence.id,
+                                        feedback: feedback, occurredAt: now, timeZoneID: "UTC"), to: nil)
+            }
+            let unseen = item.selectionWeight(at: now, progress: nil)
+            XCTAssertGreaterThan(item.selectionWeight(at: now, progress: progress(.again)), unseen)
+            XCTAssertLessThan(item.selectionWeight(at: now, progress: progress(.familiar)), unseen)
+        }
+    }
+
+    func testDeckUsesRecencyWeightsAndCanStillSelectOldContent() throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let memories = [0, 30, 365].map { days in
+            MemoryEntry(createdAt: now.addingTimeInterval(-Double(days) * 86_400), imageData: Data(),
+                        sentences: [SentenceRecord(english: "A day to remember.", chinese: "值得记住的一天。")])
+        }
+        let items = AlbumFlipItem.makeItems(from: memories)
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        // Check every boundary of the weighted draw, without statistical/flaky assertions.
+        for (ticket, expectedIndex) in [(0, 0), (47, 0), (48, 1), (77, 1), (78, 2), (89, 2)] {
+            var isFirstDraw = true
+            let deck = AlbumFlipDeck(items: items, store: store, now: { now }, randomIndex: { bound in
+                guard isFirstDraw else { return 0 }
+                isFirstDraw = false
+                XCTAssertEqual(bound, 90)
+                return ticket
+            })
+            XCTAssertEqual(try XCTUnwrap(deck.cards.first).item.id, items[expectedIndex].id)
+        }
     }
 
     func testFiltersBlankSentencesAndDuplicateMemories() {
@@ -105,7 +176,11 @@ final class AlbumFlipTests: XCTestCase {
     }
 
     func testAgainRevisitsTheExactSentenceAfterSeveralCards() throws {
-        let items = AlbumFlipItem.makeItems(from: (0..<3).map { _ in makeMemory() })
+        let items = AlbumFlipItem.makeItems(from: (0..<3).map { index in
+            let memory = makeMemory()
+            return MemoryEntry(id: memory.id, createdAt: Date().addingTimeInterval(index == 0 ? -365 * 86_400 : 0),
+                               imageData: memory.imageData, sentences: memory.sentences)
+        })
         let deck = makeDeck(items)
         let first = try XCTUnwrap(deck.cards.first)
         deck.advance(.again, cardID: first.id)
@@ -165,7 +240,7 @@ final class AlbumFlipTests: XCTestCase {
             if initialWeight == 0 { initialWeight = bound }
             return 0
         })
-        XCTAssertEqual(initialWeight, 4 + (items.count - 1) * 12)
+        XCTAssertEqual(initialWeight, (4 + (items.count - 1) * 12) * 4)
     }
 
     func testSwipeThresholdVelocityAndVerticalScrolling() {
@@ -199,7 +274,7 @@ final class AlbumFlipTests: XCTestCase {
     }
 
     func testCardHandlesLongTextAndAccessibilityTypeWithoutChangingItsFrame() async throws {
-        let item = AlbumFlipItem(memoryID: UUID(), sentence: SentenceRecord(
+        let item = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: .now, sentence: SentenceRecord(
             english: String(repeating: "The afternoon light fills this little cafe with warmth. ", count: 5),
             chinese: "午后的阳光让这家小咖啡馆充满暖意。"
         ))

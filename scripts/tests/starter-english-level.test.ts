@@ -5,13 +5,12 @@ const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
 import { buildPromptText } from "../../supabase/functions/generate-memory-v2/content.ts";
 
-Deno.test("starter overrides lyrical style in both generation formats", () => {
+Deno.test("starter keeps natural child-safe speech in both generation formats", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
-    const prompt = buildPromptText("启蒙", "抒情优美", format);
-    strictEqual(prompt, buildPromptText("启蒙", "平铺直叙", format));
+    const prompt = buildPromptText("启蒙", format);
     ok(prompt.includes("3 到 6 个英文单词"));
     ok(prompt.includes("不用从句、抽象词、习语"));
-    ok(prompt.includes("风格固定为平铺直叙"));
+    ok(prompt.includes("友好自然直接"));
     ok(prompt.includes("3 到 15 个汉字"));
     ok(!prompt.includes("抒情优美：细腻温柔"));
     if (format === "dual_tabs_v1") {
@@ -27,7 +26,7 @@ Deno.test("starter overrides lyrical style in both generation formats", () => {
   }
 });
 
-Deno.test("non-starter levels support lyrical style within their difficulty", () => {
+Deno.test("non-starter levels keep natural speech within their difficulty", () => {
   for (
     const [level, length] of [["简单", "6 到 10 个英文单词"], [
       "中等",
@@ -38,9 +37,12 @@ Deno.test("non-starter levels support lyrical style within their difficulty", ()
     ]]
   ) {
     for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
-      const prompt = buildPromptText(level as Parameters<typeof buildPromptText>[0], "抒情优美", format);
+      const prompt = buildPromptText(
+        level as Parameters<typeof buildPromptText>[0],
+        format,
+      );
       ok(prompt.includes(length));
-      ok(prompt.includes("抒情优美：细腻温柔"));
+      ok(prompt.includes("自然的日常口语"));
       ok(!prompt.includes("启蒙："));
     }
   }

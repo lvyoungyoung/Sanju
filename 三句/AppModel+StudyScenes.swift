@@ -4,14 +4,18 @@ extension AppModel {
     // MARK: - Themes and detail cache
 
     func refreshUserStudySceneSummaries() async {
+        guard !Task.isCancelled else { return }
         let refreshID = UUID()
         studySceneSummariesRefreshID = refreshID
         guard !isRestoringAuthenticatedSession else { return }
         guard isSignedIn else {
             userStudySceneSummaries = []
+            studySceneLoadState = .loaded
             return
         }
 
+        studySceneLoadState = .loading
+        let revision = accountRequests.revision
         let requestedUserID = supabaseSession?.userID
         do {
             let session = try await ensureValidSession()
@@ -22,9 +26,27 @@ extension AppModel {
             guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
                   studySceneSummariesRefreshID == refreshID else { return }
             userStudySceneSummaries = scenes
+            studySceneLoadState = .loaded
         } catch {
+            if accountRequests.revision == revision, studySceneSummariesRefreshID == refreshID {
+                studySceneLoadState = .failed
+            }
             return
         }
+    }
+
+    func fetchStudySceneSuggestionTopicIDs() async throws -> Set<String> {
+        guard isSignedIn else { throw SentenceStudyTopicLoadingError.signInRequired }
+        let revision = accountRequests.revision
+        let requestedUserID = supabaseSession?.userID
+        let session = try await ensureValidSession()
+        try accountRequests.check(revision)
+        guard !session.isAnonymous, session.userID == requestedUserID,
+              isSessionStillCurrent(session) else { throw CancellationError() }
+        let topicIDs = try await supabaseService.fetchStudySceneSuggestionTopicIDs(session: session)
+        try accountRequests.check(revision)
+        guard isSessionStillCurrent(session) else { throw CancellationError() }
+        return topicIDs
     }
 
     func cachedUserStudySceneDetailSentences(for sceneID: UUID) -> [SentenceStudyQueueItem]? {
@@ -59,11 +81,13 @@ extension AppModel {
         }
 
         let session = try await ensureValidSession()
+        let revision = accountRequests.revision
         let scene = try await supabaseService.createUserStudyScene(
             session: session,
             name: name,
             learningTopicID: learningTopicID
         )
+        try accountRequests.check(revision)
         if let existingIndex = userStudySceneSummaries.firstIndex(where: { $0.id == scene.id }) {
             userStudySceneSummaries[existingIndex] = scene
         } else {
@@ -88,7 +112,9 @@ extension AppModel {
             throw SentenceStudyTopicLoadingError.signInRequired
         }
 
+        let revision = accountRequests.revision
         try await supabaseService.deleteUserStudyScene(session: session, sceneID: scene.id)
+        try accountRequests.check(revision)
         userStudySceneSummaries.removeAll { $0.id == scene.id }
         invalidateUserStudySceneDetailSentenceCache(for: scene.id)
         await refreshSentenceStudyDueCount()

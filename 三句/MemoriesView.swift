@@ -38,18 +38,22 @@ struct MemoriesView: View {
                         )
                     }
 
-                    if appModel.memories.isEmpty {
-                        if appModel.isSyncingRemoteMemories || shouldShowInitialLoadingState {
+                    if contentState != .content {
+                        if contentState == .loading {
                             SyncLoadingState(
                                 title: L10n.string("memories.syncing.title", "正在同步回忆..."),
                                 subtitle: L10n.string("memories.syncing.subtitle", "马上就好，正在更新你的回忆内容")
                             )
                             .padding(.top, 80)
+                        } else if contentState == .failed {
+                            ContentLoadFailureState {
+                                Task { await appModel.refreshRemoteContent() }
+                            }
+                            .padding(.top, 36)
                         } else {
-                            EmptyStateView(
-                                title: L10n.string("memories.empty.title", "还没有回忆"),
-                                subtitle: L10n.string("memories.empty.subtitle", "在“新的”里上传第一张照片，生成你的第一组三句话。")
-                            )
+                            AddPhotoEmptyState(destination: .memories) {
+                                appModel.selectedTab = .newLearning
+                            }
                             .padding(.top, 36)
                         }
                     } else {
@@ -134,8 +138,11 @@ struct MemoriesView: View {
                     .environmentObject(appModel)
             }
             .toolbar(.hidden, for: .navigationBar)
-            .task {
+            .task(id: appModel.isRestoringAuthenticatedSession ? nil : appModel.supabaseSession?.userID) {
                 rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
+                guard !appModel.isRestoringAuthenticatedSession else { return }
+                hasCompletedInitialLoad = false
+                isPerformingInitialLoad = false
                 await performInitialLoadIfNeeded()
             }
             .onChange(of: appModel.memories) { _, newMemories in
@@ -259,7 +266,15 @@ struct MemoriesView: View {
     }
 
     private var shouldShowInitialLoadingState: Bool {
-        !hasCompletedInitialLoad && isPerformingInitialLoad
+        !hasCompletedInitialLoad && (isPerformingInitialLoad || appModel.isSignedIn)
+    }
+
+    private var contentState: PhotoContentState {
+        .resolve(
+            hasContent: !appModel.memories.isEmpty,
+            isLoading: appModel.isRestoringAuthenticatedSession || appModel.isSyncingRemoteMemories || shouldShowInitialLoadingState || appModel.memoryLoadState == .loading,
+            hasError: appModel.memoryLoadState == .failed
+        )
     }
 
     private var shouldShowSyncingFooterHint: Bool {
@@ -314,13 +329,14 @@ struct MemoriesView: View {
             return
         }
 
-        guard appModel.isSignedIn else {
+        guard appModel.isSignedIn || appModel.loadStoredSession()?.isAnonymous == false else {
             hasCompletedInitialLoad = true
             return
         }
 
         isPerformingInitialLoad = true
         await appModel.refreshRemoteContent()
+        guard !Task.isCancelled else { return }
         isPerformingInitialLoad = false
         hasCompletedInitialLoad = true
     }
@@ -408,7 +424,7 @@ private struct PendingCloudSyncProgressCard: View {
         }
         .padding(.horizontal, AppSpacing.large)
         .padding(.vertical, AppSpacing.medium)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appSurfaceShadow()
     }
 }
@@ -464,7 +480,7 @@ private struct MemoryThumbnailTile: View {
                     MemoryThumbnailSkeleton()
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
             .opacity(hasAppeared ? 1 : 0.01)
             .scaleEffect(hasAppeared ? 1 : 0.97)
             .offset(y: hasAppeared ? 0 : 8)
@@ -558,7 +574,7 @@ private struct MemoryThumbnailSkeleton: View {
     @State private var phase: CGFloat = -0.35
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous)
+        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
             .fill(Color.gray.opacity(0.14))
             .overlay {
                 GeometryReader { proxy in

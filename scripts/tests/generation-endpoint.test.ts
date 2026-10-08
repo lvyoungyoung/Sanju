@@ -19,7 +19,14 @@ const timingHelper = new URL(
 ).href;
 const harness = `
 import { strictEqual } from "node:assert";
-import { buildSentenceMetadataRules } from ${JSON.stringify(new URL("../../supabase/functions/_shared/sentence-metadata.ts", import.meta.url).href)};
+import { buildSentenceMetadataRules } from ${
+  JSON.stringify(
+    new URL(
+      "../../supabase/functions/_shared/sentence-metadata.ts",
+      import.meta.url,
+    ).href,
+  )
+};
 import { GenerationTiming, withGenerationTiming } from ${
   JSON.stringify(timingHelper)
 };
@@ -134,7 +141,10 @@ const { handler, state } = await import(
   "data:application/typescript," + encodeURIComponent(
     harness + source.replace(/^import .*\n/gm, "")
       .replace("const MIMO_TIMEOUT_MS = 20000", "const MIMO_TIMEOUT_MS = 50")
-      .replace("const DEEPSEEK_TIMEOUT_MS = 20000", "const DEEPSEEK_TIMEOUT_MS = 50")
+      .replace(
+        "const DEEPSEEK_TIMEOUT_MS = 20000",
+        "const DEEPSEEK_TIMEOUT_MS = 50",
+      )
       .replace("const KIMI_TIMEOUT_MS = 20000", "const KIMI_TIMEOUT_MS = 50"),
   )
 );
@@ -179,7 +189,12 @@ function reset(options: Record<string, unknown> = {}) {
     embeddingRows: undefined,
   }, options);
 }
-function request(token = "owner", legacy = false, timing = false) {
+function request(
+  token = "owner",
+  legacy = false,
+  timing = false,
+  extra: Record<string, unknown> = {},
+) {
   return new Request("https://example.invalid/generate", {
     method: "POST",
     headers: {
@@ -197,9 +212,44 @@ function request(token = "owner", legacy = false, timing = false) {
         ? {}
         : { clientRequestID: id, generationFormat: "dual_tabs_v1" }),
       ...(state.anonymous ? { guestJobID: id } : {}),
+      ...extra,
     }),
   });
 }
+
+Deno.test("style-free and legacy style requests use the same natural prompt for guests and accounts", async () => {
+  for (const anonymous of [false, true]) {
+    for (const legacy of [false, true]) {
+      for (const englishLevel of ["启蒙", "简单", "中等"]) {
+        let expectedPrompt: string | undefined;
+        for (
+          const languageStyle of [undefined, "平铺直叙", "抒情优美", "unknown"]
+        ) {
+          reset({
+            anonymous,
+            dual: !legacy,
+            projectURL: "https://api-staging.sanju.cc",
+          });
+          const response = await handler(
+            request("owner", legacy, false, { englishLevel, languageStyle }),
+          );
+          strictEqual(response.status, 200);
+          strictEqual(
+            (await response.json()).memory.sentences.length,
+            legacy ? 3 : 6,
+          );
+          const prompt: string =
+            state.modelRequests[0].messages[1].content[1].text;
+          expectedPrompt ??= prompt;
+          strictEqual(prompt, expectedPrompt);
+          strictEqual(prompt.includes("抒情优美："), false);
+          strictEqual(state.calls, 1);
+          strictEqual(state.debits, 1);
+        }
+      }
+    }
+  }
+});
 
 Deno.test("overlapping authenticated and guest requests run only one model and debit", async () => {
   for (const anonymous of [false, true]) {
@@ -228,13 +278,23 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(delivered.length, 6);
     strictEqual(
       delivered.every((s: any) =>
-        Array.isArray(s.learning_topic_ids) && s.learning_topic_ids.length === 1 && s.learning_topic_ids[0] === "pet_life"
+        Array.isArray(s.learning_topic_ids) &&
+        s.learning_topic_ids.length === 1 &&
+        s.learning_topic_ids[0] === "pet_life"
       ),
       true,
     );
     strictEqual(state.finalizedSentences.length, 6);
-    strictEqual(state.finalizedSentences.every((s: any) => s.expression_purpose === "Describing a cat."), true);
-    strictEqual(delivered.every((s: any) => s.expression_purpose === undefined), true);
+    strictEqual(
+      state.finalizedSentences.every((s: any) =>
+        s.expression_purpose === "Describing a cat."
+      ),
+      true,
+    );
+    strictEqual(
+      delivered.every((s: any) => s.expression_purpose === undefined),
+      true,
+    );
     strictEqual(
       state.embeddingRows,
       undefined,
@@ -264,22 +324,33 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
 Deno.test("extra photo tags never reach storage for either account or provider", async () => {
   for (const anonymous of [false, true]) {
     for (const stallMimo of [false, true]) {
-      reset({anonymous, stallMimo, unsolicitedTags: true});
+      reset({ anonymous, stallMimo, unsolicitedTags: true });
       const response = await handler(request());
       strictEqual(response.status, 200);
       const result = await response.json();
       strictEqual(result.memory.tags.length, 0);
       strictEqual(result.memory.sentences.length, 6);
       strictEqual(result.memory.sentences[0].learning_topic_ids[0], "pet_life");
-      strictEqual(state.finalizedSentences[0].expression_purpose, "Describing a cat.");
+      strictEqual(
+        state.finalizedSentences[0].expression_purpose,
+        "Describing a cat.",
+      );
       strictEqual(state.debits, 1);
       strictEqual(state.backgroundScopes.length, 1);
       strictEqual(state.modelRequests[0].model, "mimo-v2.6-flash");
       strictEqual(state.modelRequests[0].thinking.type, "disabled");
       strictEqual(state.modelRequests[0].max_completion_tokens, 4096);
-      strictEqual(state.modelRequests[0].messages[1].content[0].type, "image_url");
+      strictEqual(
+        state.modelRequests[0].messages[1].content[0].type,
+        "image_url",
+      );
       if (stallMimo) strictEqual(state.modelRequests[1].model, "kimi-k2.5");
-      strictEqual(state.modelRequests.every((body: any) => !JSON.stringify(body.messages).includes("tags")), true);
+      strictEqual(
+        state.modelRequests.every((body: any) =>
+          !JSON.stringify(body.messages).includes("tags")
+        ),
+        true,
+      );
     }
   }
 });
@@ -290,7 +361,10 @@ Deno.test("missing auxiliary metadata keeps valid sentences and leaves repair to
     const response = await handler(request());
     strictEqual(response.status, 200);
     strictEqual((await response.json()).memory.sentences.length, 6);
-    strictEqual(state.finalizedSentences.every((s: any) => !s.expression_purpose), true);
+    strictEqual(
+      state.finalizedSentences.every((s: any) => !s.expression_purpose),
+      true,
+    );
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
     strictEqual(state.backgroundScopes.length, 1);
@@ -364,9 +438,20 @@ Deno.test("rejection and fallback return timings; legacy clients do not receive 
     true,
   );
   strictEqual((await fallback.json()).memory.provider, "kimi");
-  strictEqual(state.finalizedSentences.every((s: any) => s.expression_purpose === "Describing a cat."), true);
+  strictEqual(
+    state.finalizedSentences.every((s: any) =>
+      s.expression_purpose === "Describing a cat."
+    ),
+    true,
+  );
   strictEqual(state.modelRequests.length, 2);
-  strictEqual(state.modelRequests.every((body: any) => JSON.stringify(body.messages).includes("learning_topic_ids") && JSON.stringify(body.messages).includes("expression_purpose")), true);
+  strictEqual(
+    state.modelRequests.every((body: any) =>
+      JSON.stringify(body.messages).includes("learning_topic_ids") &&
+      JSON.stringify(body.messages).includes("expression_purpose")
+    ),
+    true,
+  );
   reset({ dual: false });
   const legacy = await handler(request("owner", true));
   strictEqual(legacy.headers.get("Server-Timing"), null);
@@ -420,7 +505,10 @@ Deno.test("extracted persistence preserves the commit boundary when finalization
   for (const anonymous of [false, true]) {
     reset({ anonymous, finalizeThrows: true });
     strictEqual((await handler(request())).status, 504);
-    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
+    strictEqual(
+      (anonymous ? state.guests : state.jobs).get(id).status,
+      "completed",
+    );
     strictEqual(state.removed, 0);
     strictEqual(state.released, 1);
     strictEqual(state.backgroundScopes.length, 1);
@@ -436,10 +524,15 @@ Deno.test("definite upload or transaction failures do not debit and release the 
       reset({ anonymous, [failure]: true });
       strictEqual((await handler(request())).status, 500);
       strictEqual(state.debits, 0);
-      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
+      strictEqual(
+        (anonymous ? state.guests : state.jobs).get(id).status,
+        "failed",
+      );
       strictEqual(state.released, 1);
       strictEqual(state.removed, failure === "finalizeRejected" ? 1 : 0);
-      if (failure === "uploadFails") strictEqual(state.backgroundScopes.length, 0);
+      if (failure === "uploadFails") {
+        strictEqual(state.backgroundScopes.length, 0);
+      }
     }
   }
 });
@@ -463,9 +556,16 @@ const stagingURL = "https://spb-bp1364k407p37qn7.supabase.opentrust.net";
 const productionURL = "https://spb-bp103246ivn7q0nl.supabase.opentrust.net";
 
 Deno.test("trusted staging and production projects use DeepSeek, independent of local gateway and request URL", async () => {
-  for (const projectURL of [stagingURL, "https://api-staging.sanju.cc", productionURL, "https://api.sanju.cc"]) {
+  for (
+    const projectURL of [
+      stagingURL,
+      "https://api-staging.sanju.cc",
+      productionURL,
+      "https://api.sanju.cc",
+    ]
+  ) {
     for (const anonymous of [false, true]) {
-      reset({projectURL, anonymous, localURL: "http://kong:8000"});
+      reset({ projectURL, anonymous, localURL: "http://kong:8000" });
       const response = await handler(request("owner", false, true));
       strictEqual(response.status, 200);
       strictEqual((await response.json()).memory.provider, "deepseek");
@@ -474,27 +574,57 @@ Deno.test("trusted staging and production projects use DeepSeek, independent of 
       strictEqual(body.thinking.type, "disabled");
       strictEqual(body.max_tokens, 4096);
       strictEqual(body.max_completion_tokens, undefined);
-      strictEqual(body.messages[1].content[0].image_url.url, "data:image/jpeg;base64,AA==");
-      strictEqual(body.messages[1].content[1].text.includes("expression_purpose"), true);
-      strictEqual(state.modelHeaders[0].get("Authorization"), "Bearer deepseek-test-key");
+      strictEqual(
+        body.messages[1].content[0].image_url.url,
+        "data:image/jpeg;base64,AA==",
+      );
+      strictEqual(
+        body.messages[1].content[1].text.includes("expression_purpose"),
+        true,
+      );
+      strictEqual(
+        state.modelHeaders[0].get("Authorization"),
+        "Bearer deepseek-test-key",
+      );
       strictEqual(state.modelHeaders[0].get("api-key"), null);
-      strictEqual(response.headers.get("Server-Timing")?.includes("deepseek;dur="), true);
-      strictEqual(response.headers.get("Server-Timing")?.includes("mimo;dur="), false);
+      strictEqual(
+        response.headers.get("Server-Timing")?.includes("deepseek;dur="),
+        true,
+      );
+      strictEqual(
+        response.headers.get("Server-Timing")?.includes("mimo;dur="),
+        false,
+      );
       strictEqual((await handler(request())).status, 200);
       strictEqual(state.calls, 1);
       strictEqual(state.debits, 1);
       strictEqual(state.backgroundScopes.length, 1);
-      const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
+      const record = anonymous
+        ? state.guests.get(id)
+        : [...state.memories.values()][0];
       strictEqual(record.mimo_failure_reason, null);
     }
   }
-  for (const projectURL of [
-    "https://api-staging.sanju.cc.attacker.invalid", "http://api-staging.sanju.cc",
-    "https://api.sanju.cc.attacker.invalid", "http://api.sanju.cc", "not a URL",
-  ]) {
-    reset({projectURL, localURL: stagingURL, deepseekMissingKey: true, deepseekMissingURL: true});
+  for (
+    const projectURL of [
+      "https://api-staging.sanju.cc.attacker.invalid",
+      "http://api-staging.sanju.cc",
+      "https://api.sanju.cc.attacker.invalid",
+      "http://api.sanju.cc",
+      "not a URL",
+    ]
+  ) {
+    reset({
+      projectURL,
+      localURL: stagingURL,
+      deepseekMissingKey: true,
+      deepseekMissingURL: true,
+    });
     const incoming = request();
-    const forged = new Request("https://api-staging.sanju.cc/functions/v1/generate-memory-v2", incoming);
+    const forged = new Request(
+      "https://api-staging.sanju.cc/functions/v1/generate-memory-v2",
+      incoming,
+    );
     forged.headers.set("X-Generation-Provider", "deepseek");
     const response = await handler(forged);
     strictEqual(response.status, 200);
@@ -508,10 +638,13 @@ Deno.test("trusted staging and production projects use DeepSeek, independent of 
 Deno.test("both environments require DeepSeek configuration before model, job claim or debit", async () => {
   for (const projectURL of [stagingURL, productionURL]) {
     for (const option of ["deepseekMissingKey", "deepseekMissingURL"]) {
-      reset({projectURL, [option]: true});
+      reset({ projectURL, [option]: true });
       const response = await handler(request());
       strictEqual(response.status, 500);
-      strictEqual((await response.json()).error, "Missing DeepSeek generation configuration");
+      strictEqual(
+        (await response.json()).error,
+        "Missing DeepSeek generation configuration",
+      );
       strictEqual(state.calls, 0);
       strictEqual(state.jobs.size, 0);
       strictEqual(state.debits, 0);
@@ -521,24 +654,41 @@ Deno.test("both environments require DeepSeek configuration before model, job cl
 
 Deno.test("DeepSeek timeout, malformed response and HTTP errors fall back without mislabeling MiMo failure", async () => {
   for (const projectURL of [stagingURL, productionURL]) {
-    for (const failure of [{stallDeepseek: true}, {deepseekMalformed: true}, {deepseekStatus: 429}, {deepseekStatus: 503}]) {
+    for (
+      const failure of [{ stallDeepseek: true }, { deepseekMalformed: true }, {
+        deepseekStatus: 429,
+      }, { deepseekStatus: 503 }]
+    ) {
       for (const anonymous of [false, true]) {
-        reset({projectURL, anonymous, ...failure});
+        reset({ projectURL, anonymous, ...failure });
         const response = await handler(request());
         strictEqual(response.status, 200);
         strictEqual((await response.json()).memory.provider, "mimo");
-        strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash");
+        strictEqual(
+          state.modelRequests.map((body: any) => body.model).join(","),
+          "deepseek-flash,mimo-v2.6-flash",
+        );
         strictEqual(state.debits, 1);
-        const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
+        const record = anonymous
+          ? state.guests.get(id)
+          : [...state.memories.values()][0];
         strictEqual(record.mimo_failure_reason, null);
       }
     }
-    reset({projectURL, stallDeepseek: true, stallMimo: true});
+    reset({ projectURL, stallDeepseek: true, stallMimo: true });
     const response = await handler(request());
     strictEqual(response.status, 200);
     strictEqual((await response.json()).memory.provider, "kimi");
-    strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash,kimi-k2.5");
-    strictEqual([...state.memories.values()][0].mimo_failure_reason.includes("MiMo request timeout"), true);
+    strictEqual(
+      state.modelRequests.map((body: any) => body.model).join(","),
+      "deepseek-flash,mimo-v2.6-flash,kimi-k2.5",
+    );
+    strictEqual(
+      [...state.memories.values()][0].mimo_failure_reason.includes(
+        "MiMo request timeout",
+      ),
+      true,
+    );
     strictEqual(state.debits, 1);
   }
 });
@@ -546,15 +696,24 @@ Deno.test("DeepSeek timeout, malformed response and HTTP errors fall back withou
 Deno.test("both environments reject moderation or complete provider failure without debits", async () => {
   for (const projectURL of [stagingURL, productionURL]) {
     for (const anonymous of [false, true]) {
-      reset({projectURL, anonymous, blocked: true});
+      reset({ projectURL, anonymous, blocked: true });
       strictEqual((await handler(request())).status, 403);
       strictEqual(state.calls, 0);
       strictEqual(state.debits, 0);
-      reset({projectURL, anonymous, stallDeepseek: true, stallMimo: true, stallKimi: true});
+      reset({
+        projectURL,
+        anonymous,
+        stallDeepseek: true,
+        stallMimo: true,
+        stallKimi: true,
+      });
       strictEqual((await handler(request())).status, 500);
       strictEqual(state.calls, 3);
       strictEqual(state.debits, 0);
-      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
+      strictEqual(
+        (anonymous ? state.guests : state.jobs).get(id).status,
+        "failed",
+      );
       strictEqual(state.released, 1);
     }
   }
@@ -563,9 +722,12 @@ Deno.test("both environments reject moderation or complete provider failure with
 Deno.test("DeepSeek preserves committed results after a lost finalize response in both environments", async () => {
   for (const projectURL of [stagingURL, productionURL]) {
     for (const anonymous of [false, true]) {
-      reset({projectURL, anonymous, finalizeResponseLost: true});
+      reset({ projectURL, anonymous, finalizeResponseLost: true });
       strictEqual((await handler(request())).status, 504);
-      strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
+      strictEqual(
+        (anonymous ? state.guests : state.jobs).get(id).status,
+        "completed",
+      );
       strictEqual(state.removed, 0);
       const replay = await handler(request());
       strictEqual(replay.status, 200);
@@ -578,7 +740,7 @@ Deno.test("DeepSeek preserves committed results after a lost finalize response i
 
 Deno.test("production DeepSeek keeps legacy three-sentence responses for both account types", async () => {
   for (const anonymous of [false, true]) {
-    reset({projectURL: productionURL, anonymous, dual: false});
+    reset({ projectURL: productionURL, anonymous, dual: false });
     const response = await handler(request("owner", true));
     strictEqual(response.status, 200);
     const result = await response.json();
@@ -594,10 +756,14 @@ Deno.test("production DeepSeek keeps legacy three-sentence responses for both ac
 
 Deno.test("overlapping production DeepSeek requests generate and debit once", async () => {
   for (const anonymous of [false, true]) {
-    reset({projectURL: productionURL, anonymous});
+    reset({ projectURL: productionURL, anonymous });
     let release!: () => void;
-    const started = new Promise<void>((resolve) => { state.modelStarted = resolve; });
-    state.modelWait = new Promise<void>((resolve) => { release = resolve; });
+    const started = new Promise<void>((resolve) => {
+      state.modelStarted = resolve;
+    });
+    state.modelWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const first = handler(request());
     await started;
     try {

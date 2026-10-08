@@ -8,18 +8,28 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Binding var isShowingOnboarding: Bool
     @StateObject private var appModel = AppModel()
     @Environment(\.scenePhase) private var scenePhase
     @State private var signInSheetHeight: CGFloat = 380
     @State private var studyDayContext = StudyCalendar.currentDayContext
+
+    init(isShowingOnboarding: Binding<Bool> = .constant(false)) {
+        _isShowingOnboarding = isShowingOnboarding
+    }
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
                 MainTabView()
                     .environmentObject(appModel)
+                    .allowsHitTesting(!isShowingOnboarding)
+                    .accessibilityHidden(isShowingOnboarding)
                 if appModel.isDeletingAccount {
                     GlobalBlockingLoadingOverlay(title: L10n.string("account.delete.loading", "正在删除账号，请勿关闭应用"))
+                }
+                if isShowingOnboarding {
+                    OnboardingView(onFinish: finishOnboarding)
                 }
             }
             .alert(L10n.string("common.notice", "提示"), isPresented: credentialWarningAlertBinding) {
@@ -40,6 +50,7 @@ struct ContentView: View {
                     .presentationDragIndicator(.visible)
             }
             .onOpenURL { url in
+                if isShowingOnboarding { finishOnboarding() }
                 appModel.handleIncomingURL(url)
             }
             .onAppear {
@@ -68,17 +79,23 @@ struct ContentView: View {
         Task { await appModel.refreshSentenceStudyDueCount() }
     }
 
+    private func finishOnboarding() {
+        OnboardingProgress.complete()
+        isShowingOnboarding = false
+    }
+
     private func openFavoritesIfNeededFromLearningReminder() {
         guard LearningReminderNotificationRoute.consumeOpenFavoritesRequest() else {
             return
         }
 
         appModel.selectedTab = .study
+        if isShowingOnboarding { finishOnboarding() }
     }
 
     private var credentialWarningAlertBinding: Binding<Bool> {
         Binding(
-            get: { appModel.credentialWarningMessage != nil },
+            get: { !isShowingOnboarding && appModel.credentialWarningMessage != nil },
             set: { isPresented in
                 if !isPresented {
                     appModel.credentialWarningMessage = nil
@@ -89,7 +106,7 @@ struct ContentView: View {
 
     private var signInSheetBinding: Binding<Bool> {
         Binding(
-            get: { appModel.isShowingSignInSheet },
+            get: { !isShowingOnboarding && appModel.isShowingSignInSheet },
             set: { isPresented in
                 guard isPresented else {
                     appModel.isShowingSignInSheet = false
@@ -166,7 +183,7 @@ struct GlobalBlockingLoadingOverlay: View {
             .padding(.horizontal, AppSpacing.xxLarge)
             .padding(.vertical, AppSpacing.section)
             .background(
-                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                     .fill(AppSurfaceColor.elevated)
             )
             .appCardShadow()
@@ -205,7 +222,7 @@ struct SentenceSkeletonSection: View {
     var body: some View {
         VStack(spacing: AppSpacing.medium) {
             ForEach(0..<3, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                     .fill(AppSurfaceColor.secondaryFill)
                     .frame(height: 66)
                     .overlay {
@@ -222,7 +239,7 @@ struct SentenceSkeletonSection: View {
                             .frame(width: proxy.size.width * 0.32)
                             .offset(x: proxy.size.width * phase)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                         .allowsHitTesting(false)
                     }
             }
@@ -251,7 +268,7 @@ struct GenerationProgressCard: View {
         .padding(.vertical, AppSpacing.medium)
         .frame(maxWidth: .infinity, alignment: .center)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(AppSurfaceColor.card)
         )
     }

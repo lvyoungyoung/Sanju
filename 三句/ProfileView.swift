@@ -69,24 +69,12 @@ struct ProfileView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text(L10n.string("profile.preference.english_level", "难度"))
                             .font(.system(.subheadline, weight: .semibold))
-                        Picker(L10n.string("profile.preference.english_level", "难度"), selection: englishLevelBinding) {
-                            ForEach(EnglishLevel.allCases) { level in
-                                Text(level.displayTitle).tag(level)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(minHeight: 44)
+                        EnglishLevelPicker(selection: englishLevelBinding)
 
-                        Text(L10n.string("profile.preference.language_style", "语言风格"))
-                            .font(.system(.subheadline, weight: .semibold))
-                            .padding(.top, 8)
-                        LanguageStylePicker(selection: languageStyleBinding, englishLevel: appModel.englishLevel)
-                            .frame(height: 44)
                     }
                     .foregroundStyle(AppTextColor.primary)
                     .padding(20)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
-                    .appCardBorder()
+                    .profileCardSurface()
                 }
 
                 NavigationLink(value: ProfileNavigationRoute.speechSettings) {
@@ -101,8 +89,7 @@ struct ProfileView: View {
                     }
                     .foregroundStyle(AppTextColor.primary)
                     .padding(20)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
-                    .appCardBorder()
+                    .profileCardSurface()
                 }
                 .buttonStyle(.plain)
 
@@ -118,7 +105,7 @@ struct ProfileView: View {
             .padding(.top, AppSpacing.xLarge)
             .padding(.bottom, AppSpacing.section)
         }
-        .background(AppSurfaceColor.page)
+        .background(ProfileCardStyle.page)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .top) {
             if let transientHintMessage {
@@ -257,21 +244,6 @@ struct ProfileView: View {
         )
     }
 
-    private var languageStyleBinding: Binding<LanguageStyle> {
-        Binding(
-            get: { appModel.languageStyle },
-            set: { style in
-                guard appModel.updateLanguageStyle(style) else {
-                    showTransientHint(
-                        L10n.string("rate_limit.operation_frequent", "操作频繁，请稍后再试。"),
-                        style: .warning
-                    )
-                    return
-                }
-            }
-        )
-    }
-
     private var learningStatisticsSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             Text(L10n.string("profile.section.learning_statistics", "学习统计"))
@@ -313,10 +285,10 @@ struct ProfileView: View {
                 .padding(AppSpacing.large)
                 .background(
                     AppSurfaceColor.card,
-                    in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                         .stroke(AppStroke.highlight, lineWidth: 1)
                 }
             }
@@ -331,12 +303,12 @@ struct ProfileView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(AppTextColor.secondary)
 
-                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(AppSurfaceColor.secondaryFill)
+                RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
+                    .fill(ProfileCardStyle.surface)
                     .frame(height: AppControlHeight.prominent)
 
-                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(AppSurfaceColor.secondaryFill)
+                RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
+                    .fill(ProfileCardStyle.surface)
                     .frame(height: AppControlHeight.prominent)
 
                 Divider()
@@ -360,10 +332,7 @@ struct ProfileView: View {
                     }
                     .foregroundStyle(Color(red: 0.81, green: 0.29, blue: 0.20))
                     .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                            .fill(AppSurfaceColor.card)
-                    )
+                    .profileCardSurface()
                 }
                 .buttonStyle(.plain)
                 .disabled(appModel.isDeletingAccount)
@@ -382,10 +351,7 @@ struct ProfileView: View {
                     }
                     .foregroundStyle(Color(.secondaryLabel))
                     .padding(18)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                            .fill(AppSurfaceColor.card)
-                    )
+                    .profileCardSurface()
                 }
                 .buttonStyle(.plain)
                 .disabled(appModel.isDeletingAccount)
@@ -411,10 +377,7 @@ struct ProfileView: View {
                 }
                 .foregroundStyle(AppPalette.accentText)
                 .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .fill(AppSurfaceColor.card)
-                )
+                .profileCardSurface()
             }
             .buttonStyle(.plain)
             .disabled(appModel.isDeletingAccount)
@@ -441,10 +404,7 @@ struct ProfileView: View {
                 }
                 .foregroundStyle(Color(.secondaryLabel))
                 .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                        .fill(AppSurfaceColor.card)
-                )
+                .profileCardSurface()
             }
             .buttonStyle(.plain)
         }
@@ -499,7 +459,7 @@ struct ProfileView: View {
     @ViewBuilder
     private func profileHero(profile: UserProfile) -> some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
                 .fill(AppPalette.profile)
 
             VStack(alignment: .leading, spacing: AppSpacing.medium) {
@@ -585,10 +545,7 @@ struct ProfileView: View {
         }
         .padding(AppSpacing.xLarge)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(AppSurfaceColor.card)
-        )
+        .profileCardSurface()
         .appHeroShadow()
     }
 
@@ -640,10 +597,7 @@ struct ProfileView: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
-                .fill(AppSurfaceColor.card)
-        )
+        .profileCardSurface()
         .appHeroShadow()
     }
 
@@ -927,10 +881,7 @@ private struct WidgetSetupLinkCard: View {
                     .foregroundStyle(AppTextColor.subtle)
             }
             .padding(18)
-            .background(
-                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                    .fill(AppSurfaceColor.card)
-            )
+            .profileCardSurface()
         }
         .buttonStyle(.plain)
     }
@@ -977,7 +928,7 @@ private struct WidgetSetupSheet: View {
         return HStack(spacing: 12) {
             previewImage(for: preview)
                 .frame(width: 86, height: 86)
-                .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(preview.english)
@@ -998,7 +949,7 @@ private struct WidgetSetupSheet: View {
         .padding(16)
         .frame(height: 118)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -1106,7 +1057,7 @@ private struct WidgetSetupMethodCard: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(AppSurfaceColor.card)
         )
     }
@@ -1173,21 +1124,22 @@ private struct LearningReminderTimePickerSheet: View {
                         if isSaving {
                             ProgressView()
                                 .controlSize(.small)
-                                .tint(.white)
+                                .tint(AppPalette.onAccent)
                         }
                         Text(isSaving ? L10n.string("common.saving", "正在保存") : L10n.string("common.save", "保存"))
                             .font(.system(size: AppFontSize.body, weight: .semibold))
                     }
-                    .frame(width: 228)
-                    .frame(height: 46)
-                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: AppControlHeight.regular)
+                    .foregroundStyle(AppPalette.onAccent)
                     .background(
                         RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                            .fill(Color(red: 0.91, green: 0.52, blue: 0.17))
+                            .fill(AppPalette.accent)
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(StudioPressStyle())
                 .disabled(isSaving)
+                .opacity(isSaving ? 0.6 : 1)
                 .padding(.top, 19)
             }
             .padding(.horizontal, AppSpacing.section)
@@ -1232,7 +1184,7 @@ private struct ProfileCreditCard: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppPalette.apricot, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .profileCardSurface(AppPalette.apricot)
     }
 }
 
@@ -1257,8 +1209,7 @@ private struct ProfileCreditCardSkeleton: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .appCardBorder()
+        .profileCardSurface()
     }
 }
 
@@ -1303,8 +1254,7 @@ private struct PreferenceCard<Content: View>: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .appCardBorder()
+        .profileCardSurface()
     }
 }
 
@@ -1395,7 +1345,7 @@ struct PurchaseSheet: View {
 
     private var purchaseHero: some View {
         ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -1407,7 +1357,7 @@ struct PurchaseSheet: View {
                     )
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                         .stroke(AppStroke.highlight, lineWidth: 1)
                 }
 
@@ -1479,7 +1429,7 @@ struct AboutUsView: View {
                     )
                 }
                 .background(
-                    RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                             .fill(AppSurfaceColor.card)
                 )
                 .appCardShadow()
@@ -1553,7 +1503,7 @@ private struct AboutLinkRow: View {
             .foregroundStyle(Color(.secondaryLabel))
             .padding(18)
             .background(
-                RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                     .fill(AppSurfaceColor.card)
             )
             .appCardShadow()
@@ -1628,11 +1578,11 @@ private struct PurchaseOfferCard: View {
         }
         .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(isRecommended ? AppSurfaceColor.card : AppSurfaceColor.elevated)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .stroke(isRecommended ? AppPalette.accent.opacity(0.28) : AppStroke.highlight, lineWidth: 1)
         }
         .appCardShadow()
@@ -1679,6 +1629,6 @@ private struct PurchaseEmptyState: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 36)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
     }
 }

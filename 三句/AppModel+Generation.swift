@@ -191,7 +191,6 @@ extension AppModel {
             session: session,
             imageData: imageData,
             englishLevel: englishLevel,
-            languageStyle: languageStyle,
             guestJobID: guestJobID,
             clientRequestID: clientRequestID
         )

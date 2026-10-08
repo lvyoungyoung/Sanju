@@ -32,14 +32,6 @@ extension AppModel {
         guard isNetworkAvailable,
               let current = supabaseSession,
               !current.isAnonymous, current.userID == owner else { throw CancellationError() }
-        if current.expiresAt > Date().addingTimeInterval(60) { return current }
-        let fresh = try await supabaseService.refreshSession(refreshToken: current.refreshToken)
-        guard supabaseSession?.userID == owner,
-              supabaseSession?.isAnonymous == false,
-              supabaseSession?.refreshToken == current.refreshToken,
-              fresh.userID == owner, !fresh.isAnonymous else { throw CancellationError() }
-        supabaseSession = fresh
-        persistSession()
-        return fresh
+        return try await ensureFreshSessionIfNeeded(current)
     }
 }

@@ -50,7 +50,6 @@ const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id
 
 export function buildPromptText(
   englishLevel: "启蒙" | "简单" | "中等" | "高级",
-  languageStyle: "平铺直叙" | "抒情优美",
   generationFormat: GenerationFormat
 ): string {
   const englishLevelPrompt =
@@ -65,18 +64,16 @@ export function buildPromptText(
   const difficultyPriorityPrompt = englishLevel === "高级" ? "" :
     "难度限制适用于所有 english 字段，优先于风格、幽默和细节；信息过多就删减，保持自然完整，不凑字数、不省略必要成分。"
 
-  const languageStylePrompt =
+  const naturalSpeechPrompt =
     englishLevel === "启蒙"
-      ? "启蒙风格固定为平铺直叙：友好自然直接，不使用抒情风格。"
-      : languageStyle === "抒情优美"
-      ? "抒情优美：细腻温柔，有画面感、情绪和节奏，可轻微抒情；仍须自然准确易懂，不写诗、不夸张、不脱离图片。"
-      : "平铺直叙：生动活泼自然的日常口语，动词具体、搭配自然、有节奏。可轻微幽默或俏皮，但须来自可见的对比、动作或细节；不用段子、网络梗、夸张笑话或生硬拟人，不虚构动作、对话、情绪或细节。"
+      ? "友好自然直接，适合儿童及零基础，不使用抒情风格。"
+      : "生动活泼自然的日常口语，动词具体、搭配自然、有节奏。可轻微幽默或俏皮，但须来自可见的对比、动作或细节；不用段子、网络梗、夸张笑话或生硬拟人，不虚构动作、对话、情绪或细节。"
 
   if (generationFormat === "dual_tabs_v1") {
     return `
 根据图片生成两组英语学习句子及中文翻译。
 ${englishLevelPrompt}
-${languageStylePrompt}
+${naturalSpeechPrompt}
 ${difficultyPriorityPrompt}
 
 image_descriptions：三句客观描述，只说可见的人、物、动作、环境或文字，不推测关系、背景和内心感受。
@@ -85,7 +82,7 @@ scene_and_feelings：三句用户会说的日常英语。此组允许基于画�
 2. 当时会对别人说什么：围绕具体对象或活动，说一句发现、建议、邀请、提问、请求、提醒或回应，不总是问句或请求。允许假设口语，但不能声称对话已发生；不用通用寒暄、感受复述或事后配文。仅画面明确涉及拍照才考虑请人拍照。只写用户那一句及直译，不写双方对话、标签、额外引号或 I would say 开头。
 3. 发生了什么：最可能的日常场景或动作。
 第一、三句优先 I/we，第二句可用 you/we、祈使句或问句。三句角度不同，像母语者对朋友说话或发照片配文，不列物体、不换词重复、不写鸡汤。
-${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文单词；用地道搭配、准确感受词和自然节奏，不用复杂从句、书面词、文学修辞或刻意难词。' : '两组遵守同一档难度。'}抒情风格在场景表达中仅体现温暖、真诚和画面感，不写诗、散文、文艺腔。
+${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文单词；用地道搭配、准确感受词和自然节奏，不用复杂从句、书面词、文学修辞或刻意难词。' : '两组遵守同一档难度。'}场景表达保持日常口语，不写诗、散文、文艺腔。
 截图、界面、图表、股票、网页、文档等信息图，场景表达只说看到、记录或分享信息，不分析数据或涨跌。
 
 ${buildSentenceMetadataRules()}
@@ -106,7 +103,7 @@ ${buildSentenceMetadataRules()}
   return `
 根据图片最直接可见的内容生成三句自然、可模仿的英文描述及中文翻译。截图、界面、图表、股票、网页、文档等信息图也只作简洁描述，不分析涨跌、不总结数据、不逐项抄写文字。
 ${englishLevelPrompt}
-${languageStylePrompt}
+${naturalSpeechPrompt}
 ${difficultyPriorityPrompt}
 
 ${buildSentenceMetadataRules()}

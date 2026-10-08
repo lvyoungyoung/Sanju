@@ -125,7 +125,39 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     func preview(_ voice: SpeechVoice) {
-        speak(SpeechPreferences.previewText, voice: voice)
+        stop()
+        activeText = SpeechPreferences.previewText
+        activeVoice = voice
+        loadingText = SpeechPreferences.previewText
+        loadingVoice = voice
+        isUsingSystemVoice = false
+        let id = requestID
+        requestTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if requestID == id {
+                    loadingText = nil
+                    loadingVoice = nil
+                    requestTask = nil
+                }
+            }
+            do {
+                let audio = try await Task.detached(priority: .userInitiated) {
+                    try SpeechPreviewAudio.load(voice)
+                }.value
+                try Task.checkCancellation()
+                guard requestID == id else { return }
+                try await play(audio, id: id)
+                finishSource()
+            } catch {
+                guard !Task.isCancelled, requestID == id else { return }
+                // A system voice would misrepresent the selected preview voice.
+                stop()
+#if DEBUG
+                print("[SpeechFlow] Bundled voice preview unavailable: \(error.localizedDescription)")
+#endif
+            }
+        }
     }
 
     func speak(_ text: String, voice overrideVoice: SpeechVoice? = nil) {

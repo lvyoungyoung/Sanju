@@ -285,6 +285,149 @@ final class AlbumSpeechPrefetchTests: XCTestCase {
         XCTAssertEqual(source.requests.count, 1)
     }
 
+    func testStudyPrefetchIsOptInAndPreparesCurrentQuestionSilently() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        study.update(.init(text: "Current question", ownerID: "alice", enabled: false))
+        await Task.yield()
+        XCTAssertTrue(source.requests.isEmpty)
+
+        study.update(.init(text: "Current question", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        XCTAssertEqual(source.requests[0].text, "Current question")
+        XCTAssertNil(speech.activeText)
+        XCTAssertNil(speech.loadingText)
+        XCTAssertFalse(speech.isUsingSystemVoice)
+        for _ in 0..<5 {
+            study.update(.init(text: "Current question", ownerID: "alice", enabled: true))
+        }
+        await Task.yield()
+        XCTAssertEqual(source.requests.count, 1)
+    }
+
+    func testSolvedStudySentenceAdoptsPendingAudioWithoutAnotherRequest() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        speech.sessionProvider = {
+            XCTFail("Solved sentence should adopt the already pending request")
+            throw CloudSpeechError.noSession
+        }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        study.update(.init(text: "A quiet lake.", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        speech.speak("A quiet lake.")
+        await Task.yield()
+        XCTAssertEqual(source.requests.count, 1)
+        XCTAssertEqual(speech.loadingText, "A quiet lake.")
+    }
+
+    func testStudyAudioUsesPlaybackCacheAndLaterStudySessionsReuseIt() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        let context = StudySpeechPrefetch.Context(text: "A quiet lake.", ownerID: "alice", enabled: true)
+        study.update(context)
+        try await waitUntil { self.source.requests.count == 1 }
+        source.send(pcm, at: 0)
+        source.finish(at: 0)
+        let cacheKey = SpeechAudioCache.key(
+            text: context.text, scope: "\(CloudSpeechClient().cacheNamespace)|alice", voice: speech.selectedVoice
+        )
+        try await waitUntil { await self.cache.load(cacheKey) == self.pcm }
+        study.end()
+        study.update(context)
+        try await Task.sleep(for: .milliseconds(30))
+        XCTAssertEqual(source.requests.count, 1)
+        XCTAssertNil(speech.activeText)
+    }
+
+    func testStudyPauseAndExitDiscardPartialAudioAndResumeOnlyWhenEnabled() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        study.update(.init(text: "Current", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        source.send(Data([0]), at: 0)
+        study.update(.init(text: "Current", ownerID: "alice", enabled: false))
+        source.send(Data([1]), at: 0)
+        source.finish(at: 0)
+        let cacheKey = SpeechAudioCache.key(
+            text: "Current", scope: "\(CloudSpeechClient().cacheNamespace)|alice", voice: speech.selectedVoice
+        )
+        await Task.yield()
+        let partial = await cache.load(cacheKey)
+        XCTAssertNil(partial)
+        XCTAssertEqual(source.requests.count, 1)
+        study.update(.init(text: "Current", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 2 }
+        study.end()
+        source.send(pcm, at: 1)
+        source.finish(at: 1)
+        await Task.yield()
+        let late = await cache.load(cacheKey)
+        XCTAssertNil(late)
+    }
+
+    func testStudyNextQuestionAndVoiceChangesReplaceOnlyTheRelevantRequest() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        study.update(.init(text: "First", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        study.update(.init(text: "Second", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 2 }
+        let newVoice: SpeechVoice = speech.selectedVoice == .dean ? .mia : .dean
+        speech.applyVoice(newVoice)
+        try await waitUntil { self.source.requests.count == 3 }
+        XCTAssertEqual(source.requests.map(\.text), ["First", "Second", "Second"])
+        XCTAssertEqual(source.requests[2].voice, newVoice)
+    }
+
+    func testStudyAccountChangeAndStaleViewCleanupCannotCancelNewWindow() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        var owner = "alice"
+        speech.ownerProvider = { owner }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.cancelAlbumSpeechPrefetch(); speech.stop() }
+        study.update(.init(text: "Current", ownerID: owner, enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        owner = "bob"
+        speech.cancelAlbumSpeechPrefetch()
+        study.update(.init(text: "New owner", ownerID: owner, enabled: true))
+        try await waitUntil { self.source.requests.count == 2 }
+        XCTAssertEqual(source.requests[1].owner, "bob")
+
+        let next = StudySpeechPrefetch(speech: speech)
+        defer { next.end() }
+        next.update(.init(text: "Next question", ownerID: owner, enabled: true))
+        study.end()
+        try await waitUntil { self.source.requests.count == 3 }
+        XCTAssertEqual(source.requests[2].text, "Next question")
+    }
+
+    func testStudyPrefetchFailureDoesNotPlayFallbackOrLoopRequests() async throws {
+        let speech = SpeechService(cache: cache, albumPrefetchFetch: source.fetch)
+        speech.ownerProvider = { "alice" }
+        let study = StudySpeechPrefetch(speech: speech)
+        defer { study.end(); speech.stop() }
+        study.update(.init(text: "Current", ownerID: "alice", enabled: true))
+        try await waitUntil { self.source.requests.count == 1 }
+        source.fail(at: 0)
+        try await Task.sleep(for: .milliseconds(30))
+        study.update(.init(text: "Current", ownerID: "alice", enabled: true))
+        await Task.yield()
+        XCTAssertEqual(source.requests.count, 1)
+        XCTAssertNil(speech.activeText)
+        XCTAssertNil(speech.loadingText)
+        XCTAssertFalse(speech.isUsingSystemVoice)
+    }
+
     private func update(_ upcoming: [String], current: String = "Current", enabled: Bool = true) {
         queue.updateWindow(currentText: current, upcoming: upcoming, voice: .mia, owner: "alice", enabled: enabled)
     }

@@ -584,9 +584,9 @@ SANJU_COMPAT_ALLOW_PRODUCTION=1 node scripts/check-client-compatibility.mjs
 
 ## 启蒙难度
 
-生成偏好的难度为启蒙（Starter）、初级、中级、高级。启蒙的存储值为 `启蒙`，原有三档 raw value 和默认初级不变。启蒙优先使用 3–6 个词的完整短句、具体常用词，图片描述和生活表达两组都遵循此规则；MiMo/Kimi 共用生成提示词。启蒙不允许抒情优雅：客户端禁用并置灰该风格，切换难度、启动恢复和远端偏好读取时自动归一为平铺直叙；后端提示词也忽略启蒙请求中的抒情风格。
+生成偏好仅保留启蒙（Starter）、初级、中级三档难度，默认初级，raw value 分别为 `启蒙`、`简单`、`中等`；客户端将历史 `高级` 归一为中级。启蒙每句 3–6 个词，初级每句 6–10 个词，中级每句 10–16 个词，两组句子遵循同一档难度。客户端不再提供、保存、同步或发送语言风格设置，后端固定使用自然日常口语，启蒙保持友好直接，不启用抒情。DeepSeek、MiMo、Kimi 共用提示词。
 
-部署时先应用 `20260921001000_add_starter_english_level.sql`，再更新 `generate-memory-v2` 和客户端。`recover-guest-generation` 只恢复已经生成的结果，不调用生成模型，本次无需修改。新增 `starter-english-level.test.ts` 覆盖两种响应格式的提示词、旧档位和数据库约束，`GenerationPreferenceTests` 覆盖客户端档位、风格约束、存储与分段控件禁用状态。
+启蒙难度的历史部署需先应用 `20260921001000_add_starter_english_level.sql`。2026-10-08 移除风格设置只需更新客户端和 `generate-memory-v2`，没有新增数据库迁移。保留数据库 `profiles.language_style`，新建 profile 时客户端写固定值 `平铺直叙` 以兼容没有默认值的数据库；其他 profile PATCH 不写该字段，读取时不依赖它。旧生成请求里的 `languageStyle` 被忽略，响应格式、恢复和扣次数事务不变。旧本地偏好缓存的 `style` 字段被忽略，难度及待同步状态继续保留。`recover-guest-generation` 只恢复已生成结果，不调用模型，无需更新。
 
 ## 学习主题数量上限
 

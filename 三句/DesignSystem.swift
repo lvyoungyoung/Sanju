@@ -32,7 +32,8 @@ enum AppCornerRadius {
     static let medium: CGFloat = 19
     static let large: CGFloat = 28
     static let card: CGFloat = 18
-    static let photo: CGFloat = 25
+    // Photo cards have a 7pt inset inside their outer surface.
+    static let cardImage: CGFloat = card - 7
     static let pill: CGFloat = 999
 }
 
@@ -139,7 +140,7 @@ extension View {
         shadow(color: Color.black.opacity(0.02), radius: 4, x: 0, y: 2)
     }
 
-    func appCardBorder(cornerRadius: CGFloat = AppCornerRadius.large) -> some View {
+    func appCardBorder(cornerRadius: CGFloat = AppCornerRadius.card) -> some View {
         overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(AppStroke.subtle, lineWidth: 1)

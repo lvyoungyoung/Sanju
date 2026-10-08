@@ -2,8 +2,8 @@
 "study.match.title" = "Match range";
 "study.match.done" = "Done";
 "study.match.explanation" = "A wider range may include more sentences, but some may be less closely related to your topic.";
-"study.match.strict" = "Closer matches";
-"study.match.broad" = "More related sentences";
+"study.match.strict" = "Strict";
+"study.match.broad" = "Relaxed";
 "study.match.accessibility_level" = "Level %d of 7. Higher levels include a wider range.";
 "study.match.default" = "Default range";
 "study.match.custom" = "Custom range";
@@ -67,8 +67,6 @@
 "generation_error.invalid_image" = "Image processing failed. Please choose another photo.";
 "generation_error.no_credits" = "No generation credits left. Please purchase more first.";
 "generation_error.session_unavailable" = "Unable to start a guest session. Please check your network and try again.";
-"language_style.lyrical" = "Lyrical";
-"language_style.plain" = "Plain";
 "learning_reminder.notification_body" = "Spend two minutes today practicing the sentences you saved.";
 "learning_reminder.notification_title" = "Time to study";
 "learning_reminder_error.invalid_time" = "Invalid reminder time. Please choose again.";
@@ -155,6 +153,9 @@
 "favorites.syncing.title" = "Syncing favorites...";
 "memories.empty.subtitle" = "Upload your first photo in New and generate your first set of three sentences.";
 "memories.empty.title" = "No Memories Yet";
+"study.empty.photo_title" = "Start learning with a photo";
+"content.empty.add_photo_message" = "Add a photo you want to remember and turn it into English you can practice.";
+"content.empty.add_photo" = "Add a photo";
 "memories.page_title" = "Memories";
 "memories.hero.count_label" = "Saved";
 "memories.tags.all" = "All";
@@ -187,7 +188,7 @@
 "new.credits.remaining" = "Credits left: %d";
 "new.empty.safety_hint" = "Your photo will be sent to AI for analysis. Please do not upload sensitive content.";
 "new.empty.select_photo" = "Choose a Photo";
-"new.empty.title" = "Choose a moment you want to remember, and use it to learn one English sentence.";
+"new.empty.title" = "Learn English as you flip through your photos.";
 "new.generate.action" = "Describe with Three Sentences";
 "new.brand.name" = "Sanju";
 "new.generate.auto_save_hint" = "Results are saved to Memories automatically";
@@ -214,11 +215,13 @@
 "new.result.choose_another" = "Choose Another Photo";
 "new.result.saved_hint" = "Content generated. Save 1 or 2 sentences to practice again and again.";
 "new.result.favorite" = "Save";
+"new.result.saved" = "Saved";
 "new.result.play" = "Play";
+"new.result.playing" = "Playing";
 "new.result.start_study" = "Study";
 "new.result.start_study_hint" = "Start a fill-in-the-blank practice for this sentence.";
 "new.result.tab.what_i_see" = "Scene Description";
-"new.result.tab.what_i_say" = "Everyday Expression";
+"new.result.tab.what_i_say" = "Situational Expressions";
 "new.upload.action" = "Tap to upload a photo";
 "new.upload.safety_hint" = "Your photo will be sent to AI services for analysis. Please avoid uploading sensitive information.";
 "profile.about.entry" = "About";
@@ -242,7 +245,6 @@
 "profile.nickname.sheet_title" = "Edit Nickname";
 "profile.nickname.updated" = "Nickname updated.";
 "profile.preference.english_level" = "Difficulty";
-"profile.preference.language_style" = "Language Style";
 "profile.restoring.title" = "Restoring account information";
 "profile.section.about" = "About";
 "profile.section.account" = "Account";
@@ -311,8 +313,10 @@
 "study.topic.favorites_count" = "Favorites (%d)";
 "study.topic.view_all" = "View All";
 "study.topic.section_title" = "My Study Topics";
+"study.topic.section_description" = "Create situations where you'd use English. AI will match your generated sentences to each one.";
 "study.topic.create_short" = "+ Create";
 "study.topic.mastery" = "%d%% Mastery";
+"study.topic.mastery.title" = "Mastery";
 "study.topic.page_subtitle" = "Practice by topic, so describing what you see feels more natural.";
 "study.topic.page_title" = "Study";
 "study.topic.map.entry" = "Topic Map";
@@ -335,6 +339,10 @@
 "study.scene.my_scenes" = "My Study Topics";
 "study.scene.name_placeholder" = "Name a topic you want to learn";
 "study.scene.suggestions_title" = "Try these";
+"study.scene.suggestions_loading" = "Loading topic suggestions...";
+"study.scene.suggestions_empty" = "Suggestions aren't ready yet. Enter a topic, or refresh in a moment.";
+"study.scene.suggestions_failed" = "Couldn't load suggestions. Tap refresh to retry, or enter a topic.";
+"study.scene.suggestions_refresh_failed" = "Couldn't update suggestions. Previous suggestions are still available. Tap refresh to retry.";
 "study.scene.suggestion_fill_hint" = "Fill in this study topic";
 "study.scene.remove_selected_suggestion" = "Remove selected topic";
 "study.scene.suggestion.people_social" = "People & Social Life";
@@ -369,7 +377,7 @@
 "learning_topic.health_and_wellness" = "Health & Wellbeing";
 "study.scene.refresh_suggestions" = "Refresh suggestions";
 "study.scene.detail.all_sentences" = "All Sentences";
-"study.scene.detail.empty_subtitle" = "Related sentences from future memories will appear here automatically.";
+"study.scene.detail.empty_subtitle" = "Upload photos related to this topic to generate sentences, or open Match range in the top-right corner and try a more relaxed setting.";
 "study.scene.detail.empty_title" = "No matching sentences yet";
 "study.scene.detail.loading_subtitle" = "Just a moment while we organize related expressions.";
 "study.scene.detail.loading_slow_subtitle" = "Finding sentences for this topic for the first time may take a little longer. Please wait.";
@@ -428,6 +436,7 @@
 "study.scene.review.retry" = "Continue reviewing";
 "study.scene.review.waiting" = "Review pending";
 "speech.loading" = "Preparing audio";
+"speech.playing" = "Playing";
 "speech.settings.title" = "Speech Settings";
 "speech.settings.voice" = "Voice";
 "speech.voice.female" = "English · Female";
@@ -440,9 +449,29 @@
 "speech.settings.sync.synced" = "Voice synced to your account";
 "speech.settings.sync.pending" = "Not synced yet. We'll retry when connected; you can still use this voice.";
 "speech.settings.preview_hint" = "Every voice reads the same sample. The first preview needs a connection; later previews can play from cache.";
-"speech.settings.fallback_hint" = "When offline or cloud speech is unavailable, a system voice is used and may sound different.";
+"speech.settings.fallback_hint" = "When the network is unavailable, a system voice is used and may sound different.";
 "speech.settings.fallback_active" = "You are hearing a system voice, not the selected voice.";
 
+"onboarding.brand" = "Sanju";
+"onboarding.skip" = "Skip";
+"onboarding.next" = "Next";
+"onboarding.start" = "Start with my photos";
+"onboarding.page" = "Page %d of 3";
+"onboarding.photo.title" = "Every photo holds something that moves you. A view, a taste, a feeling.";
+"onboarding.photo.body" = "The moments you capture are worth finding words for.";
+"onboarding.expression.title" = "Describe what moves you in the photo, in English.";
+"onboarding.expression.body" = "Save the sentence that moves you most. Let that feeling help you remember.";
+"onboarding.expression.not_saved" = "Not saved";
+"onboarding.expression.favorite_hint" = "Tap to toggle this example favorite. It won't be added to your saved sentences.";
+"onboarding.practice.title" = "From “I like that”\nto “I can say that.”";
+"onboarding.practice.body" = "Practice with a familiar picture. Make the words you want to say part of your own English.";
+"onboarding.photo.artwork" = "An album scrolls to a sunlit cafe photo, selects it, and opens it.";
+"onboarding.album.title" = "Photos";
+"onboarding.expression.artwork" = "Three ways to describe the same moment. I could sit here all afternoon and do nothing is selected and saved.";
+"onboarding.practice.artwork" = "A word puzzle demonstration: sit, afternoon, and nothing are hidden in I could sit here all afternoon and do nothing, then filled in one at a time.";
+"content.load_failed.message" = "Unable to load content. Check your connection and try again.";
+"content.load_failed.retry" = "Reload";
+/* Casual photo album browsing */
 "album_flip.open" = "Flip through";
 "album_flip.open_hint" = "Browse your photos and hear a sentence in English";
 "album_flip.title" = "My English album";
@@ -452,6 +481,7 @@
 "album_flip.familiar" = "Feels familiar";
 "album_flip.hint" = "Swipe left to revisit, right if it feels familiar";
 "album_flip.replay" = "Listen again";
+"album_flip.playing" = "Playing";
 "album_flip.mute" = "Turn off automatic playback";
 "album_flip.unmute" = "Turn on automatic playback";
 "album_flip.photo" = "The photo for this sentence";

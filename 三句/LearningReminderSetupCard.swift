@@ -67,10 +67,7 @@ struct LearningReminderSetupCard: View {
         }
         .padding(.horizontal, AppSpacing.large)
         .padding(.vertical, AppSpacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                .fill(AppSurfaceColor.card)
-        )
+        .profileCardSurface()
     }
 
     private static let timeFormatter: DateFormatter = {

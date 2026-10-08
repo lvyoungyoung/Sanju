@@ -113,15 +113,8 @@ struct AlbumFlipView: View {
             .accessibilityLabel(L10n.string("common.close", "关闭"))
 
             Spacer(minLength: 0)
-            VStack(spacing: 3) {
-                Text(L10n.string("album_flip.title", "我的英语相册"))
-                    .font(.system(.headline, weight: .semibold))
-                Text(L10n.string("album_flip.count", "已翻看 %d 句", deck.viewedCount))
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(AppTextColor.secondary)
-                    .contentTransition(.numericText())
-            }
+            Text(L10n.string("album_flip.title", "我的英语相册"))
+                .font(.system(.headline, weight: .semibold))
             Spacer(minLength: 0)
 
             Button {
@@ -217,7 +210,7 @@ struct AlbumFlipView: View {
 
     private func controls(exitWidth: CGFloat) -> some View {
         VStack(spacing: 14) {
-            HStack(spacing: 20) {
+            HStack(alignment: .top, spacing: 20) {
                 feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
                 if let card = deck.cards.first {
                     AlbumFlipReplayButton(speech: appModel.speech, text: card.item.sentence.english) {
@@ -347,21 +340,48 @@ extension AppModel {
     }
 }
 
+private extension SpeechPlaybackState {
+    var title: String {
+        switch self {
+        case .idle: L10n.string("album_flip.replay", "再听一遍")
+        case .loading: L10n.string("speech.loading", "正在准备朗读")
+        case .playing: L10n.string("album_flip.playing", "朗读中")
+        }
+    }
+}
+
 private struct AlbumFlipReplayButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var speech: SpeechService
     let text: String
     let onReplay: () -> Void
 
+    private var playbackState: SpeechPlaybackState {
+        SpeechPlaybackState(text: text, activeText: speech.activeText, loadingText: speech.loadingText)
+    }
+
     var body: some View {
         Button(action: onReplay) {
-            SpeechPlaybackLabel(speech: speech, text: text, icon: "speaker.wave.2")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(AppTextColor.primary)
-                .frame(width: 52, height: 52)
-                .background(AppSurfaceColor.card, in: Circle())
+            Group {
+                switch playbackState {
+                case .idle:
+                    Image(systemName: "play.fill")
+                case .loading:
+                    ProgressView().controlSize(.small)
+                case .playing:
+                    Image(systemName: "waveform")
+                        .symbolEffect(.variableColor.iterative, options: .repeating, isActive: !reduceMotion)
+                }
+            }
+            .font(.system(size: 20, weight: .medium))
+            .foregroundStyle(playbackState == .playing ? AppPalette.accentText : AppTextColor.primary)
+            .frame(width: 58, height: 58)
+            .background(AppSurfaceColor.card, in: Circle())
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
         .buttonStyle(StudioPressStyle())
         .accessibilityLabel(L10n.string("album_flip.replay", "再听一遍"))
-        .padding(.bottom, 22)
+        .accessibilityValue(playbackState == .idle ? "" : playbackState.title)
     }
 }

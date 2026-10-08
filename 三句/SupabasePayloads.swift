@@ -140,7 +140,8 @@ struct SupabaseProfileUpsertPayload: Encodable {
     let nickname: String
     let email: String?
     let englishLevel: String
-    let languageStyle: String
+    // Retain the legacy profile column for databases without a column default.
+    let languageStyle = "平铺直叙"
     let initialAvailableGenerations: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -157,12 +158,10 @@ struct SupabaseProfileUpsertPayload: Encodable {
 struct SupabaseProfilePatchPayload: Encodable {
     let nickname: String?
     let englishLevel: String?
-    let languageStyle: String?
 
     enum CodingKeys: String, CodingKey {
         case nickname
         case englishLevel = "english_level"
-        case languageStyle = "language_style"
     }
 }
 
@@ -191,7 +190,6 @@ struct SupabaseDiscardOrphanedAnonymousPurchaseResponse: Decodable {
 struct SupabaseGenerateMemoryRequest: Encodable {
     let imageBase64: String
     let englishLevel: String
-    let languageStyle: String
     let guestJobID: String?
     let clientRequestID: String?
     let generationFormat: String?
@@ -199,7 +197,6 @@ struct SupabaseGenerateMemoryRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case imageBase64
         case englishLevel
-        case languageStyle
         case guestJobID
         case clientRequestID
         case generationFormat

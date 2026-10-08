@@ -90,17 +90,18 @@ struct NewLearningView: View {
                                         beginPhotoSelection(clearingGeneratedMemory: true)
                                     } label: {
                                         Text(L10n.string("new.result.choose_another", "再来一张"))
-                                            .font(.system(size: AppFontSize.field, weight: .semibold))
-                                            .foregroundStyle(appModel.isNetworkAvailable ? AppPalette.accentText : AppTextColor.tertiary)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, AppSpacing.medium)
+                                            .font(.system(.body, weight: .semibold))
+                                            .foregroundStyle(AppPalette.onAccent)
+                                            .padding(.horizontal, AppSpacing.section)
+                                            .frame(maxWidth: .infinity, minHeight: AppControlHeight.prominent)
                                             .background(
                                                 RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
-                                                    .fill(appModel.isNetworkAvailable ? AppSurfaceColor.elevated : AppSurfaceColor.card)
+                                                    .fill(AppPalette.accent)
                                             )
                                     }
-                                    .buttonStyle(.plain)
+                                    .buttonStyle(StudioPressStyle())
                                     .disabled(isPhotoSelectionDisabled)
+                                    .opacity(isPhotoSelectionDisabled ? 0.52 : 1)
                                 }
                             }
                         }
@@ -149,7 +150,7 @@ struct NewLearningView: View {
                         }
                         .padding(AppSpacing.xLarge)
                         .background(
-                            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                                 .fill(AppSurfaceColor.card)
                         )
                         .appCardShadow()
@@ -205,11 +206,6 @@ struct NewLearningView: View {
                 Text(L10n.string("new.brand.name", "三句"))
                     .font(.system(.title2, weight: .bold))
                 Spacer()
-                Text("LITTLE BY LITTLE")
-                    .font(.custom("AvenirNext-DemiBold", size: 9, relativeTo: .caption2))
-                    .tracking(1.4)
-                    .foregroundStyle(AppTextColor.secondary)
-                    .accessibilityHidden(true)
             }
             .foregroundStyle(AppTextColor.primary)
 
@@ -221,7 +217,7 @@ struct NewLearningView: View {
                 .padding(.vertical, AppSpacing.large)
                 .accessibilityHidden(true)
 
-            Text(L10n.string("new.empty.title", "选一张你愿意记住的画面，用它来学会一句英语。"))
+            Text(L10n.string("new.empty.title", "像翻相册一样，轻松学英语。"))
                 .font(.system(size: emptyStateTitleFontSize, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)
                 .multilineTextAlignment(.leading)
@@ -256,12 +252,13 @@ struct NewLearningView: View {
 
             VStack(alignment: .leading, spacing: AppSpacing.medium) {
                 Text(L10n.string("new.empty.safety_hint", "图片会被发送给 AI 分析，请勿上传包含敏感信息的图片"))
-                    .font(.system(size: AppFontSize.caption))
-                    .foregroundStyle(AppTextColor.secondary)
 
                 agreementHint(alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .font(.system(size: AppFontSize.caption))
+            .foregroundStyle(AppTextColor.secondary)
+            .tint(AppTextColor.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, AppSpacing.large)
         }
@@ -285,10 +282,10 @@ struct NewLearningView: View {
                 }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(AppImageAspectRatio.clamped(size: image.size), contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.cardImage, style: .continuous))
                     .padding(7)
-                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: 32))
-                    .appCardBorder(cornerRadius: 32)
+                    .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+                    .appCardBorder()
 
                 Button {
                     removeSelectedPhoto()
@@ -305,7 +302,7 @@ struct NewLearningView: View {
                 .disabled(isGenerating || isRecoveryInteractionLocked)
                 .opacity(isGenerating || isRecoveryInteractionLocked ? 0.45 : 1)
             } else if isLoadingSelectedPhoto {
-                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                     .fill(AppSurfaceColor.card)
                     .frame(height: 266)
                     .overlay {
@@ -328,11 +325,11 @@ struct NewLearningView: View {
             } else {
                 let isNetworkAvailable = appModel.isNetworkAvailable
                 let accentColor = isNetworkAvailable ? AppPalette.accent : Color(.tertiaryLabel)
-                RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                     .fill(AppSurfaceColor.card)
                     .frame(height: 266)
                     .overlay {
-                        RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+                        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                             .stroke(style: StrokeStyle(lineWidth: 1.5, dash: [7]))
                             .foregroundStyle(isNetworkAvailable ? Color(red: 0.92, green: 0.66, blue: 0.49) : Color(.tertiaryLabel))
                     }
@@ -365,14 +362,10 @@ struct NewLearningView: View {
         if let termsOfServiceURL = AppLinks.termsOfService,
            let privacyPolicyURL = AppLinks.privacyPolicy {
             Text(.init(L10n.string("new.agreement.markdown", "使用本应用即表示你同意《[用户服务协议](%@)》和《[隐私政策](%@)》", termsOfServiceURL.absoluteString, privacyPolicyURL.absoluteString)))
-                .font(.system(size: AppFontSize.metadata))
-                .foregroundStyle(.secondary)
                 .multilineTextAlignment(alignment)
                 .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
         } else {
             Text(L10n.string("new.agreement.plain", "使用本应用即表示你同意《用户服务协议》和《隐私政策》"))
-                .font(.system(size: AppFontSize.metadata))
-                .foregroundStyle(.secondary)
                 .multilineTextAlignment(alignment)
                 .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
         }
@@ -407,7 +400,7 @@ struct NewLearningView: View {
         }
         .padding(AppSpacing.xLarge)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(AppSurfaceColor.card)
         )
         .appCardShadow()
@@ -827,7 +820,7 @@ private struct NewLearningSentenceList: View {
                 ForEach(displayedSentences) { sentence in
                     NewLearningSentenceRow(sentence: sentence)
                         .padding(20)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                         .appCardBorder()
                 }
             }
@@ -855,41 +848,13 @@ private struct NewLearningSentenceRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 10) {
-                SentencePlaybackButton(speech: appModel.speech, text: sentence.english)
-
-                sentenceActionButton(
-                    title: L10n.string("new.result.favorite", "收藏"),
-                    icon: sentence.isFavorite ? "star.fill" : "star",
-                    iconColor: sentence.isFavorite
-                        ? AppPalette.accent
-                        : AppTextColor.secondary
-                ) {
-                    appModel.toggleFavorite(sentenceID: sentence.id)
-                }
+            SentenceActions(speech: appModel.speech, text: sentence.english, isFavorite: sentence.isFavorite) {
+                appModel.toggleFavorite(sentenceID: sentence.id)
             }
         }
         .padding(.vertical, 8)
     }
 
-    private func sentenceActionButton(
-        title: String,
-        icon: String,
-        iconColor: Color = AppTextColor.secondary,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(iconColor)
-                .padding(.horizontal, 11)
-                .frame(height: 36)
-                .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: 12))
-        }
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
-    }
 }
 
 private struct GeneratingImageOverlay: View {

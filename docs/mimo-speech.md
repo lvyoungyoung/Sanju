@@ -14,14 +14,14 @@
   The source English text is not rewritten. Text goes in the `assistant` message;
   delivery instructions go in the `user` message, as required by the provider.
 - Audio is 24 kHz PCM16LE mono. `AVAudioEngine` plays chunks as they arrive.
-- Speech Settings is available in Profile and the study settings sheet. Voice and speed
-  are saved only in UserDefaults on this device and apply to all playback. Normal speed
-  is 1x; Slower is 0.85x using `AVAudioUnitTimePitch`, without pitch changes or another
-  synthesis request. The system fallback also respects the selected speed.
+- Speech Settings is available in Profile and the study settings sheet. Voice preferences
+  are local for guests and synchronized for signed-in accounts; see `speech-preferences.md`.
+  Speed is fixed; the speed setting has been removed.
 - Previewing a voice does not select it. Every preview reads the same fixed English sample;
-  the first preview per voice uses the cloud, then the standard local cache is reused.
-  No prerecorded samples are bundled. If fallback occurs, the settings UI explicitly says
-  the listener is hearing a system voice, not the selected MiMo voice.
+  four prerecorded MiMo samples are bundled in `三句/SpeechPreviews`. Previews do not use
+  Auth, cloud requests, account-specific caches, or the speech budget. They work on first
+  launch and offline. A missing/broken bundled sample stops playback rather than falsely
+  presenting the system voice as the selected MiMo voice.
 - Requests may include `voice`; old clients omitting it keep Mia. The response confirms
   `X-Speech-Voice`. A new client will not cache audio under a different voice if talking to
   an older deployment that ignores voice selection. Deploy updated `synthesize-speech`
@@ -37,6 +37,23 @@
   These are failure limits, not expected playback latency.
 - Debug logs distinguish cached playback, first-audio milliseconds and system fallback.
   They do not print sentence text, JWTs or API keys.
+
+## Silent study prefetch
+
+- When automatic speech after solving is enabled, entering a fill-in question
+  prepares that sentence's audio silently while the user answers. This also applies
+  to review queues, but not single-sentence completion flows that suppress auto-speech.
+- `StudySpeechPrefetch` shares the album lookahead queue, selected voice and playback
+  cache. It prepares only the current question, not the entire study queue.
+- A cache hit needs no synthesis request. Solving before prefetch completes adopts
+  the same in-flight audio stream instead of issuing a second request.
+- Disabling automatic speech, losing connectivity or backgrounding the app pauses
+  silent work. Leaving the question cancels its remaining request; complete cached
+  audio stays available for album playback and other study sessions.
+- Prefetch never plays iOS fallback or changes study records. On failure, the normal
+  playback path still handles cloud errors and system-voice fallback when requested.
+- Uses the existing speech budget. This client-only change needs no Edge Function,
+  database migration, secrets or proxy updates.
 
 ## Limits and cache
 
@@ -98,3 +115,28 @@ availability, voice quality, production proxy streaming, or billed latency. Depl
 listen on a device before releasing. Apply/test the SQL on staging as part of deployment.
 
 API reference: https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/audio/speech-synthesis-v2.5
+
+## Bundled voice previews (2026-09-23)
+
+Text: "Every photo tells a story. Let's learn something new today."
+
+Generated through staging `synthesize-speech` using `mimo-v2.5-tts`, one request per
+voice. Files are raw 24 kHz PCM16LE mono, played by the same audio engine as sentences:
+
+| Voice | File | Bytes | Duration |
+| --- | --- | ---: | ---: |
+| Mia | speech-preview-mia.pcm | 161280 | 3.36 s |
+| Chloe | speech-preview-chloe.pcm | 184320 | 3.84 s |
+| Milo | speech-preview-milo.pcm | 199680 | 4.16 s |
+| Dean | speech-preview-dean.pcm | 153600 | 3.20 s |
+
+Total: 698880 bytes (about 683 KiB), independent of the disposable sentence audio cache.
+No backend deployment, migration or proxy change is required for bundled previews.
+
+To deliberately regenerate, run `node scripts/generate-speech-previews.mjs --replace`.
+Without `--replace`, existing samples are preserved. This script is not a build step.
+It creates a staging anonymous Auth user and consumes the staging speech budget/provider
+usage, not generation credits. It reads only the public staging app configuration and
+keeps session credentials in memory; no provider key or session token is written to disk.
+Changing the sample text requires updating both the script and `SpeechPreferences.previewText`.
+Listen to regenerated recordings before release; structural checks cannot verify pronunciation.

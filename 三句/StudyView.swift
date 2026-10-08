@@ -8,7 +8,7 @@ struct StudyView: View {
     @State private var isShowingCreateScene = false
     @State private var newSceneName = ""
     @State private var selectedSuggestedTopicID: String?
-    @State private var displayedSceneSuggestions: [LearningTopic] = []
+    @StateObject private var sceneSuggestions = StudySceneSuggestions()
     @State private var isCreatingScene = false
     @State private var scenePendingDeletion: UserStudySceneSummary?
     @State private var isDeletingScene = false
@@ -16,33 +16,31 @@ struct StudyView: View {
     @State private var favoriteStudySession: SentenceStudyTopicSession?
     @State private var pageTitleOriginY: CGFloat?
     @State private var pageTitleMinY: CGFloat = 0
-    @State private var isLoadingStudyTopics = true
+    private var isLoadingStudyTopics: Bool {
+        appModel.studySceneLoadState == .loading || appModel.studySceneLoadState == .idle
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: AppSpacing.section) {
+            VStack(alignment: .leading, spacing: contentState == .empty ? AppSpacing.large : AppSpacing.section) {
                 pageHeader
 
-                favoriteStudySection
-
-                VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    topicSectionHeader
-
-                    LazyVStack(spacing: AppSpacing.medium) {
-                        if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
-                            topicListLoadingState
-                        } else if appModel.userStudySceneSummaries.isEmpty {
-                            topicListEmptyState
-                        } else {
-                            ForEach(appModel.userStudySceneSummaries) { scene in
-                                userStudySceneCard(scene)
-                            }
-
-                            createSceneButton
-                        }
+                switch contentState {
+                case .loading:
+                    topicListLoadingState.padding(.top, 80)
+                case .empty:
+                    AddPhotoEmptyState(destination: .study) {
+                        appModel.selectedTab = .newLearning
                     }
+                    .padding(.top, 36)
+                case .failed:
+                    ContentLoadFailureState {
+                        Task { await refreshStudyOverview() }
+                    }
+                    .padding(.top, 36)
+                case .content:
+                    studyContent
                 }
-                .padding(.top, AppSpacing.medium)
             }
             .padding(.horizontal, AppSpacing.section)
             .padding(.top, AppSpacing.xLarge)
@@ -92,9 +90,8 @@ struct StudyView: View {
             CreateStudySceneSheet(
                 sceneName: $newSceneName,
                 selectedSuggestedTopicID: $selectedSuggestedTopicID,
-                suggestedSceneNames: $displayedSceneSuggestions,
+                suggestions: sceneSuggestions,
                 isCreating: isCreatingScene,
-                onRefreshSuggestions: refreshSceneSuggestions,
                 onCreate: createScene
             )
             .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: creationErrorAlertBinding) {
@@ -123,6 +120,41 @@ struct StudyView: View {
                 }
             )
             .environmentObject(appModel)
+        }
+    }
+
+    private var contentState: PhotoContentState {
+        .resolve(
+            hasContent: !appModel.memories.isEmpty || appModel.memorySentenceCount > 0 || !appModel.userStudySceneSummaries.isEmpty,
+            isLoading: appModel.studyOverviewLoadState == .idle || appModel.studyOverviewLoadState == .loading || appModel.isRestoringAuthenticatedSession || appModel.isSyncingRemoteMemories,
+            hasError: appModel.studyOverviewLoadState == .failed
+        )
+    }
+
+    private var studyContent: some View {
+        Group {
+            favoriteStudySection
+
+            VStack(alignment: .leading, spacing: AppSpacing.medium) {
+                topicSectionHeader
+
+                LazyVStack(spacing: AppSpacing.medium) {
+                    if isLoadingStudyTopics && appModel.userStudySceneSummaries.isEmpty {
+                        topicListLoadingState
+                    } else if appModel.studySceneLoadState == .failed && appModel.userStudySceneSummaries.isEmpty {
+                        ContentLoadFailureState {
+                            Task { await refreshStudyOverview() }
+                        }
+                    } else if appModel.userStudySceneSummaries.isEmpty {
+                        topicListEmptyState
+                    } else {
+                        ForEach(appModel.userStudySceneSummaries) { scene in
+                            userStudySceneCard(scene)
+                        }
+                    }
+                }
+            }
+            .padding(.top, AppSpacing.medium)
         }
     }
 
@@ -181,13 +213,36 @@ struct StudyView: View {
     }
 
     private var topicSectionHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
-            Text(L10n.string("study.topic.section_title", "我的学习主题"))
-                .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                .foregroundStyle(AppTextColor.primary)
+        VStack(alignment: .leading, spacing: AppSpacing.small / 3) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.small) {
+                Text(L10n.string("study.topic.section_title", "我的学习主题"))
+                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
 
-            Spacer(minLength: AppSpacing.small)
+                Spacer(minLength: AppSpacing.small)
+
+                if !appModel.userStudySceneSummaries.isEmpty {
+                    Button(action: showCreateScene) {
+                        Label(L10n.string("common.create", "创建"), systemImage: "plus")
+                            .font(.system(size: AppFontSize.body, weight: .semibold))
+                            .foregroundStyle(AppPalette.accentText)
+                            .fixedSize()
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.string("study.scene.create", "创建我的学习主题"))
+                }
+            }
+
+            if !appModel.userStudySceneSummaries.isEmpty {
+                Text(L10n.string("study.topic.section_description", "创建你的语言使用场景，AI会把已经生成的句子匹配到各个场景中"))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var topicListLoadingState: some View {
@@ -209,7 +264,7 @@ struct StudyView: View {
                 .frame(height: 88)
                 .accessibilityHidden(true)
 
-            Text(L10n.string("study.topic.empty.create_message", "创建一个学习主题，集中练习相关句子。\n比如「和朋友聚餐」或「海边度假」。"))
+            Text(L10n.string("study.topic.section_description", "创建你的语言使用场景，AI会把已经生成的句子匹配到各个场景中"))
                 .font(.subheadline)
                 .foregroundStyle(AppTextColor.secondary)
                 .multilineTextAlignment(.center)
@@ -244,34 +299,6 @@ struct StudyView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    private var availableSceneTopics: [LearningTopic] {
-        let assignedTopicIDs = Set(
-            appModel.memories
-                .flatMap(\.sentences)
-                .flatMap(\.learningTopicIDs)
-        )
-        return LearningTopic.all.filter { assignedTopicIDs.contains($0.id) }
-    }
-
-    private func refreshSceneSuggestions() {
-        let availableTopics = availableSceneTopics
-        guard !availableTopics.isEmpty else {
-            displayedSceneSuggestions = []
-            return
-        }
-
-        var suggestions = Array(availableTopics.shuffled().prefix(3))
-
-        // With more than three choices, avoid showing the exact same batch again.
-        if availableTopics.count > 3,
-           Set(suggestions) == Set(displayedSceneSuggestions),
-           let replacement = availableTopics.first(where: { !displayedSceneSuggestions.contains($0) }) {
-            suggestions = Array(displayedSceneSuggestions.dropLast()) + [replacement]
-        }
-
-        displayedSceneSuggestions = suggestions
     }
 
     private func userStudySceneCard(_ scene: UserStudySceneSummary) -> some View {
@@ -324,7 +351,8 @@ struct StudyView: View {
                 Text(title)
                     .font(.system(.body, weight: .semibold))
                     .foregroundStyle(AppTextColor.primary)
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
+                    .truncationMode(.tail)
 
                 Text(
                     L10n.string(
@@ -363,8 +391,8 @@ struct StudyView: View {
         .padding(AppSpacing.medium)
         .padding(.leading, AppSpacing.small)
         .frame(maxWidth: .infinity, minHeight: 116, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appCardBorder()
     }
 
@@ -384,7 +412,7 @@ struct StudyView: View {
             }
         }
         .frame(width: 112, height: 92)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
         .allowsHitTesting(false)
     }
 
@@ -449,13 +477,18 @@ struct StudyView: View {
         creationErrorMessage = nil
         newSceneName = ""
         selectedSuggestedTopicID = nil
-        refreshSceneSuggestions()
+        sceneSuggestions.prepare(
+            accountRevision: appModel.accountRequests.revision,
+            localTopicIDs: Set(appModel.memories.flatMap(\.sentences).flatMap(\.learningTopicIDs))
+        )
+        sceneSuggestions.shuffle()
         isShowingCreateScene = true
     }
 
     private func refreshStudyOverview() async {
-        isLoadingStudyTopics = appModel.userStudySceneSummaries.isEmpty
-        defer { isLoadingStudyTopics = false }
+        if !appModel.isSignedIn, appModel.loadStoredSession()?.isAnonymous == false {
+            await appModel.ensureRemoteSessionRestoreCompleted()
+        }
         await appModel.refreshSentenceStudyDueCount()
     }
 
@@ -488,6 +521,7 @@ struct StudyView: View {
 
     @MainActor
     private func createScene() async {
+        guard !isCreatingScene else { return }
         let name = newSceneName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { return }
 
@@ -581,13 +615,37 @@ private struct CreateStudySceneSheet: View {
     @EnvironmentObject private var appModel: AppModel
     @Binding var sceneName: String
     @Binding var selectedSuggestedTopicID: String?
-    @Binding var suggestedSceneNames: [LearningTopic]
+    @ObservedObject var suggestions: StudySceneSuggestions
     @FocusState private var isSceneNameFocused: Bool
+    @State private var suggestionsRefreshID = UUID()
     let isCreating: Bool
-    let onRefreshSuggestions: () -> Void
     let onCreate: () async -> Void
 
     var body: some View {
+        ScrollView {
+            formContent
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .onChange(of: isCreating) { _, creating in
+            if creating { isSceneNameFocused = false }
+        }
+        .task(id: "\(appModel.accountRequests.revision)-\(suggestionsRefreshID)") {
+            await suggestions.refresh(
+                accountRevision: appModel.accountRequests.revision,
+                localTopicIDs: learningTopicSignature
+            ) {
+                try await appModel.fetchStudySceneSuggestionTopicIDs()
+            }
+        }
+        .onDisappear {
+            suggestions.cancelLoading()
+        }
+        .onChange(of: learningTopicSignature) { _, topicIDs in
+            suggestions.prepare(accountRevision: appModel.accountRequests.revision, localTopicIDs: topicIDs)
+        }
+    }
+
+    private var formContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             HStack(spacing: AppSpacing.small) {
                 if let selectedTopic = LearningTopic.topic(for: selectedSuggestedTopicID) {
@@ -642,56 +700,30 @@ private struct CreateStudySceneSheet: View {
                         lineWidth: selectedSuggestedTopicID != nil || isSceneNameFocused ? 1.5 : 1
                     )
             }
+            .disabled(isCreating)
+            .opacity(isCreating ? 0.5 : 1)
 
-            if !suggestedSceneNames.isEmpty {
-                VStack(alignment: .leading, spacing: AppSpacing.small) {
-                    HStack(spacing: AppSpacing.small) {
-                        Text(L10n.string("study.scene.suggestions_title", "试试这些"))
-                            .font(.system(size: AppFontSize.metadata, weight: .medium))
-                            .foregroundStyle(AppTextColor.secondary)
-
-                        Spacer(minLength: AppSpacing.small)
-
-                        Button(action: onRefreshSuggestions) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: AppIconSize.compact, weight: .semibold))
-                                .foregroundStyle(AppTextColor.secondary)
-                                .frame(width: 32, height: 28)
-                                .background(AppSurfaceColor.secondaryFill, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(L10n.string("study.scene.refresh_suggestions", "换一批推荐"))
+            StudySceneSuggestionSection(
+                suggestions: suggestions,
+                selectedTopicID: selectedSuggestedTopicID,
+                onRefresh: {
+                    if suggestions.displayedTopics.isEmpty || suggestions.loadState == .failed {
+                        suggestionsRefreshID = UUID()
+                    } else {
+                        suggestions.shuffle()
                     }
-
-                    StudyFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
-                        ForEach(suggestedSceneNames) { topic in
-                            Button {
-                                sceneName = topic.title
-                                selectedSuggestedTopicID = topic.id
-                                isSceneNameFocused = false
-                            } label: {
-                                Text(topic.title)
-                                    .font(.system(size: AppFontSize.metadata, weight: .medium))
-                                    .foregroundStyle(selectedSuggestedTopicID == topic.id ? AppPalette.accent : AppTextColor.primary)
-                                    .padding(.horizontal, AppSpacing.medium)
-                                    .frame(height: 32)
-                                    .background(
-                                        selectedSuggestedTopicID == topic.id ? AppPalette.accent.opacity(0.14) : AppSurfaceColor.secondaryFill,
-                                        in: Capsule()
-                                    )
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(selectedSuggestedTopicID == topic.id ? AppPalette.accent.opacity(0.38) : AppStroke.subtle, lineWidth: 1)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityHint(L10n.string("study.scene.suggestion_fill_hint", "填入学习主题"))
-                        }
-                    }
+                },
+                onSelect: { topic in
+                    sceneName = topic.title
+                    selectedSuggestedTopicID = topic.id
+                    isSceneNameFocused = false
                 }
-            }
+            )
+            .disabled(isCreating)
+            .opacity(isCreating ? 0.5 : 1)
 
             Button {
+                isSceneNameFocused = false
                 Task { await onCreate() }
             } label: {
                 Group {
@@ -715,22 +747,11 @@ private struct CreateStudySceneSheet: View {
             .disabled(isCreating || sceneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(AppSpacing.xLarge)
-        .onAppear {
-            if suggestedSceneNames.isEmpty {
-                onRefreshSuggestions()
-            }
-        }
-        .onChange(of: learningTopicSignature) { _, _ in
-            // The sheet can appear before the first remote-memory sync finishes.
-            guard suggestedSceneNames.isEmpty else { return }
-            onRefreshSuggestions()
-        }
     }
 
-    private var learningTopicSignature: [String] {
-        appModel.memories
+    private var learningTopicSignature: Set<String> {
+        Set(appModel.memories
             .flatMap(\.sentences)
-            .flatMap(\.learningTopicIDs)
-            .sorted()
+            .flatMap(\.learningTopicIDs))
     }
 }

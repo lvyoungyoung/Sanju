@@ -12,7 +12,6 @@ import { persistGeneratedResult } from "./persist-result.ts"
 interface RequestBody {
   imageBase64: string
   englishLevel?: "启蒙" | "简单" | "中等" | "高级"
-  languageStyle?: "平铺直叙" | "抒情优美"
   guestJobID?: string
   clientRequestID?: string
   generationFormat?: string
@@ -121,7 +120,6 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
 
     const imageBytes = decodeBase64(imageBase64)
     const englishLevel = body.englishLevel ?? "中等"
-    const languageStyle = body.languageStyle ?? "平铺直叙"
     const generationFormat: GenerationFormat = body.generationFormat === "dual_tabs_v1"
       ? "dual_tabs_v1"
       : "legacy_v1"
@@ -358,7 +356,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     }
 
     timing.start("prompt")
-    const promptText = buildPromptText(englishLevel, languageStyle, generationFormat)
+    const promptText = buildPromptText(englishLevel, generationFormat)
 
     const completionResult = await requestWithFallback({
       imageBase64,

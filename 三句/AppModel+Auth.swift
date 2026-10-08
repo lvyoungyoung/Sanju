@@ -69,6 +69,7 @@ extension AppModel {
         nickname: String?,
         shouldCreateAccount: Bool
     ) async -> EmailAuthenticationOutcome {
+        guard !isAuthenticating else { return .failed }
         let normalizedEmail = email
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -128,6 +129,8 @@ extension AppModel {
         }
 
         isAuthenticating = true
+        let attemptID = UUID()
+        authenticationAttemptID = attemptID
         authErrorMessage = nil
         authFlowMessage = nil
         credentialWarningMessage = nil
@@ -145,6 +148,7 @@ extension AppModel {
                 case .session(let signedUpSession):
                     session = signedUpSession
                 case .requiresEmailConfirmation:
+                    guard authenticationAttemptID == attemptID, !Task.isCancelled else { return .failed }
                     authFlowMessage = L10n.string("auth.signup.confirm_email", "注册成功，请前往邮箱完成验证后再登录。")
                     authErrorMessage = nil
                     isAuthenticating = false
@@ -154,10 +158,12 @@ extension AppModel {
                 session = try await supabaseService.signInWithEmail(email: normalizedEmail, password: trimmedPassword)
             }
 
+            guard authenticationAttemptID == attemptID, !Task.isCancelled else { return .failed }
             try await completeAuthenticatedSession(
                 session: session,
                 fallbackEmail: normalizedEmail,
-                preferredNickname: shouldCreateAccount ? normalizedNickname : nil
+                preferredNickname: shouldCreateAccount ? normalizedNickname : nil,
+                attemptID: attemptID
             )
             if !shouldCreateAccount {
                 clearEmailSignInFailures()
@@ -165,6 +171,7 @@ extension AppModel {
             isAuthenticating = false
             return .signedIn
         } catch {
+            guard authenticationAttemptID == attemptID, !Task.isCancelled else { return .failed }
             authDebugLog("Email auth failed :: mode=\(shouldCreateAccount ? "signUp" : "signIn"), email=\(normalizedEmail), network=\(currentNetworkDebugDescription), error=\(error.localizedDescription)")
             clearPendingGuestCreditMigration()
             if let guestSessionToRestore {
@@ -304,26 +311,8 @@ extension AppModel {
 
         englishLevel = level
         defaults.set(level.rawValue, forKey: AppStorageKey.englishLevel)
-        normalizeGenerationPreferenceStyle()
         schedulePreferenceSync()
         return true
-    }
-
-    @discardableResult
-    func updateLanguageStyle(_ style: LanguageStyle) -> Bool {
-        guard englishLevel.allows(style) else { return true }
-        guard style != languageStyle else { return true }
-        guard consumePreferenceChangeAllowance() else { return false }
-
-        languageStyle = style
-        defaults.set(style.rawValue, forKey: AppStorageKey.languageStyle)
-        schedulePreferenceSync()
-        return true
-    }
-
-    private func normalizeGenerationPreferenceStyle() {
-        languageStyle = englishLevel.resolvedStyle(languageStyle)
-        defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
     }
 
     private func consumePreferenceChangeAllowance(now: Date = .now) -> Bool {
@@ -377,17 +366,11 @@ extension AppModel {
     }
 
     private func schedulePreferenceSync() {
-        preferenceSyncTask?.cancel()
-        preferenceSyncTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(0.8))
-            guard !Task.isCancelled, let self else { return }
-            await self.syncPreferences()
-            guard !Task.isCancelled else { return }
-            self.preferenceSyncTask = nil
-        }
+        generationPreferenceSync?.select(GenerationPreferences(level: englishLevel))
     }
 
     func updateNickname(_ nickname: String) async throws {
+        let revision = accountRequests.revision
         let validatedNickname = try NicknameValidator.validate(nickname)
         let session = try await ensureValidSession()
         guard !session.isAnonymous else {
@@ -403,6 +386,7 @@ extension AppModel {
             throw SupabaseServiceError.invalidResponse
         }
 
+        try accountRequests.check(revision)
         applyRemoteProfile(
             updatedProfile,
             fallbackAppleUserID: profile?.appleUserID ?? "",
@@ -441,6 +425,17 @@ extension AppModel {
     }
 
     func resetLocalAccountState(resetCredits: Bool) {
+        authenticationAttemptID = UUID()
+        accountRequests.invalidate()
+        sessionRefreshCoordinator.cancel()
+        sessionRestoreTask?.cancel()
+        sessionRestoreTask = nil
+        remoteContentRefreshTask?.cancel()
+        remoteContentRefreshTask = nil
+        remoteMemoriesSyncTask?.cancel()
+        remoteMemoriesSyncTask = nil
+        remoteMemoryImageHydrationTask?.cancel()
+        remoteMemoryImageHydrationTask = nil
         postSignInSyncTask?.cancel()
         postSignInSyncTask = nil
         foregroundSyncTask?.cancel()
@@ -448,6 +443,10 @@ extension AppModel {
         isRestoringAuthenticatedSession = false
         profile = nil
         memories = []
+        memoryLoadState = .idle
+        studyOverviewLoadState = .idle
+        studySceneLoadState = .idle
+        isSyncingRemoteMemories = false
         clearPendingMemoryImageUploads()
         clearPendingGeneratedMemoryImage()
         pendingFavoriteChanges = []
@@ -510,11 +509,7 @@ extension AppModel {
             guard let self else { return }
 
             defer {
-                Task { @MainActor [weak self] in
-                    guard let self,
-                          self.postSignInSyncTask?.isCancelled != true else { return }
-                    self.postSignInSyncTask = nil
-                }
+                if !Task.isCancelled { self.postSignInSyncTask = nil }
             }
 
             guard !Task.isCancelled, self.isCurrentSignedInUser(id: signedInUserID) else { return }
@@ -573,12 +568,7 @@ extension AppModel {
             englishLevel = storedLevel
         }
 
-        if let rawStyle = defaults.string(forKey: AppStorageKey.languageStyle),
-           let storedStyle = LanguageStyle(rawValue: rawStyle) {
-            languageStyle = storedStyle
-        }
-
-        normalizeGenerationPreferenceStyle()
+        defaults.removeObject(forKey: "sanju.languageStyle")
         loadLearningReminderSettings()
 
         if let rawTransactionIDs = defaults.array(forKey: AppStorageKey.processedPurchaseTransactions) as? [String] {
@@ -667,6 +657,7 @@ extension AppModel {
                 self?.authDebugLog("Network path update :: \(debugDescription)")
                 if isSatisfied && !wasAvailable, let appModel = self {
                     appModel.speechPreferenceSync?.refresh()
+                    appModel.generationPreferenceSync?.refresh()
                     appModel.albumFlipHistorySync?.refresh()
                     Task {
                         await appModel.retryPendingPurchasesIfNeeded()
@@ -686,20 +677,20 @@ extension AppModel {
             return
         }
 
+        var revision = accountRequests.revision
         isRestoringAuthenticatedSession = !storedSession.isAnonymous
         defer {
-            if !hasAuthenticatedSession {
+            if accountRequests.revision == revision, !hasAuthenticatedSession {
                 isRestoringAuthenticatedSession = false
             }
         }
 
         do {
-            let sessionToUse: SupabaseSession
-            if storedSession.expiresAt <= Date().addingTimeInterval(60) {
-                sessionToUse = try await supabaseService.refreshSession(refreshToken: storedSession.refreshToken)
-            } else {
-                sessionToUse = storedSession
-            }
+            let sessionToUse = try await ensureFreshSessionIfNeeded(storedSession)
+            try accountRequests.check(revision)
+            supabaseSession = sessionToUse
+            persistSession()
+            revision = accountRequests.revision
 
             let cacheUserID = sessionToUse.isAnonymous ? AppStorageKey.guestMemoriesUserID : sessionToUse.userID
             applyCachedMemoriesIfAvailable(for: cacheUserID, imageLoading: .deferRemoteBacked)
@@ -718,15 +709,16 @@ extension AppModel {
             if let migratedProfile = await retryPendingGuestCreditMigrationIfNeeded(for: sessionToUse) {
                 resolvedProfile = migratedProfile
             } else if let remoteProfile = try await supabaseService.fetchProfile(session: sessionToUse) {
+                try accountRequests.check(revision)
                 resolvedProfile = remoteProfile
                 clearPendingDeleteAccountLocalClearIfNeeded(for: sessionToUse.userID)
             } else {
+                try accountRequests.check(revision)
                 revertIncompleteAuthenticatedRestoreToGuest()
                 return
             }
 
-            supabaseSession = sessionToUse
-            persistSession()
+            try accountRequests.check(revision)
             applyRemoteProfile(
                 resolvedProfile,
                 fallbackAppleUserID: profile?.appleUserID ?? "",
@@ -741,8 +733,13 @@ extension AppModel {
             await syncPendingCloudChanges(showsProgress: true)
             await syncMemoriesFromRemote(refreshCounts: true)
         } catch {
+            guard !Task.isCancelled, accountRequests.revision == revision else { return }
             if shouldClearStoredSession(for: error) {
                 handleDeletedAuthenticatedAccountLocally()
+            } else {
+                memoryLoadState = .failed
+                studyOverviewLoadState = .failed
+                studySceneLoadState = .failed
             }
             isRestoringAuthenticatedSession = false
         }
@@ -760,7 +757,7 @@ extension AppModel {
         }
         sessionRestoreTask = task
         await task.value
-        sessionRestoreTask = nil
+        if !task.isCancelled { sessionRestoreTask = nil }
     }
 
     func applyRemoteProfile(
@@ -768,6 +765,7 @@ extension AppModel {
         fallbackAppleUserID: String,
         treatAsGuest: Bool = false
     ) {
+        guard !Task.isCancelled, supabaseSession?.userID == remoteProfile.id else { return }
         if treatAsGuest {
             profile = nil
         } else {
@@ -781,14 +779,10 @@ extension AppModel {
             )
         }
         remainingCredits = remoteProfile.availableGenerations
-        englishLevel = EnglishLevel(rawValue: remoteProfile.englishLevel) ?? englishLevel
-        languageStyle = LanguageStyle(rawValue: remoteProfile.languageStyle) ?? languageStyle
-        normalizeGenerationPreferenceStyle()
-        defaults.set(englishLevel.rawValue, forKey: AppStorageKey.englishLevel)
-        defaults.set(languageStyle.rawValue, forKey: AppStorageKey.languageStyle)
     }
 
     func ensureValidSession() async throws -> SupabaseSession {
+        try Task.checkCancellation()
         guard let currentSession = supabaseSession else {
             if let storedSession = loadStoredSession() {
                 let validSession = try await ensureFreshSessionIfNeeded(storedSession)
@@ -822,11 +816,15 @@ extension AppModel {
     }
 
     func ensureAnonymousSessionIfPossible() async {
+        guard !Task.isCancelled else { return }
+        let revision = accountRequests.revision
         guard supabaseSession == nil else { return }
         guard supabaseService.isConfigured, isNetworkAvailable else { return }
 
         do {
             let anonymousSession = try await supabaseService.signInAnonymously()
+            try accountRequests.check(revision)
+            guard supabaseSession == nil else { return }
             supabaseSession = anonymousSession
             persistSession()
             if hasCachedMemories(for: AppStorageKey.guestMemoriesUserID) {
@@ -846,30 +844,35 @@ extension AppModel {
             throw KimiServiceError.sessionUnavailable
         }
 
-        let refreshedSession = try await supabaseService.refreshSession(refreshToken: currentSession.refreshToken)
-        supabaseSession = refreshedSession
-        persistSession()
-        return refreshedSession
+        return try await refreshSessionSafely(currentSession)
     }
 
     func ensureFreshSessionIfNeeded(_ session: SupabaseSession) async throws -> SupabaseSession {
+        try Task.checkCancellation()
+        guard (supabaseSession ?? loadStoredSession())?.userID == session.userID else { throw CancellationError() }
+        if let current = supabaseSession, current.refreshToken != session.refreshToken {
+            return try await ensureFreshSessionIfNeeded(current)
+        }
         if session.expiresAt > Date().addingTimeInterval(60) {
             return session
         }
 
-        let refreshedSession = try await supabaseService.refreshSession(refreshToken: session.refreshToken)
-        supabaseSession = refreshedSession
-        persistSession()
-        return refreshedSession
+        return try await refreshSessionSafely(session)
     }
 
-    func syncPreferences() async {
-        guard let session = try? await ensureValidSession() else { return }
-        _ = try? await supabaseService.updateProfile(
-            session: session,
-            englishLevel: englishLevel,
-            languageStyle: languageStyle
-        )
+    private func refreshSessionSafely(_ session: SupabaseSession) async throws -> SupabaseSession {
+        let revision = accountRequests.revision
+        let refreshedSession = try await sessionRefreshCoordinator.refresh(token: session.refreshToken) { [supabaseService] in
+            try await supabaseService.refreshSession(refreshToken: session.refreshToken)
+        }
+        try accountRequests.check(revision)
+        guard refreshedSession.userID == session.userID,
+              (supabaseSession ?? loadStoredSession())?.userID == session.userID else { throw CancellationError() }
+        if supabaseSession != nil {
+            supabaseSession = refreshedSession
+            persistSession()
+        }
+        return refreshedSession
     }
 
     func shouldClearStoredSession(for error: Error) -> Bool {
@@ -972,7 +975,6 @@ extension AppModel {
             AppStorageKey.remainingCredits,
             AppStorageKey.remainingCreditsOwnerID,
             AppStorageKey.englishLevel,
-            AppStorageKey.languageStyle,
             AppStorageKey.learningReminderEnabled,
             AppStorageKey.learningReminderHour,
             AppStorageKey.learningReminderMinute,
@@ -993,7 +995,6 @@ extension AppModel {
         processingPurchaseTransactionIDs = []
         pendingGuestCreditMigration = nil
         englishLevel = .simple
-        languageStyle = .plain
         isLearningReminderEnabled = false
         learningReminderHour = 20
         learningReminderMinute = 30
@@ -1141,7 +1142,8 @@ extension AppModel {
     private func completeAuthenticatedSession(
         session: SupabaseSession,
         fallbackEmail: String?,
-        preferredNickname: String?
+        preferredNickname: String?,
+        attemptID: UUID
     ) async throws {
         let preSignInGuestState = PreSignInGuestState(
             pendingMemoryDeletions: pendingMemoryDeletions
@@ -1165,12 +1167,12 @@ extension AppModel {
                 appleUserID: fallbackIdentifier,
                 nickname: resolvedNickname,
                 email: currentUser.email ?? fallbackEmail,
-                englishLevel: englishLevel,
-                languageStyle: languageStyle
+                englishLevel: englishLevel
             )
         }
 
         var finalProfile = baseProfile
+        guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
         if let preparedGuestCreditMigration,
            preparedGuestCreditMigration.guestSession.userID != session.userID {
             finalProfile = try await supabaseService.migrateGuestCredits(
@@ -1180,6 +1182,7 @@ extension AppModel {
             )
         }
 
+        guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
         clearPendingGuestCreditMigration()
         clearGuestCreditRecoveryWarningIfNeeded()
         supabaseSession = session
@@ -1229,7 +1232,6 @@ extension AppModel {
             nickname: preferredNickname,
             email: preferredEmail,
             englishLevel: englishLevel,
-            languageStyle: languageStyle,
             initialAvailableGenerations: allowedInitialCredits
         )
         applyRemoteProfile(createdProfile, fallbackAppleUserID: fallbackAppleUserID, treatAsGuest: session.isAnonymous)
@@ -1238,14 +1240,17 @@ extension AppModel {
 
     private func ensureAnonymousProfileExists(for session: SupabaseSession) async throws {
         guard session.isAnonymous else { return }
+        let revision = accountRequests.revision
 
         if let remoteProfile = try await supabaseService.fetchProfile(session: session) {
+            try accountRequests.check(revision)
             if localCreditsBelongToGuest {
                 if remoteProfile.availableGenerations > remainingCredits {
                     let updatedProfile = try await supabaseService.updateAnonymousStarterCredits(
                         session: session,
                         availableGenerations: remainingCredits
                     )
+                    try accountRequests.check(revision)
                     if let updatedProfile {
                         applyRemoteProfile(updatedProfile, fallbackAppleUserID: "anonymous:\(session.userID)", treatAsGuest: true)
                         persistCredits()
@@ -1272,9 +1277,9 @@ extension AppModel {
             nickname: profile?.nickname ?? Self.randomNickname(),
             email: nil,
             englishLevel: englishLevel,
-            languageStyle: languageStyle,
             initialAvailableGenerations: initialGuestCredits
         )
+        try accountRequests.check(revision)
 
         if !localCreditsBelongToGuest {
             remainingCredits = createdProfile.availableGenerations
@@ -1305,6 +1310,7 @@ extension AppModel {
     }
 
     func retryPendingGuestCreditMigrationIfNeeded(for session: SupabaseSession) async -> SupabaseProfileRecord? {
+        let revision = accountRequests.revision
         guard !session.isAnonymous else { return nil }
         guard let pendingGuestCreditMigration else {
             clearGuestCreditRecoveryWarningIfNeeded()
@@ -1318,10 +1324,12 @@ extension AppModel {
                 guestRefreshToken: pendingGuestCreditMigration.guestRefreshToken,
                 guestUserID: pendingGuestCreditMigration.guestUserID
             )
+            try accountRequests.check(revision)
             clearPendingGuestCreditMigration()
             clearGuestCreditRecoveryWarningIfNeeded()
             return profile
         } catch {
+            guard !Task.isCancelled, accountRequests.revision == revision else { return nil }
             credentialWarningMessage = L10n.string("auth.guest_credit_recovery.retry_later", "访客可用次数仍在恢复中，请保持网络连接后稍后再试。")
             return nil
         }
@@ -1385,6 +1393,7 @@ extension AppModel {
                 }
                 removePendingGuestMemoryMigration(memoryID: guestMemory.id)
             } catch {
+                pendingCloudSyncDebugLog("guest memory migration failed: \(error.localizedDescription)")
                 authErrorMessage = L10n.string("sync.local_memories.failed", "本地回忆同步失败：%@", error.localizedDescription)
                 continue
             }
@@ -1558,6 +1567,8 @@ extension AppModel {
         _ state: PreSignInGuestState? = nil,
         showsProgress: Bool = false
     ) async {
+        guard !Task.isCancelled else { return }
+        let revision = accountRequests.revision
         guard isSignedIn, let session = supabaseSession else {
             if showsProgress {
                 isSyncingPendingCloudChanges = false
@@ -1580,6 +1591,7 @@ extension AppModel {
             remoteRecords = []
         }
 
+        guard (try? accountRequests.check(revision)) != nil else { return }
         let remoteMemories = cloudSyncManager.makeRemoteMemories(from: remoteRecords)
 
         reconcileLocalMemoriesWithRemote(remoteMemories, sessionUserID: session.userID)
@@ -1611,7 +1623,7 @@ extension AppModel {
             pendingCloudSyncTotalCount = cloudSyncPlan.totalCount
         }
         defer {
-            if showsProgress {
+            if showsProgress, accountRequests.revision == revision {
                 isSyncingPendingCloudChanges = false
                 pendingCloudSyncCompletedCount = 0
                 pendingCloudSyncTotalCount = 0
@@ -1619,10 +1631,15 @@ extension AppModel {
         }
 
         await migrateGuestMemoriesToCurrentAccount(using: remoteMemories)
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncPendingMemoryDeletionsIfNeeded()
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncPendingFavoriteChangesIfNeeded()
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncFavoriteDifferencesIfNeeded(using: remoteMemories)
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await syncLocalSentenceStudyProgressIfNeeded()
+        guard (try? accountRequests.check(revision)) != nil else { return }
         await refreshSentenceStudyDueCount()
     }
 

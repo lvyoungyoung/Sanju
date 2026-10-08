@@ -85,7 +85,7 @@ final class StudyOverviewSnapshotTests: XCTestCase {
             } catch {
                 XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled)
             }
-            XCTAssertEqual(service.requests, [.due])
+            XCTAssertTrue(service.requests.contains(.due))
         }
     }
 
@@ -120,6 +120,37 @@ final class StudyOverviewSnapshotTests: XCTestCase {
     private func makeScene(name: String = "Topic") -> UserStudySceneSummary {
         UserStudySceneSummary(id: UUID(), name: name, coverMemoryID: nil, summary: .empty)
     }
+
+    func testTopicsArePublishedBeforeSlowStatisticsFinish() async throws {
+        let service = StubStudyOverviewService()
+        let scene = makeScene()
+        service.scenes = [scene]
+        let waitingForCount = expectation(description: "Statistics started")
+        let waitingForTotal = expectation(description: "Sentence count started")
+        let topicsArrived = expectation(description: "Topics published independently")
+        var continuation: CheckedContinuation<Int, Never>?
+        var totalContinuation: CheckedContinuation<Int, Never>?
+        service.loadDueCount = {
+            await withCheckedContinuation { continuation = $0; waitingForCount.fulfill() }
+        }
+        service.loadSentenceCount = {
+            await withCheckedContinuation { totalContinuation = $0; waitingForTotal.fulfill() }
+        }
+        let task = Task {
+            try await StudyOverviewSnapshot.load(
+                from: service, session: session, favoriteSentenceIDs: [],
+                onScenesLoaded: { scenes in
+                    XCTAssertEqual(scenes, [scene])
+                    topicsArrived.fulfill()
+                }
+            )
+        }
+        await fulfillment(of: [waitingForCount, waitingForTotal, topicsArrived], timeout: 2)
+        continuation?.resume(returning: 3)
+        totalContinuation?.resume(returning: 12)
+        let snapshot = try await task.value
+        XCTAssertEqual(snapshot.dueCount, 3)
+    }
 }
 
 @MainActor
@@ -135,6 +166,8 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
     var favoriteCounts: [UUID: Int] = [:]
     var scenes: [UserStudySceneSummary] = []
     var loadScenes: (() async -> [UserStudySceneSummary])?
+    var loadDueCount: (() async -> Int)?
+    var loadSentenceCount: (() async -> Int)?
 
     private func record(_ request: Request) throws {
         requests.append(request)
@@ -143,6 +176,7 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
 
     func fetchSentenceStudyDueCount(session: SupabaseSession) async throws -> Int {
         try record(.due)
+        if let loadDueCount { return await loadDueCount() }
         return dueCount
     }
 
@@ -158,6 +192,7 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
 
     func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int {
         try record(.sentences)
+        if let loadSentenceCount { return await loadSentenceCount() }
         return 12
     }
 

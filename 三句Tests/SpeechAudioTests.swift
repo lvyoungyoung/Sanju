@@ -5,6 +5,68 @@ import XCTest
 
 @MainActor
 final class SpeechAudioTests: XCTestCase {
+    func testEveryVoiceHasDistinctBundledPreviewAudio() throws {
+        var recordings = Set<Data>()
+        for voice in SpeechVoice.allCases {
+            let audio = try SpeechPreviewAudio.load(voice)
+            XCTAssertGreaterThan(audio.count, 48_000)
+            XCTAssertLessThan(audio.count, 48_000 * 30)
+            XCTAssertTrue(audio.count.isMultiple(of: 2))
+            XCTAssertTrue(audio.contains { $0 != 0 })
+            recordings.insert(audio)
+        }
+        XCTAssertEqual(recordings.count, SpeechVoice.allCases.count)
+    }
+
+    func testPreviewDoesNotRequestAuthenticationOrUseSystemVoice() async throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let speech = SpeechService(defaults: defaults)
+        var authenticationRequests = 0
+        speech.sessionProvider = {
+            authenticationRequests += 1
+            throw CloudSpeechError.noSession
+        }
+        for voice in SpeechVoice.allCases {
+            speech.preview(voice)
+            XCTAssertEqual(speech.loadingVoice, voice)
+            try await Task.sleep(for: .milliseconds(150))
+            XCTAssertFalse(speech.isUsingSystemVoice)
+            speech.stop()
+            XCTAssertNil(speech.activeText)
+        }
+        XCTAssertEqual(authenticationRequests, 0)
+        XCTAssertEqual(speech.selectedVoice, .mia)
+    }
+
+    func testSpeechRemainsActiveWhilePreparingAndClearsOnStop() throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let speech = SpeechService(defaults: defaults)
+        XCTAssertNil(speech.activeText)
+        speech.speak("  A quiet afternoon.  ")
+        XCTAssertEqual(speech.activeText, "A quiet afternoon.")
+        XCTAssertEqual(speech.loadingText, speech.activeText)
+        speech.stop()
+        XCTAssertNil(speech.activeText)
+        speech.speak("   ")
+        XCTAssertNil(speech.activeText)
+    }
+
+    func testChangingVoiceClearsActiveSpeech() throws {
+        let suite = "SpeechSettingsTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let speech = SpeechService(defaults: defaults)
+        speech.speak("A quiet afternoon.")
+        XCTAssertNotNil(speech.activeText)
+        speech.applyVoice(.dean)
+        XCTAssertNil(speech.activeText)
+        XCTAssertNil(speech.loadingText)
+    }
+
     func testVoiceDefaultsAndInvalidSavedValues() throws {
         let suite = "SpeechSettingsTests.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

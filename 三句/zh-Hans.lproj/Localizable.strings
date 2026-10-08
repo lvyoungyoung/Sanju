@@ -2,8 +2,8 @@
 "study.match.title" = "匹配范围";
 "study.match.done" = "完成";
 "study.match.explanation" = "范围越宽，句子可能越多，但与主题的关联也可能更弱。";
-"study.match.strict" = "更贴合主题";
-"study.match.broad" = "包含更多相关句子";
+"study.match.strict" = "严格";
+"study.match.broad" = "宽松";
 "study.match.accessibility_level" = "第 %d 档，共 7 档；档位越高，范围越宽";
 "study.match.default" = "默认范围";
 "study.match.custom" = "自定义范围";
@@ -67,8 +67,6 @@
 "generation_error.invalid_image" = "图片处理失败，请重新选择一张图片。";
 "generation_error.no_credits" = "可用生成次数不足，请先购买。";
 "generation_error.session_unavailable" = "暂时无法建立访客会话，请检查网络后重试。";
-"language_style.lyrical" = "抒情优雅";
-"language_style.plain" = "平铺直叙";
 "learning_reminder.notification_body" = "今天也花 2 分钟，把收藏里的句子练一遍。";
 "learning_reminder.notification_title" = "该学习啦";
 "learning_reminder_error.invalid_time" = "提醒时间无效，请重新选择。";
@@ -155,6 +153,9 @@
 "favorites.syncing.title" = "正在同步收藏...";
 "memories.empty.subtitle" = "在“新的”里上传第一张照片，生成你的第一组三句话。";
 "memories.empty.title" = "还没有回忆";
+"study.empty.photo_title" = "从一张照片开始学习";
+"content.empty.add_photo_message" = "添加一张你想记住的照片，让它变成可以反复学习的英语。";
+"content.empty.add_photo" = "添加照片";
 "memories.page_title" = "回忆";
 "memories.hero.count_label" = "已记录";
 "memories.tags.all" = "全部";
@@ -187,7 +188,7 @@
 "new.credits.remaining" = "剩余可用次数：%d";
 "new.empty.safety_hint" = "图片会被发送给 AI 分析，请勿上传包含敏感信息的图片";
 "new.empty.select_photo" = "点击选择图片";
-"new.empty.title" = "选一张你愿意记住的画面，用它来学会一句英语。";
+"new.empty.title" = "像翻相册一样，轻松学英语。";
 "new.generate.action" = "用三句描述一下";
 "new.brand.name" = "三句";
 "new.generate.auto_save_hint" = "生成后自动保存到回忆";
@@ -214,11 +215,13 @@
 "new.result.choose_another" = "再来一张";
 "new.result.saved_hint" = "内容已生成，建议收藏 1 到 2 句反复学习。";
 "new.result.favorite" = "收藏";
+"new.result.saved" = "已收藏";
 "new.result.play" = "播放";
+"new.result.playing" = "播放中";
 "new.result.start_study" = "去学习";
 "new.result.start_study_hint" = "开始这句话的填空练习。";
 "new.result.tab.what_i_see" = "画面描述";
-"new.result.tab.what_i_say" = "生活表达";
+"new.result.tab.what_i_say" = "场景表达";
 "new.upload.action" = "点击上传照片";
 "new.upload.safety_hint" = "图片会被发送给AI分析，请谨慎上传包含敏感信息的图片";
 "profile.about.entry" = "关于我们";
@@ -242,7 +245,6 @@
 "profile.nickname.sheet_title" = "修改昵称";
 "profile.nickname.updated" = "昵称已更新。";
 "profile.preference.english_level" = "难度";
-"profile.preference.language_style" = "语言风格";
 "profile.restoring.title" = "正在恢复账号信息";
 "profile.section.about" = "关于";
 "profile.section.account" = "账户";
@@ -311,8 +313,10 @@
 "study.topic.favorites_count" = "收藏（%d）";
 "study.topic.view_all" = "查看全部";
 "study.topic.section_title" = "我的学习主题";
+"study.topic.section_description" = "创建你的语言使用场景，AI会把已经生成的句子匹配到各个场景中";
 "study.topic.create_short" = "+ 创建";
 "study.topic.mastery" = "掌握度 %d%%";
+"study.topic.mastery.title" = "掌握程度";
 "study.topic.page_subtitle" = "按主题练习，让你更自然地说出眼前的画面。";
 "study.topic.page_title" = "学习";
 "study.topic.map.entry" = "主题地图";
@@ -335,6 +339,10 @@
 "study.scene.my_scenes" = "我的学习主题";
 "study.scene.name_placeholder" = "输入你想学习的主题";
 "study.scene.suggestions_title" = "试试这些";
+"study.scene.suggestions_loading" = "正在获取推荐主题...";
+"study.scene.suggestions_empty" = "推荐主题暂未准备好，你可以先手动输入，或稍后点击刷新。";
+"study.scene.suggestions_failed" = "暂时无法获取推荐，请点击刷新重试，也可以直接输入主题。";
+"study.scene.suggestions_refresh_failed" = "推荐更新失败，已保留原有推荐，可点击刷新重试。";
 "study.scene.suggestion_fill_hint" = "填入学习主题";
 "study.scene.remove_selected_suggestion" = "移除已选主题";
 "study.scene.suggestion.people_social" = "人与社交";
@@ -369,7 +377,7 @@
 "learning_topic.health_and_wellness" = "身体与健康";
 "study.scene.refresh_suggestions" = "换一批推荐";
 "study.scene.detail.all_sentences" = "全部句子";
-"study.scene.detail.empty_subtitle" = "以后生成相关画面时，它们会自动出现在这里。";
+"study.scene.detail.empty_subtitle" = "上传与主题相关的照片生成句子，或在右上角调整匹配范围，试试更宽松的要求。";
 "study.scene.detail.empty_title" = "暂未找到匹配句子";
 "study.scene.detail.loading_subtitle" = "马上就好，正在整理相关表达";
 "study.scene.detail.loading_slow_subtitle" = "首次寻找主题下的句子可能耗时较长，请稍后";
@@ -428,6 +436,7 @@
 "study.scene.review.retry" = "继续筛选";
 "study.scene.review.waiting" = "等待筛选";
 "speech.loading" = "正在准备朗读";
+"speech.playing" = "朗读中";
 "speech.settings.title" = "朗读设置";
 "speech.settings.voice" = "朗读音色";
 "speech.voice.female" = "英文女声";
@@ -440,9 +449,29 @@
 "speech.settings.sync.synced" = "音色已同步到账号";
 "speech.settings.sync.pending" = "暂未同步，联网后会自动重试；仍可使用当前音色。";
 "speech.settings.preview_hint" = "试听使用同一句英文，首次需要联网，之后可使用缓存播放。";
-"speech.settings.fallback_hint" = "离线或云端服务不可用时，使用系统声音，音色可能不同。";
+"speech.settings.fallback_hint" = "网络不可用时，使用系统声音，音色可能不同。";
 "speech.settings.fallback_active" = "本次使用的是系统声音，并非所选音色。";
 
+"onboarding.brand" = "三句";
+"onboarding.skip" = "跳过";
+"onboarding.next" = "下一页";
+"onboarding.start" = "从我的照片开始";
+"onboarding.page" = "第 %d 页，共 3 页";
+"onboarding.photo.title" = "每张照片都有触动你的地方，它可以是一处风景，一种味道，一种感觉。";
+"onboarding.photo.body" = "你拍下的生活，就是最值得学习的内容。";
+"onboarding.expression.title" = "用英语来描述照片里触动你的地方。";
+"onboarding.expression.body" = "收藏最触动你的那一句，让你的感觉帮助你记忆。";
+"onboarding.expression.not_saved" = "未收藏";
+"onboarding.expression.favorite_hint" = "轻点切换示例收藏，不会保存到你的真实收藏。";
+"onboarding.practice.title" = "把“这句真好”，\n练成“这句我会”。";
+"onboarding.practice.body" = "围绕熟悉的画面反复练习，让想说的话，慢慢变成自己的表达。";
+"onboarding.photo.artwork" = "翻看相册，选中并展开一张阳光下的咖啡馆照片。";
+"onboarding.album.title" = "相册";
+"onboarding.expression.artwork" = "同一张照片有三种表达，选中并收藏了 I could sit here all afternoon and do nothing. 我可以在这里坐一下午，什么也不做。";
+"onboarding.practice.artwork" = "填空演示：从 I could sit here all afternoon and do nothing. 中挖去 sit、afternoon 和 nothing，再依次选词补全。";
+"content.load_failed.message" = "暂时无法加载内容，请检查网络后重试。";
+"content.load_failed.retry" = "重新加载";
+/* Casual photo album browsing */
 "album_flip.open" = "翻一翻";
 "album_flip.open_hint" = "随机翻看照片，听一句英语";
 "album_flip.title" = "我的英语相册";
@@ -452,6 +481,7 @@
 "album_flip.familiar" = "熟悉了";
 "album_flip.hint" = "左滑再看看，右滑熟悉了";
 "album_flip.replay" = "再听一遍";
+"album_flip.playing" = "朗读中";
 "album_flip.mute" = "关闭自动朗读";
 "album_flip.unmute" = "开启自动朗读";
 "album_flip.photo" = "这句话对应的照片";

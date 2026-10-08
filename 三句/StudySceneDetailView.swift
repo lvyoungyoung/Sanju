@@ -197,7 +197,10 @@ struct StudySceneDetailView: View {
     private var detailContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: AppSpacing.large) {
-                studyOverviewBar
+                if !items.isEmpty {
+                    StudyTopicMasteryCard(score: studySummary.masteryScore)
+                    studyOverviewBar
+                }
                 sentenceContent
             }
             .padding(.horizontal, AppSpacing.section)
@@ -210,8 +213,12 @@ struct StudySceneDetailView: View {
     private var sentenceContent: some View {
         if items.isEmpty {
             EmptyStateView(
-                title: L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
-                subtitle: L10n.string("study.scene.detail.empty_subtitle", "以后生成相关画面时，它们会自动出现在这里。"),
+                title: route.isFavorites
+                    ? L10n.string("favorites.empty.title", "还没有收藏")
+                    : L10n.string("study.scene.detail.empty_title", "暂未找到匹配句子"),
+                subtitle: route.isFavorites
+                    ? L10n.string("favorites.empty.subtitle", "在生成结果里点亮右侧星标，你最常用、最喜欢的句子都会留在这里。")
+                    : L10n.string("study.scene.detail.empty_subtitle", "上传与主题相关的照片生成句子，或在右上角调整匹配范围，试试更宽松的要求。"),
                 systemImage: "text.badge.xmark"
             )
             .frame(maxWidth: .infinity)
@@ -237,6 +244,7 @@ struct StudySceneDetailView: View {
             buttonTitle: studyButtonTitle,
             isPreparing: isStartingStudy,
             canStart: canStartStudy,
+            isCompact: true,
             onStart: { Task { await startStudy() } }
         )
     }
@@ -406,7 +414,7 @@ private struct StudySceneDetailSentenceCard: View {
             }
         }
         .padding(AppSpacing.xLarge)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appCardBorder()
         .contextMenu {
             if canUnfavorite {
@@ -519,11 +527,11 @@ private struct StudyTopicExpressionCard: View {
                     }
                 }
                 .padding(AppSpacing.large)
-                .background(AppSurfaceColor.subtleFill, in: RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+                .background(AppSurfaceColor.subtleFill, in: RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
             }
         }
         .padding(AppSpacing.xLarge)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appCardBorder()
     }
 }

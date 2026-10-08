@@ -96,7 +96,7 @@ struct MemoryDetailSentencePanel: View {
                 ForEach(displayedSentences) { sentence in
                     MemoryDetailSentenceRow(sentence: sentence)
                         .padding(20)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                         .appCardBorder()
                 }
             }
@@ -123,41 +123,13 @@ struct MemoryDetailSentenceRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 10) {
-                SentencePlaybackButton(speech: appModel.speech, text: sentence.english)
-
-                sentenceActionButton(
-                    title: L10n.string("new.result.favorite", "收藏"),
-                    icon: sentence.isFavorite ? "star.fill" : "star",
-                    iconColor: sentence.isFavorite
-                        ? AppPalette.accent
-                        : AppTextColor.secondary
-                ) {
-                    appModel.toggleFavorite(sentenceID: sentence.id)
-                }
+            SentenceActions(speech: appModel.speech, text: sentence.english, isFavorite: sentence.isFavorite) {
+                appModel.toggleFavorite(sentenceID: sentence.id)
             }
         }
         .padding(.vertical, 8)
     }
 
-    private func sentenceActionButton(
-        title: String,
-        icon: String,
-        iconColor: Color = AppTextColor.secondary,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(iconColor)
-                .padding(.horizontal, 11)
-                .frame(height: 36)
-                .background(AppSurfaceColor.elevated, in: RoundedRectangle(cornerRadius: 12))
-        }
-        .frame(minWidth: 44, minHeight: 44)
-        .contentShape(Rectangle())
-        .buttonStyle(.plain)
-    }
 }
 
 struct MemoryDetailPagerControls: View {

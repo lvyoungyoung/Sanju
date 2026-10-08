@@ -205,9 +205,9 @@ private struct MemoryDetailImageView: View {
         }
         .frame(maxWidth: .infinity)
         .aspectRatio(displayAspectRatio, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.photo, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.cardImage, style: .continuous))
         .padding(7)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: 32))
-        .appCardBorder(cornerRadius: 32)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .appCardBorder()
     }
 }

@@ -26,7 +26,7 @@ fileprivate enum SignInField: Hashable {
 }
 
 struct SignInView: View {
-    private enum Mode {
+    private enum Mode: Hashable {
         case signIn
         case signUp
         case resetPassword
@@ -91,6 +91,9 @@ struct SignInView: View {
     @State private var emailSignInLockoutRemainingSeconds = 0
     @State private var passwordResetSuccessMessage = ""
     @State private var isShowingPasswordResetSuccessAlert = false
+    @State private var autoFillPolicy = SignInAutoFillPolicy()
+    @State private var pendingAutoSignIn: SignInCredentials?
+    @State private var isSubmitting = false
     @FocusState private var focusedField: SignInField?
     private let verificationCodeCooldownTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -129,9 +132,40 @@ struct SignInView: View {
             guard verificationCodeCooldownSeconds > 0 else { return }
             verificationCodeCooldownSeconds -= 1
         }
-        .task {
+        .task(id: mode) {
             refreshEmailSignInLockoutCountdown()
             await focusPrimaryFieldAfterPresentation()
+        }
+        .onChange(of: credentials) { old, new in
+            pendingAutoSignIn = nil
+            if autoFillPolicy.shouldSubmit(
+                from: old, to: new,
+                emailFieldIsFocused: focusedField == .email,
+                isEligible: mode == .signIn && !isSubmitting && !appModel.isAuthenticating,
+                now: ProcessInfo.processInfo.systemUptime
+            ) {
+                pendingAutoSignIn = new
+                focusedField = nil
+            }
+        }
+        .task(id: pendingAutoSignIn) {
+            guard let candidate = pendingAutoSignIn else { return }
+            do { try await Task.sleep(for: .milliseconds(300)) }
+            catch { return }
+            guard !Task.isCancelled, mode == .signIn, credentials == candidate else { return }
+            refreshEmailSignInLockoutCountdown()
+            pendingAutoSignIn = nil
+            guard !isSubmitDisabled else { return }
+            submit()
+        }
+        .onChange(of: focusedField) { _, field in
+            if field != nil, pendingAutoSignIn != nil || isSubmitting {
+                focusedField = nil
+            }
+        }
+        .onDisappear {
+            pendingAutoSignIn = nil
+            autoFillPolicy.reset()
         }
         .alert(
             L10n.string("common.notice", "提示"),
@@ -151,6 +185,7 @@ struct SignInView: View {
                 .padding(.bottom, 14)
 
             formSection
+                .disabled(isSubmitting || pendingAutoSignIn != nil || appModel.isAuthenticating)
 
             if !appModel.isAuthenticating && !appModel.isRequestingPasswordReset {
                 Button(action: submit) {
@@ -195,7 +230,7 @@ struct SignInView: View {
                         .foregroundStyle(signInThemeAccentText)
                 }
                 .buttonStyle(.plain)
-                .disabled(appModel.isAuthenticating || appModel.isRequestingPasswordReset)
+                .disabled(isSubmitting || appModel.isAuthenticating || appModel.isRequestingPasswordReset)
                 .padding(.top, 24)
             }
 
@@ -210,6 +245,7 @@ struct SignInView: View {
                         .fontWeight(.medium)
                 }
                 .buttonStyle(.plain)
+                .disabled(isSubmitting || appModel.isAuthenticating || appModel.isRequestingPasswordReset || appModel.isUpdatingPassword)
             }
             .font(.system(size: AppFontSize.body))
             .padding(.top, 24)
@@ -266,7 +302,7 @@ struct SignInView: View {
                 text: $email,
                 placeholder: "name@example.com",
                 keyboardType: .emailAddress,
-                textContentType: .emailAddress,
+                textContentType: mode == .signIn ? .username : .emailAddress,
                 submitLabel: mode == .resetPassword ? .next : .next,
                 focusedField: $focusedField,
                 equals: .email
@@ -390,7 +426,7 @@ struct SignInView: View {
     }
 
     private var isSubmitDisabled: Bool {
-        if appModel.isAuthenticating || appModel.isRequestingPasswordReset || appModel.isUpdatingPassword || !appModel.isNetworkAvailable {
+        if isSubmitting || appModel.isAuthenticating || appModel.isRequestingPasswordReset || appModel.isUpdatingPassword || !appModel.isNetworkAvailable {
             return true
         }
 
@@ -463,12 +499,19 @@ struct SignInView: View {
             }
         }
 
+        guard !isSubmitDisabled else { return }
+        isSubmitting = true
+        pendingAutoSignIn = nil
+        autoFillPolicy.reset()
+        focusedField = nil
+        let submittedCredentials = credentials
         Task {
+            defer { isSubmitting = false }
             switch currentMode {
             case .signIn, .signUp:
                 let outcome = await appModel.handleEmailAuthentication(
-                    email: email,
-                    password: password,
+                    email: submittedCredentials.email,
+                    password: submittedCredentials.password,
                     nickname: currentMode == .signUp ? nickname : nil,
                     shouldCreateAccount: currentMode == .signUp
                 )
@@ -520,6 +563,8 @@ struct SignInView: View {
         let retainedEmail = preserveEmail ? email : ""
         let retainedAuthFlowMessage = preserveAuthFlowMessage ? appModel.authFlowMessage : nil
 
+        pendingAutoSignIn = nil
+        autoFillPolicy.reset()
         mode = targetMode
         email = retainedEmail
         nickname = targetMode == .signUp ? nickname : ""
@@ -532,15 +577,19 @@ struct SignInView: View {
         appModel.credentialWarningMessage = nil
         appModel.passwordResetErrorMessage = nil
         focusedField = nil
-        Task {
-            await focusPrimaryFieldAfterPresentation()
-        }
+    }
+
+    private var credentials: SignInCredentials {
+        SignInCredentials(email: email, password: password)
     }
 
     @MainActor
     private func focusPrimaryFieldAfterPresentation() async {
-        try? await Task.sleep(for: .milliseconds(220))
-        guard focusedField == nil else { return }
+        do { try await Task.sleep(for: .milliseconds(220)) }
+        catch { return }
+        guard !Task.isCancelled, focusedField == nil,
+              pendingAutoSignIn == nil, !isSubmitting, !appModel.isAuthenticating,
+              !(mode == .signIn && credentials.isComplete) else { return }
         focusedField = primaryField(for: mode)
     }
 

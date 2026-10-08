@@ -279,3 +279,10 @@ Storage 删除失败会保留任务；数据库删除失败会返回 500，重�
 先通过 `Backend Database` 在 staging 执行 `apply`，验证有剩余次数的匿名用户登录已有账号，
 再按发布流程应用到 production。执行后重新登录即可重试，重复迁移不会重复加次数。
 本次只需这个新增数据库迁移，无需更新 Edge Function、客户端、环境变量或 Nginx。
+
+### 移除句子风格设置
+
+2026-10-08 客户端生成偏好只保留难度，生成请求不再包含 `languageStyle`。
+部署 `generate-memory-v2` 后，所有模型统一使用自然日常口语；旧请求中的风格字段被忽略。
+保留 `profiles.language_style` 列和原有生成响应、恢复及扣次数事务，不需要新增 migration，
+也不需要部署 `recover-guest-generation` 或 `migrate-guest-credits`，无需环境变量或代理调整。

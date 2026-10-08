@@ -235,11 +235,11 @@ private struct StudySettingsSheet: View {
             }
             .background(AppSurfaceColor.page)
             .toolbar(.hidden, for: .navigationBar)
-            .navigationDestination(isPresented: $isShowingSpeechSettings) {
-                SpeechSettingsView(speech: speech)
-            }
         }
-        .presentationDetents(isShowingSpeechSettings ? [.large] : [.height(330), .large])
+        .presentationDetents([.height(330), .large])
+        .sheet(isPresented: $isShowingSpeechSettings) {
+            SpeechSettingsSheet(speech: speech)
+        }
     }
 
     private var settingsContent: some View {
@@ -259,7 +259,7 @@ private struct StudySettingsSheet: View {
             .foregroundStyle(AppTextColor.primary)
             .tint(AppPalette.accentText)
             .padding(AppSpacing.large)
-            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
             .appSurfaceShadow()
 
             Button { isShowingSpeechSettings = true } label: {
@@ -273,7 +273,7 @@ private struct StudySettingsSheet: View {
                 .foregroundStyle(AppTextColor.primary)
                 .padding(AppSpacing.large)
                 .frame(minHeight: 44)
-                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -286,6 +286,7 @@ private struct StudySettingsSheet: View {
 
 private struct SentenceStudyQuestionView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     let item: SentenceStudyQueueItem
     let index: Int
     let total: Int
@@ -304,6 +305,7 @@ private struct SentenceStudyQuestionView: View {
     @State private var didAutomaticallyAdvance = false
     @State private var didAutoSpeak = false
     @State private var saveErrorMessage: String?
+    @State private var speechPrefetch: StudySpeechPrefetch?
 
     init(
         item: SentenceStudyQueueItem,
@@ -343,6 +345,17 @@ private struct SentenceStudyQuestionView: View {
 
     private var allBlanksFilled: Bool {
         filledBlankWordIDs.count == question.blankIDs.count
+    }
+
+    private var speechPrefetchContext: StudySpeechPrefetch.Context {
+        StudySpeechPrefetch.Context(
+            text: item.english,
+            ownerID: appModel.supabaseSession?.userID,
+            enabled: automaticallySpeakOnCompletion
+                && appModel.isAutoSpeakingSolvedSentenceEnabled
+                && appModel.isNetworkAvailable
+                && scenePhase == .active
+        )
     }
 
     var body: some View {
@@ -397,7 +410,7 @@ private struct SentenceStudyQuestionView: View {
                     }
                 }
                 .padding(AppSpacing.xLarge)
-                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous))
+                .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                 .appCardShadow()
 
                 if allBlanksFilled {
@@ -428,6 +441,18 @@ private struct SentenceStudyQuestionView: View {
         }
         .task(id: item.memoryID) {
             await appModel.ensureMemoryImageLoaded(memoryID: item.memoryID)
+        }
+        .onAppear {
+            let prefetch = StudySpeechPrefetch(speech: appModel.speech)
+            speechPrefetch = prefetch
+            prefetch.update(speechPrefetchContext)
+        }
+        .onChange(of: speechPrefetchContext) { _, context in
+            speechPrefetch?.update(context)
+        }
+        .onDisappear {
+            speechPrefetch?.end()
+            speechPrefetch = nil
         }
         .onChange(of: filledBlankWordIDs.count) { _, newValue in
             guard newValue == question.blankIDs.count else { return }
@@ -544,7 +569,7 @@ private struct SentenceStudyPromptCard: View {
                         .resizable()
                         .scaledToFill()
                 } else {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
                         .fill(Color(red: 0.96, green: 0.92, blue: 0.86))
                         .overlay {
                             Image(systemName: "photo")
@@ -554,7 +579,7 @@ private struct SentenceStudyPromptCard: View {
                 }
             }
             .frame(width: 94, height: 94)
-            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.medium, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(chinese)
@@ -569,7 +594,7 @@ private struct SentenceStudyPromptCard: View {
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(
                     AppPalette.apricot
                 )
@@ -579,7 +604,7 @@ private struct SentenceStudyPromptCard: View {
 }
 
 private struct SentenceStudySolvedState: View {
-    let speech: SpeechService
+    @ObservedObject var speech: SpeechService
     let spokenText: String
     let isSavingProgress: Bool
     let saveErrorMessage: String?
@@ -593,6 +618,10 @@ private struct SentenceStudySolvedState: View {
 
     private var statusMessage: String? {
         saveErrorMessage
+    }
+
+    private var isActionDisabled: Bool {
+        isSavingProgress || (!isRetrying && speech.activeText != nil)
     }
 
     var body: some View {
@@ -623,7 +652,9 @@ private struct SentenceStudySolvedState: View {
                     onSpeak()
                 } label: {
                     SpeechPlaybackLabel(speech: speech, text: spokenText,
-                                        title: L10n.string("study.solved.speak", "朗读句子"), icon: "speaker.wave.2.fill")
+                                        title: L10n.string("study.solved.speak", "朗读句子"),
+                                        icon: "speaker.wave.2.fill",
+                                        playingTitle: L10n.string("speech.playing", "朗读中"))
                         .font(.system(size: AppFontSize.body, weight: .semibold))
                         .foregroundStyle(AppPalette.accentText)
                         .frame(maxWidth: .infinity)
@@ -636,7 +667,7 @@ private struct SentenceStudySolvedState: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    guard !isSavingProgress else { return }
+                    guard !isActionDisabled else { return }
                     if isRetrying {
                         onRetrySync()
                     } else {
@@ -663,12 +694,13 @@ private struct SentenceStudySolvedState: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .opacity(isSavingProgress ? 0.96 : 1)
+                .disabled(isActionDisabled)
+                .opacity(isActionDisabled ? 0.5 : 1)
             }
         }
         .padding(AppSpacing.xLarge)
         .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .fill(AppSurfaceColor.card)
         )
         .appCardShadow()

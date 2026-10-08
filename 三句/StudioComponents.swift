@@ -7,10 +7,11 @@ struct StudyOverviewCard: View {
     let buttonTitle: String
     let isPreparing: Bool
     let canStart: Bool
+    var isCompact = false
     let onStart: () -> Void
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: isCompact ? AppSpacing.medium : AppSpacing.section) {
             HStack(alignment: .center, spacing: 24) {
                 metric(dueCount, label: L10n.string("study.metric.due_today", "今日待学"))
                 Rectangle().fill(AppPalette.onAccent.opacity(0.12)).frame(width: 1, height: 40)
@@ -31,21 +32,21 @@ struct StudyOverviewCard: View {
                 }
                 .foregroundStyle(AppHeroTextColor.title)
                 .padding(.horizontal, 18)
-                .frame(minHeight: 54)
+                .frame(minHeight: isCompact ? 44 : 54)
                 .background(.white.opacity(canStart ? 1 : 0.65), in: RoundedRectangle(cornerRadius: 19))
             }
             .buttonStyle(StudioPressStyle())
             .disabled(!canStart || isPreparing)
         }
-        .padding(24)
-        .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.large))
+        .padding(isCompact ? AppSpacing.large : AppSpacing.section)
+        .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
     }
 
     private func metric(_ count: Int, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: isCompact ? AppSpacing.xSmall : AppSpacing.small) {
             Text(label).font(.subheadline)
             Text(count, format: .number)
-                .font(AppTypography.pageTitle)
+                .font(isCompact ? .system(.title2, weight: .bold) : AppTypography.pageTitle)
                 .monospacedDigit()
         }
         .foregroundStyle(AppPalette.onAccent)
