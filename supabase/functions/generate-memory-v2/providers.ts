@@ -5,6 +5,20 @@ import { serializeGenerationError, summarizeProviderFailure, appendDiagnosticSni
 
 const MIMO_TIMEOUT_MS = 20000
 const KIMI_TIMEOUT_MS = 20000
+const DEEPSEEK_TIMEOUT_MS = 20000
+
+export function usesDeepSeekGeneration(projectURL: string | undefined): boolean {
+  try {
+    const url = new URL(projectURL ?? "")
+    return url.protocol === "https:" && [
+      "spb-bp1364k407p37qn7.supabase.opentrust.net",
+      "api-staging.sanju.cc",
+    ].includes(url.hostname)
+  } catch {
+    return false
+  }
+}
+
 export async function requestWithFallback(args: {
   imageBase64: string
   promptText: string
@@ -13,6 +27,7 @@ export async function requestWithFallback(args: {
   mimoApiKey: string
   kimiBaseURL: string
   kimiApiKey: string
+  deepseek?: { baseURL: string; apiKey: string }
   fetcher: typeof fetch
   timing?: GenerationTiming
 }): Promise<
@@ -61,8 +76,38 @@ export async function requestWithFallback(args: {
     max_completion_tokens: 4096,
   }
 
+  let deepseekFailure: string | null = null
+  if (args.deepseek) {
+    args.timing?.start("deepseek")
+    const deepseekResult = await requestPrimaryModelOnce(
+      args.deepseek.baseURL,
+      args.deepseek.apiKey,
+      {
+        model: "deepseek-flash",
+        messages: [
+          { role: "system", content: "You are a helpful assistant." },
+          mimoRequestBody.messages[1],
+        ],
+        thinking: { type: "disabled" },
+        max_tokens: 4096,
+      },
+      args.generationFormat,
+      args.fetcher,
+      "deepseek"
+    )
+    args.timing?.start("model_result")
+    if (deepseekResult.ok) return { ...deepseekResult, mimoFailureReason: null }
+    deepseekFailure = deepseekResult.internalError
+    console.error("[generate-memory-v2]", serializeGenerationError({
+      provider: deepseekResult.provider,
+      code: deepseekResult.code,
+      statusCode: deepseekResult.statusCode,
+      internalError: `[DeepSeek fallback candidate] ${deepseekFailure}`,
+    }))
+  }
+
   args.timing?.start("mimo")
-  const mimoResult = await requestMimoOnce(
+  const mimoResult = await requestPrimaryModelOnce(
     args.mimoBaseURL,
     args.mimoApiKey,
     mimoRequestBody,
@@ -163,17 +208,18 @@ export async function requestWithFallback(args: {
     code: kimiResult.code,
     policyViolation: kimiResult.policyViolation,
     statusCode: kimiResult.statusCode,
-    internalError: `[MiMo] ${mimoResult.internalError} | [Kimi] ${kimiResult.internalError}`,
+    internalError: `${deepseekFailure ? `[DeepSeek] ${deepseekFailure} | ` : ""}[MiMo] ${mimoResult.internalError} | [Kimi] ${kimiResult.internalError}`,
     publicError: kimiResult.publicError,
   }
 }
 
-async function requestMimoOnce(
-  mimoBaseURL: string,
-  mimoApiKey: string,
+async function requestPrimaryModelOnce(
+  baseURL: string,
+  apiKey: string,
   requestBody: unknown,
   generationFormat: GenerationFormat,
-  fetcher: typeof fetch
+  fetcher: typeof fetch,
+  provider: "mimo" | "deepseek" = "mimo"
 ): Promise<
   | { ok: true; sentences: Sentence[]; provider: ProviderName }
   | {
@@ -189,19 +235,20 @@ async function requestMimoOnce(
     }
 > {
   let response: Response
+  const providerLabel = provider === "deepseek" ? "DeepSeek" : "MiMo"
 
   try {
     response = await fetchWithTimeout(
-      mimoBaseURL,
+      baseURL,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "api-key": mimoApiKey,
+          ...(provider === "deepseek" ? { Authorization: `Bearer ${apiKey}` } : { "api-key": apiKey }),
         },
         body: JSON.stringify(requestBody),
       },
-      MIMO_TIMEOUT_MS,
+      provider === "deepseek" ? DEEPSEEK_TIMEOUT_MS : MIMO_TIMEOUT_MS,
       fetcher
     )
   } catch (error) {
@@ -209,11 +256,11 @@ async function requestMimoOnce(
 
     return {
       ok: false,
-      provider: "mimo",
+      provider,
       fallbackable: true,
       rateLimited: false,
       statusCode: 500,
-      internalError: isTimeout ? "MiMo request timeout" : `MiMo fetch failed: ${String(error)}`,
+      internalError: isTimeout ? `${providerLabel} request timeout` : `${providerLabel} fetch failed: ${String(error)}`,
       publicError: {
         error: "生成失败，请稍后再试",
       },
@@ -233,28 +280,28 @@ async function requestMimoOnce(
     if (response.status === 429) {
       return {
         ok: false,
-        provider: "mimo",
+        provider,
         code: "rate_limited",
         fallbackable: false,
         rateLimited: true,
         statusCode: 429,
-        internalError: "MiMo rate limited",
+        internalError: `${providerLabel} rate limited`,
         publicError: {
           error: "当前使用人数过多，请稍后重试。",
           code: "rate_limited",
-          provider: "mimo",
+          provider,
         },
       }
     }
 
     return {
       ok: false,
-      provider: "mimo",
+      provider,
       fallbackable: true,
       rateLimited: false,
       statusCode: response.status,
       internalError: appendDiagnosticSnippet(
-        `MiMo request failed: HTTP ${response.status} ${response.statusText}`,
+        `${providerLabel} request failed: HTTP ${response.status} ${response.statusText}`,
         "response_snippet",
         rawText
       ),
@@ -269,12 +316,12 @@ async function requestMimoOnce(
   if (!content || typeof content !== "string") {
     return {
       ok: false,
-      provider: "mimo",
+      provider,
       fallbackable: true,
       rateLimited: false,
       statusCode: 500,
       internalError: appendDiagnosticSnippet(
-        "Invalid MiMo response content",
+        `Invalid ${providerLabel} response content`,
         "response_snippet",
         rawText
       ),
@@ -286,7 +333,7 @@ async function requestMimoOnce(
   if (!generatedContent) {
     return {
       ok: false,
-      provider: "mimo",
+      provider,
       fallbackable: true,
       rateLimited: false,
       statusCode: 500,
@@ -302,7 +349,7 @@ async function requestMimoOnce(
   return {
     ok: true,
     sentences: generatedContent.sentences,
-    provider: "mimo",
+    provider,
   }
 }
 

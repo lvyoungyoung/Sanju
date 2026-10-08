@@ -131,6 +131,40 @@ The upstream server is timing out
    git push origin backend-YYYYMMDD-N
    ```
 
+## Staging 图片生成模型
+
+自 2026-10-08 起，`generate-memory-v2` 在 staging 的生成顺序为
+DeepSeek (`deepseek-flash`，关闭思考) -> MiMo (`mimo-v2.6-flash`) -> Kimi。
+每个模型的请求上限为 20 秒，包含读取响应体；保持原有 90 秒总请求预算。
+production 仍为 MiMo -> Kimi，不需要 DeepSeek 配置，即使配置了也不会优先调用。
+
+发布前，先在 **staging Edge Functions 运行环境变量** 中添加：
+
+```text
+DEEPSEEK_API_KEY=<DeepSeek API key>
+DEEPSEEK_BASE_URL=https://api.deepseek.com/chat/completions
+```
+
+这里的 URL 必须是完整接口地址；代码没有默认地址。密钥不要提交到 GitHub，
+也不要仅配置在本地测试文件或 GitHub Actions Secrets 中：函数需要运行环境中的值。
+已有 `MIMO_API_KEY` / `MIMO_BASE_URL` / `KIMI_API_KEY` / `KIMI_BASE_URL` 继续保留用于兜底。
+缺少 DeepSeek 配置时，staging 会在启动生成前明确返回配置错误，不创建任务、不扣次数。
+
+环境只根据服务端 `SUPABASE_URL` 的可信 staging 域名判断：
+`spb-bp1364k407p37qn7.supabase.opentrust.net` 或 `api-staging.sanju.cc`。
+不能用请求 URL、客户端 Header 或 `SUPABASE_LOCAL_URL` 改变模型选择。
+
+完成配置后，在 Backend Functions 中选择 `staging` 和 `generate-memory-v2` 发布。
+**无需新增 migration、更新客户端或修改 Nginx；不必更新其他 Edge Function。**
+客户端收到的句子、分类和表达用途格式不变，原有事务保存/扣次数、恢复、后台向量化不变。
+成功结果的 `provider` 为实际生成方；`mimo_failure_reason` 仍只记录 MiMo 的失败，
+DeepSeek 的失败原因写入 Edge Function 日志。staging Xcode 耗时日志会出现
+`server.deepseek`，兜底时还会显示 `server.mimo` / `server.kimi`。
+
+部署后分别验证匿名与登录用户生成、播放及学习主题匹配。
+本地离线测试覆盖两种账号、环境隔离、鉴权请求格式、超时/无效 JSON/HTTP 错误兜底、
+审核拒绝、全部模型失败不扣次数、重复请求及提交后断线恢复；这些不等于线上部署验证。
+
 ## SQL Migration 手动发布
 
 默认使用 GitHub Actions 发布 SQL migration，避免 staging 和 production 漏执行某个 RPC 或表结构变更。详细说明见 `docs/database-migrations.md`。

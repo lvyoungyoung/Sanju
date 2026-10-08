@@ -33,7 +33,12 @@ function scheduleGenerationEnrichment(scope: EnrichmentScope, _requestID?: strin
 const Deno = {
   env: { get(name: string) {
     const values: any = { SUPABASE_ANON_KEY:'anon', SUPABASE_SERVICE_ROLE_KEY:'service', SUPABASE_URL:'https://db.invalid',
-      MIMO_API_KEY:'key', KIMI_API_KEY:'key', MIMO_BASE_URL:'https://model.invalid/mimo', KIMI_BASE_URL:'https://model.invalid/kimi' };
+      MIMO_API_KEY:'key', KIMI_API_KEY:'key', MIMO_BASE_URL:'https://model.invalid/mimo', KIMI_BASE_URL:'https://model.invalid/kimi',
+      DEEPSEEK_API_KEY:'deepseek-test-key', DEEPSEEK_BASE_URL:'https://model.invalid/deepseek' };
+    if (name === 'SUPABASE_URL') return state.projectURL ?? values[name];
+    if (name === 'SUPABASE_LOCAL_URL') return state.localURL;
+    if (name === 'DEEPSEEK_API_KEY' && state.deepseekMissingKey) return undefined;
+    if (name === 'DEEPSEEK_BASE_URL' && state.deepseekMissingURL) return undefined;
     if (name === 'IMAGE_MODERATION_ENABLED') return state.blocked ? 'true' : 'false';
     return values[name];
   } },
@@ -44,7 +49,12 @@ const fetch = (async (input: any, init?: RequestInit) => {
     statusCode:403, code:'generation_policy_violation', publicError:{error:'Blocked',code:'generation_policy_violation'} });
   state.calls++;
   state.modelRequests.push(JSON.parse(String(init?.body)));
-  if ((state.stallMimo && String(input).endsWith('/mimo')) || (state.stallKimi && String(input).endsWith('/kimi'))) {
+  state.modelHeaders.push(new Headers(init?.headers));
+  if (String(input).endsWith('/deepseek')) {
+    if (state.deepseekStatus) return new Response('Provider unavailable', {status:state.deepseekStatus});
+    if (state.deepseekMalformed) return Response.json({choices:[{message:{content:'not JSON'}}]});
+  }
+  if ((state.stallMimo && String(input).endsWith('/mimo')) || (state.stallKimi && String(input).endsWith('/kimi')) || (state.stallDeepseek && String(input).endsWith('/deepseek'))) {
     return new Response(new ReadableStream({start(controller) {
       init?.signal?.addEventListener('abort',()=>controller.error(init.signal?.reason),{once:true});
       controller.enqueue(new TextEncoder().encode('{'));
@@ -124,6 +134,7 @@ const { handler, state } = await import(
   "data:application/typescript," + encodeURIComponent(
     harness + source.replace(/^import .*\n/gm, "")
       .replace("const MIMO_TIMEOUT_MS = 20000", "const MIMO_TIMEOUT_MS = 50")
+      .replace("const DEEPSEEK_TIMEOUT_MS = 20000", "const DEEPSEEK_TIMEOUT_MS = 50")
       .replace("const KIMI_TIMEOUT_MS = 20000", "const KIMI_TIMEOUT_MS = 50"),
   )
 );
@@ -136,6 +147,14 @@ function reset(options: Record<string, unknown> = {}) {
     balance: 10,
     calls: 0,
     modelRequests: [],
+    modelHeaders: [],
+    projectURL: undefined,
+    localURL: undefined,
+    deepseekMissingKey: false,
+    deepseekMissingURL: false,
+    deepseekStatus: undefined,
+    deepseekMalformed: false,
+    stallDeepseek: false,
     finalizedSentences: [],
     missingMetadata: false,
     unsolicitedTags: false,
@@ -438,4 +457,112 @@ Deno.test("a stalled MiMo body falls back to Kimi; two stalled bodies never debi
   strictEqual(state.calls, 2);
   strictEqual(state.debits, 0);
   strictEqual(state.jobs.get(id).status, "failed");
+});
+
+const stagingURL = "https://spb-bp1364k407p37qn7.supabase.opentrust.net";
+
+Deno.test("only trusted staging projects use DeepSeek, independent of local gateway and request URL", async () => {
+  for (const projectURL of [stagingURL, "https://api-staging.sanju.cc"]) {
+    for (const anonymous of [false, true]) {
+      reset({projectURL, anonymous, localURL: "http://kong:8000"});
+      const response = await handler(request("owner", false, true));
+      strictEqual(response.status, 200);
+      strictEqual((await response.json()).memory.provider, "deepseek");
+      const body = state.modelRequests[0];
+      strictEqual(body.model, "deepseek-flash");
+      strictEqual(body.thinking.type, "disabled");
+      strictEqual(body.max_tokens, 4096);
+      strictEqual(body.max_completion_tokens, undefined);
+      strictEqual(body.messages[1].content[0].image_url.url, "data:image/jpeg;base64,AA==");
+      strictEqual(body.messages[1].content[1].text.includes("expression_purpose"), true);
+      strictEqual(state.modelHeaders[0].get("Authorization"), "Bearer deepseek-test-key");
+      strictEqual(state.modelHeaders[0].get("api-key"), null);
+      strictEqual(response.headers.get("Server-Timing")?.includes("deepseek;dur="), true);
+      strictEqual(response.headers.get("Server-Timing")?.includes("mimo;dur="), false);
+      strictEqual((await handler(request())).status, 200);
+      strictEqual(state.calls, 1);
+      strictEqual(state.debits, 1);
+      strictEqual(state.backgroundScopes.length, 1);
+      const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
+      strictEqual(record.mimo_failure_reason, null);
+    }
+  }
+  for (const projectURL of [
+    "https://spb-bp103246ivn7q0nl.supabase.opentrust.net", "https://api.sanju.cc",
+    "https://api-staging.sanju.cc.attacker.invalid", "http://api-staging.sanju.cc", "not a URL",
+  ]) {
+    reset({projectURL, localURL: stagingURL, deepseekMissingKey: true, deepseekMissingURL: true});
+    const incoming = request();
+    const forged = new Request("https://api-staging.sanju.cc/functions/v1/generate-memory-v2", incoming);
+    forged.headers.set("X-Generation-Provider", "deepseek");
+    const response = await handler(forged);
+    strictEqual(response.status, 200);
+    strictEqual((await response.json()).memory.provider, "mimo");
+    strictEqual(state.modelRequests[0].model, "mimo-v2.6-flash");
+    strictEqual(state.modelHeaders[0].get("api-key"), "key");
+    strictEqual(state.debits, 1);
+  }
+});
+
+Deno.test("staging missing DeepSeek configuration fails before model, job claim or debit", async () => {
+  for (const option of ["deepseekMissingKey", "deepseekMissingURL"]) {
+    reset({projectURL: stagingURL, [option]: true});
+    const response = await handler(request());
+    strictEqual(response.status, 500);
+    strictEqual((await response.json()).error, "Missing DeepSeek generation configuration");
+    strictEqual(state.calls, 0);
+    strictEqual(state.jobs.size, 0);
+    strictEqual(state.debits, 0);
+  }
+});
+
+Deno.test("DeepSeek timeout, malformed response and HTTP errors fall back without mislabeling MiMo failure", async () => {
+  for (const failure of [{stallDeepseek: true}, {deepseekMalformed: true}, {deepseekStatus: 429}, {deepseekStatus: 503}]) {
+    for (const anonymous of [false, true]) {
+      reset({projectURL: stagingURL, anonymous, ...failure});
+      const response = await handler(request());
+      strictEqual(response.status, 200);
+      strictEqual((await response.json()).memory.provider, "mimo");
+      strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash");
+      strictEqual(state.debits, 1);
+      const record = anonymous ? state.guests.get(id) : [...state.memories.values()][0];
+      strictEqual(record.mimo_failure_reason, null);
+    }
+  }
+  reset({projectURL: stagingURL, stallDeepseek: true, stallMimo: true});
+  const response = await handler(request());
+  strictEqual(response.status, 200);
+  strictEqual((await response.json()).memory.provider, "kimi");
+  strictEqual(state.modelRequests.map((body: any) => body.model).join(","), "deepseek-flash,mimo-v2.6-flash,kimi-k2.5");
+  strictEqual([...state.memories.values()][0].mimo_failure_reason.includes("MiMo request timeout"), true);
+  strictEqual(state.debits, 1);
+});
+
+Deno.test("staging moderation rejection and complete provider failure never debit", async () => {
+  for (const anonymous of [false, true]) {
+    reset({projectURL: stagingURL, anonymous, blocked: true});
+    strictEqual((await handler(request())).status, 403);
+    strictEqual(state.calls, 0);
+    strictEqual(state.debits, 0);
+    reset({projectURL: stagingURL, anonymous, stallDeepseek: true, stallMimo: true, stallKimi: true});
+    strictEqual((await handler(request())).status, 500);
+    strictEqual(state.calls, 3);
+    strictEqual(state.debits, 0);
+    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "failed");
+    strictEqual(state.released, 1);
+  }
+});
+
+Deno.test("staging DeepSeek preserves committed results after a lost finalize response", async () => {
+  for (const anonymous of [false, true]) {
+    reset({projectURL: stagingURL, anonymous, finalizeResponseLost: true});
+    strictEqual((await handler(request())).status, 504);
+    strictEqual((anonymous ? state.guests : state.jobs).get(id).status, "completed");
+    strictEqual(state.removed, 0);
+    const replay = await handler(request());
+    strictEqual(replay.status, 200);
+    strictEqual((await replay.json()).memory.provider, "deepseek");
+    strictEqual(state.calls, 1);
+    strictEqual(state.debits, 1);
+  }
 });

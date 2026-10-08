@@ -4,7 +4,7 @@ import { scheduleGenerationEnrichment, type EnrichmentScope } from "../_shared/g
 import type { GenerationTiming } from "../_shared/generation-timing.ts"
 import { type GenerationFormat, buildPromptText } from "./content.ts"
 import { serializeGenerationError, decodeBase64, jsonResponse, normalizeOptionalUUID, isTimeoutError, generationPendingResponse } from "./responses.ts"
-import { requestWithFallback } from "./providers.ts"
+import { requestWithFallback, usesDeepSeekGeneration } from "./providers.ts"
 import { loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGuestGenerationResponseIfNeeded, markAuthenticatedGenerationJobFailed, tryAcquireGenerationSlot, releaseGenerationSlot, removeStoragePathQuietly, markGuestGenerationJobFailed } from "./repository.ts"
 import { type GenerationViolationRecord, moderateImageBeforeGeneration, isGenerationViolationBanEnabled, isFutureTimestamp, recordGenerationViolation, buildGenerationPolicyViolationError } from "./moderation.ts"
 import { persistGeneratedResult } from "./persist-result.ts"
@@ -41,6 +41,11 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     const mimoBaseURL = Deno.env.get("MIMO_BASE_URL")
     const kimiApiKey = Deno.env.get("KIMI_API_KEY")
     const kimiBaseURL = Deno.env.get("KIMI_BASE_URL")
+    // Select from server-owned public project identity, never the incoming URL
+    // or the local gateway (which is shared by staging and production).
+    const useDeepSeek = usesDeepSeekGeneration(Deno.env.get("SUPABASE_URL"))
+    const deepseekApiKey = useDeepSeek ? Deno.env.get("DEEPSEEK_API_KEY") : undefined
+    const deepseekBaseURL = useDeepSeek ? Deno.env.get("DEEPSEEK_BASE_URL") : undefined
     // Use the project-local gateway inside Edge Runtime. Public URL loopback
     // can time out after infrastructure upgrades even while client traffic works.
     const supabaseUrl = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
@@ -57,6 +62,10 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       !serviceRoleKey
     ) {
       return jsonResponse({ error: "Missing server configuration" }, 500)
+    }
+
+    if (useDeepSeek && (!deepseekApiKey || !deepseekBaseURL)) {
+      return jsonResponse({ error: "Missing DeepSeek generation configuration" }, 500)
     }
 
     const authHeader = req.headers.get("Authorization")
@@ -358,6 +367,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       mimoApiKey,
       kimiBaseURL,
       kimiApiKey,
+      deepseek: useDeepSeek ? { apiKey: deepseekApiKey!, baseURL: deepseekBaseURL! } : undefined,
       generationFormat,
       fetcher: generationFetch,
       timing,

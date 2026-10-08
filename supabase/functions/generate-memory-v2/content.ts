@@ -20,7 +20,7 @@ interface GeneratedContent {
   sentences: Sentence[]
 }
 
-export type ProviderName = "mimo" | "kimi"
+export type ProviderName = "mimo" | "kimi" | "deepseek"
 
 const LEARNING_TOPICS = [
   ["self_and_style", "自己与穿搭"],
