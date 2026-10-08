@@ -27,7 +27,7 @@ Deno.test("benchmark preserves generation rules and shares full metadata semanti
 Deno.test("both image variants use identical model, limits and image bytes", () => {
   const { combined, separate } = buildBenchmarkPrompts();
   const a = imageRequest(combined, "fixture"), b = imageRequest(separate, "fixture");
-  strictEqual(a.model, "mimo-v2.5");
+  strictEqual(a.model, "mimo-v2.6-flash");
   strictEqual(a.max_completion_tokens, 4096);
   deepStrictEqual(a.thinking, { type: "disabled" });
   const stripPrompt = (body: unknown) => JSON.stringify(body).replace(JSON.stringify(combined), '"PROMPT"').replace(JSON.stringify(separate), '"PROMPT"');

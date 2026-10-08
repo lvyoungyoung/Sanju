@@ -89,7 +89,9 @@
 
 ## 7. 模型生成与解析
 
-首先调用 `mimo-v2.5`，关闭 thinking，`max_completion_tokens: 4096`。把同一分析图作为 `data:image/jpeg;base64,...` 与文本提示一起发送。
+首先调用 `mimo-v2.6-flash`，关闭 thinking，`max_completion_tokens: 4096`。把同一分析图作为 `data:image/jpeg;base64,...` 与文本提示一起发送。
+
+2026-10-08 模型切换同时覆盖后台分类、用途补生成请求；提示词、20 秒超时和 Kimi 兜底不变。部署 `generate-memory-v2` 即可生效，沿用 `MIMO_BASE_URL` 和 `MIMO_API_KEY`，不需要数据库迁移、代理配置或客户端更新；朗读模型不变。
 
 新格式在一次模型调用里生成两组，不是分别调用两次：
 

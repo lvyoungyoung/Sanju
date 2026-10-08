@@ -33,7 +33,7 @@ export async function requestWithFallback(args: {
     }
 > {
   const mimoRequestBody = {
-    model: "mimo-v2.5",
+    model: "mimo-v2.6-flash",
     messages: [
       {
         role: "system",

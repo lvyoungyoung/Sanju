@@ -38,7 +38,7 @@ export function buildBenchmarkPrompts(level = "简单") {
 
 export function imageRequest(prompt: string, base64: string) {
   return {
-    model: "mimo-v2.5",
+    model: "mimo-v2.6-flash",
     messages: [
       { role: "system", content: "You are MiMo, an AI assistant developed by Xiaomi." },
       { role: "user", content: [
@@ -125,7 +125,7 @@ async function main() {
     return { sample: index + 1, bytes: bytes.length, sha256, base64: Buffer.from(bytes).toString("base64") };
   }));
   const report = {
-    startedAt: new Date().toISOString(), model: "mimo-v2.5", level, style: "平铺直叙", rounds,
+    startedAt: new Date().toISOString(), model: "mimo-v2.6-flash", level, style: "平铺直叙", rounds,
     requestDeadlineMs: 20_000, automaticRetries: 0, maximumRequests: rounds * fixtures.length * 3,
     generationSourceSHA256: Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(generationSource))).toString("hex"),
     promptCharacters: { combined: prompts.combined.length, separate: prompts.separate.length, metadata: prompts.metadata.length },

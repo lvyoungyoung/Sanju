@@ -255,6 +255,11 @@ Deno.test("extra photo tags never reach storage for either account or provider",
       strictEqual(state.finalizedSentences[0].expression_purpose, "Describing a cat.");
       strictEqual(state.debits, 1);
       strictEqual(state.backgroundScopes.length, 1);
+      strictEqual(state.modelRequests[0].model, "mimo-v2.6-flash");
+      strictEqual(state.modelRequests[0].thinking.type, "disabled");
+      strictEqual(state.modelRequests[0].max_completion_tokens, 4096);
+      strictEqual(state.modelRequests[0].messages[1].content[0].type, "image_url");
+      if (stallMimo) strictEqual(state.modelRequests[1].model, "kimi-k2.5");
       strictEqual(state.modelRequests.every((body: any) => !JSON.stringify(body.messages).includes("tags")), true);
     }
   }

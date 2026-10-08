@@ -140,7 +140,7 @@ export async function generateSentenceMetadata(
     method: "POST",
     headers: { "Content-Type": "application/json", "api-key": config.key },
     body: JSON.stringify({
-      model: "mimo-v2.5",
+      model: "mimo-v2.6-flash",
       messages: [
         { role: "system", content: buildSentenceMetadataPrompt() },
         { role: "user", content: JSON.stringify({ sentences: sentences.map(({ id, english, chinese }) => ({ id, english, chinese })) }) },

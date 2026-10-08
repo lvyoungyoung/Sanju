@@ -64,7 +64,7 @@ Deno.test("one text-only metadata request covers all six sentences with stable i
     async (_url, init) => {
       calls++;
       const body = JSON.parse(String((init as RequestInit).body));
-      strictEqual(body.model, "mimo-v2.5");
+      strictEqual(body.model, "mimo-v2.6-flash");
       strictEqual(body.thinking.type, "disabled");
       deepStrictEqual(
         JSON.parse(body.messages[1].content).sentences,
