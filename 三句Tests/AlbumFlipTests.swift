@@ -407,21 +407,36 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(decoded.size.width, decoded.size.height), 1280)
     }
 
+    func testFlipCardSizeAdaptsToAvailableArea() {
+        XCTAssertEqual(AlbumFlipLayout.cardSize(in: CGSize(width: 320, height: 430)), CGSize(width: 272, height: 394))
+        XCTAssertEqual(AlbumFlipLayout.cardSize(in: CGSize(width: 393, height: 600)), CGSize(width: 345, height: 564))
+        XCTAssertEqual(AlbumFlipLayout.cardSize(in: CGSize(width: 1024, height: 900)), CGSize(width: 520, height: 864))
+        XCTAssertEqual(AlbumFlipLayout.cardSize(in: .zero), .zero)
+    }
+
     func testSinglePassCompletionRendersInBothThemesAndWithoutNetwork() async throws {
         for scheme in [ColorScheme.light, .dark] {
             for isOnline in [true, false] {
-                let view = AlbumFlipCompletionView(isPhotoSelectionEnabled: isOnline, onChooseAnotherPhoto: {})
+                let cardSize = AlbumFlipLayout.cardSize(in: CGSize(width: 320, height: 430))
+                let view = AlbumFlipCompletionView(size: cardSize, isPhotoSelectionEnabled: isOnline, onChooseAnotherPhoto: {})
+                    .frame(width: 320, height: 568, alignment: .top)
                     .background(AppSurfaceColor.page)
+                    .ignoresSafeArea()
                     .environment(\.colorScheme, scheme)
                     .environment(\.dynamicTypeSize, isOnline ? .large : .accessibility3)
                 let size = CGSize(width: 320, height: 568)
                 let image = try await renderInWindow(view, size: size)
                 XCTAssertEqual(image.size, size)
                 var stripeColors = Set<[UInt8]>()
-                for x in stride(from: 50, through: 260, by: 3) {
-                    stripeColors.insert(try pixel(in: image, at: CGPoint(x: CGFloat(x), y: 140)))
+                for x in 50...260 {
+                    stripeColors.insert(try pixel(in: image, at: CGPoint(x: CGFloat(x), y: 20)))
                 }
                 XCTAssertGreaterThan(stripeColors.count, 1, "The completion card should have a visible diagonal hatch, not a flat background")
+                XCTAssertEqual(
+                    try pixel(in: image, at: CGPoint(x: 160, y: 410)),
+                    try pixel(in: image, at: CGPoint(x: 1, y: 140)),
+                    "Completion content must stay inside the same fixed card area, even with large text"
+                )
                 let attachment = XCTAttachment(image: image)
                 attachment.name = "AlbumFlip-Completion-\(scheme)-\(isOnline ? "online" : "offline")"
                 attachment.lifetime = .keepAlways

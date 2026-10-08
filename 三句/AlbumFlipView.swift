@@ -33,24 +33,27 @@ struct AlbumFlipView: View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 header
-                if deck.hasFinishedSinglePass {
-                    AlbumFlipCompletionView(isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
-                        guard isVisible, appModel.albumFlipOwnerID == ownerID,
-                              appModel.isNetworkAvailable else { return }
-                        onChooseAnotherPhoto?()
-                        close()
-                    }
-                } else if deck.cards.isEmpty {
+                if deck.cards.isEmpty && !deck.hasFinishedSinglePass {
                     ContentUnavailableView(
                         L10n.string("album_flip.empty", "还没有可以翻看的句子"),
                         systemImage: "photo.on.rectangle"
                     )
                 } else {
                     GeometryReader { area in
-                        let width = min(max(0, area.size.width - 48), 520)
-                        let height = max(0, area.size.height - 36)
-                        cardStack(size: CGSize(width: width, height: height), exitWidth: proxy.size.width)
-                            .frame(width: area.size.width, height: area.size.height, alignment: .top)
+                        let size = AlbumFlipLayout.cardSize(in: area.size)
+                        Group {
+                            if deck.hasFinishedSinglePass {
+                                AlbumFlipCompletionView(size: size, isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
+                                    guard isVisible, appModel.albumFlipOwnerID == ownerID,
+                                          appModel.isNetworkAvailable else { return }
+                                    onChooseAnotherPhoto?()
+                                    close()
+                                }
+                            } else {
+                                cardStack(size: size, exitWidth: proxy.size.width)
+                            }
+                        }
+                        .frame(width: area.size.width, height: area.size.height, alignment: .top)
                     }
                     .padding(.top, 18)
 
@@ -58,6 +61,10 @@ struct AlbumFlipView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 4)
                         .padding(.bottom, 16)
+                        // Reserve the same footer space so the completion frame never grows.
+                        .opacity(deck.hasFinishedSinglePass ? 0 : 1)
+                        .allowsHitTesting(!deck.hasFinishedSinglePass)
+                        .accessibilityHidden(deck.hasFinishedSinglePass)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -229,12 +236,10 @@ struct AlbumFlipView: View {
         VStack(spacing: 14) {
             HStack(alignment: .top, spacing: 20) {
                 feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
-                if let card = deck.cards.first {
-                    AlbumFlipReplayButton(speech: appModel.speech, text: card.item.sentence.english) {
-                        speakCurrentCard(automatically: false)
-                    }
-                        .disabled(isAdvancing)
+                AlbumFlipReplayButton(speech: appModel.speech, text: deck.cards.first?.item.sentence.english ?? "") {
+                    speakCurrentCard(automatically: false)
                 }
+                .disabled(isAdvancing || deck.cards.isEmpty)
                 feedbackButton(.familiar, icon: "checkmark", width: exitWidth)
             }
             .frame(maxWidth: 460)
@@ -351,50 +356,56 @@ struct AlbumFlipView: View {
     }
 }
 
+enum AlbumFlipLayout {
+    static func cardSize(in area: CGSize) -> CGSize {
+        CGSize(width: min(max(0, area.width - 48), 520), height: max(0, area.height - 36))
+    }
+}
+
 struct AlbumFlipCompletionView: View {
+    let size: CGSize
     let isPhotoSelectionEnabled: Bool
     let onChooseAnotherPhoto: () -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            ScrollView {
+        ScrollView {
+            VStack(spacing: 24) {
+                Text(L10n.string("album_flip.complete.title", "这张已经翻完了，再来一张吧"))
+                    .font(.body.weight(.medium))
                 Button(action: onChooseAnotherPhoto) {
-                    VStack(spacing: 12) {
-                        Text(L10n.string("album_flip.complete.title", "这张已经翻完了，再来一张吧"))
-                            .font(.body.weight(.medium))
-                        if !isPhotoSelectionEnabled {
-                            Text(L10n.string("new.photo_selection.network_required", "请连接网络"))
-                                .font(.subheadline)
-                        }
-                    }
-                    .foregroundStyle(AppTextColor.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(28)
-                    .frame(maxWidth: .infinity, minHeight: max(280, proxy.size.height - 42))
-                    .background {
-                        AlbumFlipCompletionHatching()
-                            .stroke(AppTextColor.secondary.opacity(0.13), lineWidth: 1)
-                            .background(AppSurfaceColor.card.opacity(0.5))
-                            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                            .strokeBorder(AppTextColor.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [7, 6]))
-                            .allowsHitTesting(false)
-                    }
-                    .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+                    Text(L10n.string("album_flip.complete.choose_another", "再上传一张"))
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppPalette.onAccent)
+                        .padding(.horizontal, 24)
+                        .frame(minHeight: AppControlHeight.regular)
+                        .background(AppPalette.accent, in: Capsule())
                 }
                 .buttonStyle(StudioPressStyle())
                 .disabled(!isPhotoSelectionEnabled)
-                .accessibilityHint(L10n.string("album_flip.complete.choose_another", "再上传一张"))
-                .frame(maxWidth: 520)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 24)
-                .padding(.top, 18)
-                .padding(.bottom, 24)
+                .opacity(isPhotoSelectionEnabled ? 1 : 0.5)
+                if !isPhotoSelectionEnabled {
+                    Text(L10n.string("new.photo_selection.network_required", "请连接网络"))
+                        .font(.subheadline)
+                }
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .foregroundStyle(AppTextColor.secondary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(28)
+            .frame(maxWidth: .infinity, minHeight: size.height)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(width: size.width, height: size.height)
+        .background {
+            AlbumFlipCompletionHatching()
+                .stroke(AppTextColor.secondary.opacity(0.13), lineWidth: 1)
+                .background(AppSurfaceColor.card.opacity(0.5))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
+                .strokeBorder(AppTextColor.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [7, 6]))
+                .allowsHitTesting(false)
         }
     }
 }
