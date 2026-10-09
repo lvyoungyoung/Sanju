@@ -36,6 +36,7 @@ export async function requestWithFallback(args: {
   | {
       ok: true
       sentences: Sentence[]
+      tags: string[]
       provider: ProviderName
       mimoFailureReason: string | null
     }
@@ -223,7 +224,7 @@ async function requestPrimaryModelOnce(
   fetcher: typeof fetch,
   provider: "mimo" | "deepseek" = "mimo"
 ): Promise<
-  | { ok: true; sentences: Sentence[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -351,6 +352,7 @@ async function requestPrimaryModelOnce(
   return {
     ok: true,
     sentences: generatedContent.sentences,
+    tags: generatedContent.tags,
     provider,
   }
 }
@@ -362,7 +364,7 @@ async function requestKimiOnce(
   generationFormat: GenerationFormat,
   fetcher: typeof fetch
 ): Promise<
-  | { ok: true; sentences: Sentence[]; provider: ProviderName }
+  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -471,6 +473,7 @@ async function requestKimiOnce(
   return {
     ok: true,
     sentences: generatedContent.sentences,
+    tags: generatedContent.tags,
     provider: "kimi",
   }
 }

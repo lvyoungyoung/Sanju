@@ -249,7 +249,7 @@ struct MemoriesView: View {
     private var isShowingPhotos: Bool { topicID != nil || browseMode == .time }
     private var topicTitle: String {
         guard let topicID else { return L10n.string("memories.page_title", "回忆") }
-        return LearningTopic.topic(for: topicID)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
+        return MemoryPhotoCategory.category(for: topicID)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
     }
 
     private var pageTitleOpacity: Double {

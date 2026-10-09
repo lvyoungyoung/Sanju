@@ -1,4 +1,5 @@
 import { buildSentenceMetadataRules } from "../_shared/sentence-metadata.ts"
+import { buildPhotoCategoryRules, normalizePhotoCategories } from "./photo-categories.ts"
 
 export interface Sentence {
   english: string
@@ -18,6 +19,7 @@ export type FinalizedSentence = Sentence & {
 
 interface GeneratedContent {
   sentences: Sentence[]
+  tags: string[]
 }
 
 export type ProviderName = "mimo" | "kimi" | "deepseek"
@@ -87,16 +89,18 @@ ${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文
 
 ${buildSentenceMetadataRules()}
 
+${buildPhotoCategoryRules()}
+
 你必须严格遵守以下输出规则：
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
-2. 顶层字段必须且只能是 image_descriptions 和 scene_and_feelings
+2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags；tags 是照片分类 ID 数组
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
 4. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段
 5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 6. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}]}
+{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":[]}
 `.trim()
   }
 
@@ -108,13 +112,15 @@ ${difficultyPriorityPrompt}
 
 ${buildSentenceMetadataRules()}
 
+${buildPhotoCategoryRules()}
+
 你必须严格遵守以下输出规则：
 1. 你的回复必须是一个 JSON 对象
 2. 不要把 JSON 放在字符串里
 3. 不要返回 markdown
 4. 不要使用 \`\`\` 或 \`\`\`json 代码块
 5. 不要写任何解释、前言、结尾、备注
-6. 顶层字段必须且只能是 sentences
+6. 顶层字段必须且只能是 sentences 和 tags；tags 是照片分类 ID 数组
 7. sentences 必须是长度为 3 的数组
 8. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english、chinese 必须是非空字符串
@@ -125,7 +131,7 @@ ${buildSentenceMetadataRules()}
 14. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}]}
+{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":[]}
 `.trim()
 }
 function parseSentences(content: string): Sentence[] | null {
@@ -161,6 +167,7 @@ export function parseGeneratedContent(
 
     return {
       sentences: [...descriptions, ...sceneAndFeelings],
+      tags: normalizePhotoCategories(payload.tags),
     }
   }
 
@@ -171,6 +178,7 @@ export function parseGeneratedContent(
 
   return {
     sentences,
+    tags: normalizePhotoCategories(parseJSONObject(content)?.tags),
   }
 }
 

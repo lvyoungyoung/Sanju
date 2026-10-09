@@ -14,6 +14,7 @@ export async function finalizeAuthenticatedGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
+    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -34,8 +35,7 @@ export async function finalizeAuthenticatedGeneration(
     p_created_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
-    // The existing finalize RPC requires this parameter; photo tags are no longer generated.
-    p_tags: [],
+    p_tags: args.tags,
   })
 
   if (error) {
@@ -56,6 +56,7 @@ export async function finalizeGuestGeneration(
     createdAt: string
     provider: ProviderName
     sentences: Sentence[]
+    tags: string[]
   }
 ): Promise<
   | { ok: true; remainingCredits: number }
@@ -74,7 +75,7 @@ export async function finalizeGuestGeneration(
     p_completed_at: args.createdAt,
     p_provider: args.provider,
     p_sentences: args.sentences,
-    p_tags: [],
+    p_tags: args.tags,
   })
 
   if (error) {

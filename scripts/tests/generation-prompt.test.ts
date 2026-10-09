@@ -4,11 +4,23 @@ import {
   buildPromptText,
   parseGeneratedContent,
 } from "../../supabase/functions/generate-memory-v2/content.ts";
+import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
 
 const levels = ["启蒙", "简单", "中等", "高级"] as const;
 const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 
-Deno.test("restored prompts exactly match the pre-Gemini baseline at every difficulty", () => {
+// Remove only the new photo-level extension to detect unintended sentence prompt changes.
+function sentencePromptBaseline(prompt: string): string {
+  return prompt.replace(`\n\n${buildPhotoCategoryRules()}`, "")
+    .replace(
+      "image_descriptions、scene_and_feelings 和 tags；tags 是照片分类 ID 数组",
+      "image_descriptions 和 scene_and_feelings",
+    )
+    .replace("sentences 和 tags；tags 是照片分类 ID 数组", "sentences")
+    .replace(/,"tags":\[\](?=\}$)/, "");
+}
+
+Deno.test("photo classification leaves the restored sentence prompt unchanged at every difficulty", () => {
   const baseline = [
     [
       "legacy_v1",
@@ -53,14 +65,16 @@ Deno.test("restored prompts exactly match the pre-Gemini baseline at every diffi
   ] as const;
   for (const [format, level, hash] of baseline) {
     strictEqual(
-      createHash("sha256").update(buildPromptText(level, format)).digest("hex"),
+      createHash("sha256").update(
+        sentencePromptBaseline(buildPromptText(level, format)),
+      ).digest("hex"),
       hash,
       `${format}/${level}`,
     );
   }
 });
 
-Deno.test("removing style selection leaves the entire output contract byte-for-byte unchanged", () => {
+Deno.test("photo classification preserves all existing sentence output requirements", () => {
   const hashes = {
     dual_tabs_v1: {
       starter:
@@ -75,7 +89,7 @@ Deno.test("removing style selection leaves the entire output contract byte-for-b
   };
   for (const format of formats) {
     for (const level of levels) {
-      const prompt = buildPromptText(level, format);
+      const prompt = sentencePromptBaseline(buildPromptText(level, format));
       const start = prompt.indexOf("你必须严格遵守以下输出规则：");
       ok(start >= 0);
       strictEqual(
@@ -89,8 +103,10 @@ Deno.test("removing style selection leaves the entire output contract byte-for-b
 
 Deno.test("natural beginner guidance stays compact without shrinking output rules", () => {
   const prompt = buildPromptText("简单", "dual_tabs_v1");
-  ok(prompt.indexOf("你必须严格遵守以下输出规则：") <= (5066 - 861) / 2);
-  ok(prompt.length <= 2900, `Prompt grew to ${prompt.length} characters`);
+  const sentenceOnly = sentencePromptBaseline(prompt);
+  ok(sentenceOnly.indexOf("你必须严格遵守以下输出规则：") <= (5066 - 861) / 2);
+  ok(sentenceOnly.length <= 2900);
+  ok(prompt.length <= 3900, `Prompt grew to ${prompt.length} characters`);
 });
 
 Deno.test("combined generation preserves sentence groups, categories and purposes", () => {
@@ -101,7 +117,7 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
       const groups = format === "legacy_v1"
         ? ["sentences"]
         : ["image_descriptions", "scene_and_feelings"];
-      deepStrictEqual(Object.keys(example).sort(), [...groups].sort());
+      deepStrictEqual(Object.keys(example).sort(), [...groups, "tags"].sort());
       for (const group of groups) {
         strictEqual(example[group].length, 3);
         for (const item of example[group]) {
@@ -116,10 +132,10 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
         }
       }
       ok(prompt.includes("self_and_style"));
-      ok(!prompt.includes("tags"));
+      ok(prompt.includes(buildPhotoCategoryRules()));
       const parsed = parseGeneratedContent(JSON.stringify(example), format);
       ok(parsed);
-      strictEqual("tags" in parsed, false);
+      deepStrictEqual(parsed.tags, []);
       strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
       for (const item of parsed.sentences) {
         deepStrictEqual(item.learning_topic_ids, []);
@@ -148,7 +164,7 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
   }
 });
 
-Deno.test("unsolicited photo tags are ignored without discarding sentence metadata", () => {
+Deno.test("unknown photo categories are ignored without discarding sentence metadata", () => {
   for (const format of formats) {
     const prompt = buildPromptText("简单", format);
     const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
@@ -157,7 +173,7 @@ Deno.test("unsolicited photo tags are ignored without discarding sentence metada
       format,
     );
     ok(parsed);
-    strictEqual("tags" in parsed, false);
+    deepStrictEqual(parsed.tags, []);
     strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
     strictEqual(
       parsed.sentences.every((s) =>

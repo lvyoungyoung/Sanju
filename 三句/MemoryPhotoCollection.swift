@@ -22,7 +22,7 @@ struct MemoryPhotoTopic: Identifiable {
     let memories: [MemoryEntry]
 
     var title: String {
-        LearningTopic.topic(for: id)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
+        MemoryPhotoCategory.category(for: id)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
     }
 
     var cover: MemoryEntry? { memories.first }
@@ -43,16 +43,14 @@ struct MemoryPhotoCollection {
             if $0.createdAt != $1.createdAt { return $0.createdAt > $1.createdAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-        let knownIDs = Set(LearningTopic.all.map(\.id))
         var grouped: [String: [MemoryEntry]] = [:]
         for memory in allMemories {
-            let topicIDs = Set(memory.sentences.flatMap(\.learningTopicIDs)).intersection(knownIDs)
-            // Classify photos using their sentences; count each photo only once per topic.
-            for id in topicIDs.isEmpty ? [Self.uncategorizedID] : Array(topicIDs) {
+            let categoryIDs = MemoryPhotoCategory.normalizedIDs(memory.tags)
+            for id in categoryIDs.isEmpty ? [Self.uncategorizedID] : categoryIDs {
                 grouped[id, default: []].append(memory)
             }
         }
-        topics = (LearningTopic.all.map(\.id) + [Self.uncategorizedID]).compactMap { id in
+        topics = (MemoryPhotoCategory.all.map(\.id) + [Self.uncategorizedID]).compactMap { id in
             guard let photos = grouped[id], !photos.isEmpty else { return nil }
             return MemoryPhotoTopic(id: id, memories: photos)
         }

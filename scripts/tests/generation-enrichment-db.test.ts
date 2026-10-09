@@ -108,6 +108,9 @@ Deno.test("durable generation enrichment preserves transactions, leases and gues
     strictEqual(functionSQL(combinedMetadataMigration, "finalize_authenticated_generation").replace("    'learning_topic_ids', s.learning_topic_ids,\n", ""), oldFinalize, "only the queued payload changes; finalization transaction remains identical");
     await db.exec(combinedMetadataMigration);
     await db.exec(combinedMetadataMigration);
+    const photoCategoriesMigration = await Deno.readTextFile(new URL("20261009000000_add_photo_scene_categories.sql", root));
+    await db.exec(photoCategoriesMigration);
+    await db.exec(photoCategoriesMigration);
     await db.exec(`create trigger match_sentence_to_semantic_study_scenes
       after insert or update of learning_topic_ids on memory_sentences
       for each row execute function match_sentence_to_semantic_study_scenes()`);

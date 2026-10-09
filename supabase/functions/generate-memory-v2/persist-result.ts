@@ -29,7 +29,7 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
     guestImagePath, guestImageUploaded, createdAt, authenticatedClientRequestID,
     imageBytes, generationFormat, completionResult, onFinalizationStarted } = context
   timing.start("result_prepare")
-  const { sentences, provider, mimoFailureReason } = completionResult
+  const { sentences, tags, provider, mimoFailureReason } = completionResult
   const finalizedSentences: FinalizedSentence[] = sentences.map((sentence) => ({
     id: crypto.randomUUID(),
     english: sentence.english,
@@ -49,6 +49,7 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
       createdAt,
       provider,
       sentences: finalizedSentences,
+      tags,
     })
 
     if (!finalizeResult.ok) {
@@ -127,6 +128,7 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
     createdAt,
     provider,
     sentences: finalizedSentences,
+    tags,
   })
 
   if (!finalizeResult.ok) {
@@ -183,7 +185,7 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
       imagePath,
       createdAt,
       provider,
-      tags: [],
+      tags,
       sentences: toClientSentences(finalizedSentences, generationFormat),
     },
     remainingCredits: finalizeResult.remainingCredits,

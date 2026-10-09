@@ -1,4 +1,4 @@
-import { strictEqual } from "node:assert";
+import { deepStrictEqual, strictEqual } from "node:assert";
 import { readFunctionSource } from "./helpers/function-source.ts";
 
 // Exercise the actual HTTP handler with overlapping requests. All auth, storage,
@@ -74,6 +74,7 @@ const fetch = (async (input: any, init?: RequestInit) => {
   const payload = state.dual
     ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence]}
     : {sentences:[sentence,sentence,sentence]};
+  if (state.photoTags !== undefined) Object.assign(payload, {tags:state.photoTags});
   if (state.unsolicitedTags) Object.assign(payload, {tags:['动物']});
   return Response.json({choices:[{message:{content:JSON.stringify(payload)}}]});
 }) as typeof globalThis.fetch;
@@ -117,7 +118,8 @@ function createClient(_url:string,key:string,_options?:unknown):any {
       return {data:'acquired',error:null};
     }
     if (name.startsWith('finalize_')) {
-      strictEqual(Array.isArray(args.p_tags) && args.p_tags.length === 0, true);
+      strictEqual(Array.isArray(args.p_tags) && args.p_tags.length <= 3, true);
+      state.finalizedTags = args.p_tags;
       state.finalizedSentences = args.p_sentences;
       const guest=name==='finalize_guest_generation';
       const job=(guest?state.guests:state.jobs).get(guest?args.p_guest_job_id:args.p_client_request_id);
@@ -168,6 +170,8 @@ function reset(options: Record<string, unknown> = {}) {
     finalizedSentences: [],
     missingMetadata: false,
     unsolicitedTags: false,
+    photoTags: undefined,
+    finalizedTags: [],
     removed: 0,
     released: 0,
     uploadFails: false,
@@ -321,7 +325,7 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
   }
 });
 
-Deno.test("extra photo tags never reach storage for either account or provider", async () => {
+Deno.test("unknown photo tags never reach storage for either account or provider", async () => {
   for (const anonymous of [false, true]) {
     for (const stallMimo of [false, true]) {
       reset({ anonymous, stallMimo, unsolicitedTags: true });
@@ -347,10 +351,59 @@ Deno.test("extra photo tags never reach storage for either account or provider",
       if (stallMimo) strictEqual(state.modelRequests[1].model, "kimi-k2.5");
       strictEqual(
         state.modelRequests.every((body: any) =>
-          !JSON.stringify(body.messages).includes("tags")
+          JSON.stringify(body.messages).includes("照片分类 tags")
         ),
         true,
       );
+    }
+  }
+});
+
+Deno.test("photo categories persist independently and survive replay for all providers, formats and account types", async () => {
+  for (const anonymous of [false, true]) {
+    for (const legacy of [false, true]) {
+      for (const provider of ["mimo", "kimi", "deepseek"]) {
+        reset({
+          anonymous,
+          dual: !legacy,
+          stallMimo: provider === "kimi",
+          projectURL: provider === "deepseek"
+            ? "https://api-staging.sanju.cc"
+            : undefined,
+          photoTags: [
+            " restaurants_and_cafes ",
+            "food_and_drinks",
+            "food_and_drinks",
+            "unknown",
+            "home_life",
+            "natural_scenery",
+          ],
+        });
+        const makeRequest = () =>
+          request("owner", legacy, false, { clientRequestID: id });
+        const response = await handler(makeRequest());
+        strictEqual(response.status, 200);
+        const result = await response.json();
+        const expected = [
+          "restaurants_and_cafes",
+          "food_and_drinks",
+          "home_life",
+        ];
+        deepStrictEqual(result.memory.tags, expected);
+        deepStrictEqual(state.finalizedTags, expected);
+        strictEqual(result.memory.provider, provider);
+        strictEqual(result.memory.sentences.length, legacy ? 3 : 6);
+        deepStrictEqual(result.memory.sentences[0].learning_topic_ids, [
+          "pet_life",
+        ]);
+        const calls = state.calls;
+        state.photoTags = ["natural_scenery"];
+        const replay = await handler(makeRequest());
+        strictEqual(replay.status, 200);
+        deepStrictEqual((await replay.json()).memory.tags, expected);
+        strictEqual(state.calls, calls);
+        strictEqual(state.debits, 1);
+      }
     }
   }
 });

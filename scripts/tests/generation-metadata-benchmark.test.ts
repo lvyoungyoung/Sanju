@@ -1,24 +1,42 @@
 import { deepStrictEqual, ok, strictEqual, throws } from "node:assert";
-import { buildBenchmarkPrompts, imageRequest, stats, validateGeneration } from "../benchmark-generation-metadata.ts";
+import {
+  buildBenchmarkPrompts,
+  imageRequest,
+  stats,
+  validateGeneration,
+} from "../benchmark-generation-metadata.ts";
 import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
+import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
 
 Deno.test("benchmark preserves generation rules and shares full metadata semantics", () => {
   for (const level of ["启蒙", "简单", "中等"]) {
     const { separate, combined, metadata } = buildBenchmarkPrompts(level);
-    ok(!combined.includes("tags"));
-    ok(!separate.includes("tags"));
-    ok(!separate.includes("expression_purpose"));
-    ok(!separate.includes("learning_topic_ids"));
+    ok(combined.includes("照片分类 tags"));
+    ok(separate.includes("照片分类 tags"));
+    const separateSentencePrompt = separate.replace(
+      buildPhotoCategoryRules(),
+      "",
+    );
+    ok(!separateSentencePrompt.includes("expression_purpose"));
+    ok(!separateSentencePrompt.includes("learning_topic_ids"));
     const rules = buildSentenceMetadataRules();
     ok(metadata.includes(rules));
     ok(combined.includes(rules));
-    const beforeRules = separate.slice(0, separate.indexOf("你必须严格遵守以下输出规则："));
+    const beforeRules = separate.slice(
+      0,
+      separate.indexOf(buildPhotoCategoryRules()),
+    );
     ok(combined.startsWith(beforeRules));
     const example = JSON.parse(combined.slice(combined.lastIndexOf("\n{")));
     for (const group of ["image_descriptions", "scene_and_feelings"]) {
       strictEqual(example[group].length, 3);
       for (const sentence of example[group]) {
-        deepStrictEqual(Object.keys(sentence).sort(), ["chinese", "english", "expression_purpose", "learning_topic_ids"]);
+        deepStrictEqual(Object.keys(sentence).sort(), [
+          "chinese",
+          "english",
+          "expression_purpose",
+          "learning_topic_ids",
+        ]);
       }
     }
   }
@@ -26,31 +44,62 @@ Deno.test("benchmark preserves generation rules and shares full metadata semanti
 
 Deno.test("both image variants use identical model, limits and image bytes", () => {
   const { combined, separate } = buildBenchmarkPrompts();
-  const a = imageRequest(combined, "fixture"), b = imageRequest(separate, "fixture");
+  const a = imageRequest(combined, "fixture"),
+    b = imageRequest(separate, "fixture");
   strictEqual(a.model, "mimo-v2.6-flash");
   strictEqual(a.max_completion_tokens, 4096);
   deepStrictEqual(a.thinking, { type: "disabled" });
-  const stripPrompt = (body: unknown) => JSON.stringify(body).replace(JSON.stringify(combined), '"PROMPT"').replace(JSON.stringify(separate), '"PROMPT"');
+  const stripPrompt = (body: unknown) =>
+    JSON.stringify(body).replace(JSON.stringify(combined), '"PROMPT"').replace(
+      JSON.stringify(separate),
+      '"PROMPT"',
+    );
   strictEqual(stripPrompt(a), stripPrompt(b));
 });
 
 Deno.test("benchmark rejects incomplete combined outputs rather than counting fast failures as success", () => {
-  const sentence = { english: "The soup tastes good.", chinese: "这碗汤很好喝。" };
-  const metadata = { learning_topic_ids: ["food_and_drinks"], expression_purpose: "Describing the taste of soup." };
-  const response = (extra: object) => JSON.stringify({
-    image_descriptions: Array.from({ length: 3 }, () => ({ ...sentence, ...extra })),
-    scene_and_feelings: Array.from({ length: 3 }, () => ({ ...sentence, ...extra })),
-  });
+  const sentence = {
+    english: "The soup tastes good.",
+    chinese: "这碗汤很好喝。",
+  };
+  const metadata = {
+    learning_topic_ids: ["food_and_drinks"],
+    expression_purpose: "Describing the taste of soup.",
+  };
+  const response = (extra: object) =>
+    JSON.stringify({
+      image_descriptions: Array.from(
+        { length: 3 },
+        () => ({ ...sentence, ...extra }),
+      ),
+      scene_and_feelings: Array.from(
+        { length: 3 },
+        () => ({ ...sentence, ...extra }),
+      ),
+    });
   strictEqual(validateGeneration(response({}), false).length, 6);
   strictEqual(validateGeneration(response(metadata), true).length, 6);
   throws(() => validateGeneration(response({}), true));
-  throws(() => validateGeneration(response({ ...metadata, expression_purpose: "" }), true));
-  throws(() => validateGeneration(response({ ...metadata, learning_topic_ids: ["invented"] }), true));
+  throws(() =>
+    validateGeneration(response({ ...metadata, expression_purpose: "" }), true)
+  );
+  throws(() =>
+    validateGeneration(
+      response({ ...metadata, learning_topic_ids: ["invented"] }),
+      true,
+    )
+  );
   throws(() => validateGeneration("{}", false));
 });
 
 Deno.test("benchmark summaries use actual wall time samples", () => {
   strictEqual(stats([]), null);
-  deepStrictEqual(stats([3000, 1000, 2000]), { count: 3, medianMs: 2000, meanMs: 2000, minMs: 1000, maxMs: 3000 });
+  deepStrictEqual(stats([3000, 1000, 2000]), {
+    count: 3,
+    medianMs: 2000,
+    meanMs: 2000,
+    minMs: 1000,
+    maxMs: 3000,
+  });
   strictEqual(stats([1000, 3000])?.medianMs, 2000);
 });

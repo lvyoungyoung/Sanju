@@ -17,11 +17,11 @@ final class MemoryPhotoCollectionTests: XCTestCase {
         XCTAssertTrue(collection.flipItems(in: nil).isEmpty)
     }
 
-    func testClassifiesPhotosFromAllSentencesWithoutDuplicateCounts() throws {
-        let photo = memory(topics: [["food_and_drinks", "food_and_drinks"], ["food_and_drinks"], ["friends_gatherings"]])
+    func testUsesPhotoCategoriesNotSentenceTopicsWithoutDuplicateCounts() throws {
+        let photo = memory(categories: ["food_and_drinks", "food_and_drinks", "restaurants_and_cafes"], topics: [["travel"], ["friends_gatherings"]])
         let collection = MemoryPhotoCollection(memories: [photo, photo])
         XCTAssertEqual(collection.allMemories.count, 1)
-        XCTAssertEqual(Set(collection.topics.map(\.id)), ["food_and_drinks", "friends_gatherings"])
+        XCTAssertEqual(Set(collection.topics.map(\.id)), ["food_and_drinks", "restaurants_and_cafes"])
         for topic in collection.topics {
             XCTAssertEqual(topic.memories.map(\.id), [photo.id])
             XCTAssertEqual(try XCTUnwrap(topic.cover).id, photo.id)
@@ -29,9 +29,9 @@ final class MemoryPhotoCollectionTests: XCTestCase {
     }
 
     func testUnknownAndMissingCategoriesRemainInUncategorized() {
-        let old = memory(topics: [[]])
-        let unknown = memory(topics: [["legacy_topic"]])
-        let known = memory(topics: [["natural_scenery", "legacy_topic"]])
+        let old = memory(topics: [["travel", "natural_scenery"]])
+        let unknown = memory(categories: ["风景", "legacy_topic"], topics: [["food_and_drinks"]])
+        let known = memory(categories: ["natural_scenery", "legacy_topic"], topics: [[]])
         let collection = MemoryPhotoCollection(memories: [old, unknown, known])
         XCTAssertEqual(Set(collection.memories(in: MemoryPhotoCollection.uncategorizedID).map(\.id)), [old.id, unknown.id])
         XCTAssertEqual(collection.memories(in: "natural_scenery").map(\.id), [known.id])
@@ -39,22 +39,22 @@ final class MemoryPhotoCollectionTests: XCTestCase {
     }
 
     func testTimeAndTopicPhotosAreNewestFirst() {
-        let older = memory(topics: [["travel"]], date: Date(timeIntervalSince1970: 100))
-        let newer = memory(topics: [["travel"]], date: Date(timeIntervalSince1970: 200))
+        let older = memory(categories: ["natural_scenery"], topics: [[]], date: Date(timeIntervalSince1970: 100))
+        let newer = memory(categories: ["natural_scenery"], topics: [[]], date: Date(timeIntervalSince1970: 200))
         let collection = MemoryPhotoCollection(memories: [older, newer])
         XCTAssertEqual(collection.memories(in: nil).map(\.id), [newer.id, older.id])
-        XCTAssertEqual(collection.memories(in: "travel").map(\.id), [newer.id, older.id])
+        XCTAssertEqual(collection.memories(in: "natural_scenery").map(\.id), [newer.id, older.id])
     }
 
     func testTopicsKeepCatalogOrderAndOnlyShowNonemptyAlbums() {
-        let photo = memory(topics: [["travel"], ["food_and_drinks"]])
+        let photo = memory(categories: ["natural_scenery", "food_and_drinks"], topics: [[]])
         let collection = MemoryPhotoCollection(memories: [photo])
-        XCTAssertEqual(collection.topics.map(\.id), LearningTopic.all.map(\.id).filter { ["travel", "food_and_drinks"].contains($0) })
+        XCTAssertEqual(collection.topics.map(\.id), MemoryPhotoCategory.all.map(\.id).filter { ["natural_scenery", "food_and_drinks"].contains($0) })
     }
 
     func testFlipIncludesAllSentencesOfOnlyTheTopicsPhotos() {
-        let food = memory(topics: [["food_and_drinks"], ["home_life"], [], [], [], []])
-        let scenery = memory(topics: [["natural_scenery"]])
+        let food = memory(categories: ["food_and_drinks"], topics: [["food_and_drinks"], ["home_life"], [], [], [], []])
+        let scenery = memory(categories: ["natural_scenery"], topics: [[]])
         let collection = MemoryPhotoCollection(memories: [food, scenery])
         let items = collection.flipItems(in: "food_and_drinks")
         XCTAssertEqual(items.count, 6)
@@ -65,30 +65,32 @@ final class MemoryPhotoCollectionTests: XCTestCase {
     }
 
     func testFlipIsNotLimitedToTheFirstPhotoPage() {
-        let photos = (0..<45).map { memory(topics: [["travel"]], date: Date(timeIntervalSince1970: Double($0))) }
+        let photos = (0..<45).map { memory(categories: ["natural_scenery"], topics: [[]], date: Date(timeIntervalSince1970: Double($0))) }
         let collection = MemoryPhotoCollection(memories: photos)
-        XCTAssertEqual(collection.memories(in: "travel").count, 45)
-        XCTAssertEqual(Set(collection.flipItems(in: "travel").map(\.memoryID)), Set(photos.map(\.id)))
+        XCTAssertEqual(collection.memories(in: "natural_scenery").count, 45)
+        XCTAssertEqual(Set(collection.flipItems(in: "natural_scenery").map(\.memoryID)), Set(photos.map(\.id)))
     }
 
     func testDeletingOrUpdatingPhotosRebuildsMembership() {
-        let photo = memory(topics: [["travel"]])
+        let photo = memory(categories: ["cities_and_architecture"], topics: [["travel"]])
         var updated = photo
         updated.sentences = [SentenceRecord(english: "A quiet lake.", chinese: "安静的湖。", learningTopicIDs: ["natural_scenery"])]
+        XCTAssertEqual(MemoryPhotoCollection(memories: [updated]).topics.map(\.id), ["cities_and_architecture"])
+        updated.tags = ["natural_scenery"]
         let changed = MemoryPhotoCollection(memories: [updated])
-        XCTAssertTrue(changed.memories(in: "travel").isEmpty)
+        XCTAssertTrue(changed.memories(in: "cities_and_architecture").isEmpty)
         XCTAssertEqual(changed.memories(in: "natural_scenery").map(\.id), [photo.id])
         XCTAssertTrue(MemoryPhotoCollection(memories: []).topics.isEmpty)
     }
 
     func testScopedFlipDeckNeverDrawsAnOutsidePhoto() throws {
-        let inside = memory(topics: [["travel"], ["travel"]])
-        let outside = memory(topics: [["food_and_drinks"]])
+        let inside = memory(categories: ["natural_scenery"], topics: [["travel"], ["travel"]])
+        let outside = memory(categories: ["food_and_drinks"], topics: [[]])
         let collection = MemoryPhotoCollection(memories: [inside, outside])
         let suite = "MemoryPhotoCollectionTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let deck = AlbumFlipDeck(items: collection.flipItems(in: "travel"),
+        let deck = AlbumFlipDeck(items: collection.flipItems(in: "natural_scenery"),
                                  store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), randomIndex: { _ in 0 })
         for index in 0..<30 {
             let card = try XCTUnwrap(deck.cards.first)
@@ -112,8 +114,8 @@ final class MemoryPhotoCollectionTests: XCTestCase {
             UIColor.systemOrange.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 480, height: 480))
         }
-        var travel = memory(topics: [["travel"], ["natural_scenery"]])
-        travel = MemoryEntry(id: travel.id, imageData: try XCTUnwrap(photo.jpegData(compressionQuality: 0.8)), sentences: travel.sentences)
+        var travel = memory(categories: ["restaurants_and_cafes", "food_and_drinks"], topics: [["travel"], ["natural_scenery"]])
+        travel = MemoryEntry(id: travel.id, imageData: try XCTUnwrap(photo.jpegData(compressionQuality: 0.8)), tags: travel.tags, sentences: travel.sentences)
         model.memories = [travel, memory(topics: [[]])]
         model.memoryLoadState = .loaded
         model.selectedTab = .memories
@@ -127,7 +129,7 @@ final class MemoryPhotoCollectionTests: XCTestCase {
                 )
                 attach(image, name: "Memories-\(mode)-\(scheme)")
             }
-            model.memoriesNavigationPath = [.photoTopic("travel")]
+            model.memoriesNavigationPath = [.photoTopic("restaurants_and_cafes")]
             let detail = try await render(
                 MainTabView().environmentObject(model)
                     .environment(\.colorScheme, scheme)
@@ -137,8 +139,22 @@ final class MemoryPhotoCollectionTests: XCTestCase {
         }
     }
 
-    private func memory(topics: [[String]], date: Date = .now) -> MemoryEntry {
-        MemoryEntry(createdAt: date, imageData: Data(), sentences: topics.enumerated().map { index, ids in
+    func testCategoryNormalizationKeepsPrimaryAndAtMostTwoSecondaryCategories() {
+        XCTAssertEqual(MemoryPhotoCategory.all.count, 17)
+        XCTAssertEqual(Set(MemoryPhotoCategory.all.map(\.id)).count, 17)
+        XCTAssertEqual(MemoryPhotoCategory.normalizedIDs(["unknown", " natural_scenery ", "natural_scenery", "flowers_and_plants", "pets_and_animals", "home_life"]),
+                       ["natural_scenery", "flowers_and_plants", "pets_and_animals"])
+    }
+
+    func testPhotoCategoriesSurviveLocalSerialization() throws {
+        let photo = memory(categories: ["natural_scenery", "flowers_and_plants"], topics: [["travel"]])
+        let restored = try JSONDecoder().decode(MemoryEntry.self, from: JSONEncoder().encode(photo))
+        XCTAssertEqual(restored.tags, photo.tags)
+        XCTAssertEqual(MemoryPhotoCollection(memories: [restored]).topics.map(\.id), ["flowers_and_plants", "natural_scenery"])
+    }
+
+    private func memory(categories: [String] = [], topics: [[String]], date: Date = .now) -> MemoryEntry {
+        MemoryEntry(createdAt: date, imageData: Data(), tags: categories, sentences: topics.enumerated().map { index, ids in
             SentenceRecord(english: "A moment to remember \(index).", chinese: "值得记住的时刻。", learningTopicIDs: ids)
         })
     }

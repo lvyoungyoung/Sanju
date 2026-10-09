@@ -13,6 +13,13 @@ import XCTest
 final class CloudSyncManagerTests: XCTestCase {
     private let manager = CloudSyncManager()
 
+    func testRemotePhotoCategoriesSurviveConversion() {
+        let record = makeRemoteRecord(tags: ["food_and_drinks", "restaurants_and_cafes"])
+        let memories = manager.makeRemoteMemories(from: [record])
+        XCTAssertEqual(memories.first?.tags, record.tags)
+        XCTAssertEqual(MemoryPhotoCollection(memories: memories).topics.map(\.id), record.tags)
+    }
+
     func testMakeRemoteMemoriesSortsSentencesAndDropsInvalidRecords() {
         let validMemoryID = UUID()
         let firstSentenceID = UUID()
@@ -124,13 +131,14 @@ final class CloudSyncManagerTests: XCTestCase {
         id: String = UUID().uuidString,
         imagePath: String = "remote/path.jpg",
         createdAt: Date = Date(timeIntervalSince1970: 1_000),
+        tags: [String]? = nil,
         sentences: [SupabaseMemorySentenceRecord]? = nil
     ) -> SupabaseMemoryRecord {
         SupabaseMemoryRecord(
             id: id,
             imagePath: imagePath,
             createdAt: createdAt,
-            tags: nil,
+            tags: tags,
             sentences: sentences ?? [
                 makeRemoteSentence(sortOrder: 0),
                 makeRemoteSentence(sortOrder: 1),

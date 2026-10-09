@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class GuestMemoryMigrationTests: XCTestCase {
+    func testPhotoCategoriesAreIncludedInLoginMigrationPayload() throws {
+        var memory = makeMemory(sentenceCount: 6)
+        memory.tags = ["natural_scenery", "flowers_and_plants"]
+        let payload = SupabaseMemoryInsertPayload(id: memory.id.uuidString, userID: "test-owner",
+                                                  imagePath: "test-owner/photo.jpg", createdAt: memory.createdAt, tags: memory.tags)
+        let row = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any])
+        XCTAssertEqual(row["tags"] as? [String], memory.tags)
+        XCTAssertEqual(SupabaseMemorySentenceInsertPayload.memoryCopy(for: memory).map(\.learningTopicIDs), memory.sentences.map(\.learningTopicIDs))
+    }
     func testSixSentenceMigrationUsesDatabasePositionsZeroThroughFive() throws {
         let memory = makeMemory(sentenceCount: 6)
         let payloads = SupabaseMemorySentenceInsertPayload.memoryCopy(for: memory)

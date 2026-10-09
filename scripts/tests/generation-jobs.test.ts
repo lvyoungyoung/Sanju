@@ -11,6 +11,7 @@ const sentences = Array.from({ length: 6 }, (_, i) => ({
   english: "This is a test.",
   chinese: "测试句子",
   learning_topic_ids: [],
+  expression_purpose: "Describing a test scene.",
   presentation_group: i < 3 ? "what_i_see" : "what_i_say",
 }));
 
@@ -24,6 +25,7 @@ Deno.test("generation claims and finalize transactions preserve terminal results
       create table memory_sentences(id uuid primary key, memory_id uuid references memories(id) on delete cascade,
         sort_order integer, english text not null, chinese text not null, learning_topic_ids text[], presentation_group text, is_favorite boolean);
       create table generation_transactions(user_id uuid, delta integer, balance_after integer, reason text, note text);
+      create table generation_enrichment_jobs(user_id uuid, memory_id uuid, guest_job_id uuid, sentences jsonb);
       create table generation_jobs(id uuid primary key default gen_random_uuid(), client_request_id uuid unique not null,
         user_id uuid references profiles(id), status text default 'pending', memory_id uuid references memories(id) on delete set null,
         image_path text, provider text, mimo_failure_reason text, remaining_credits integer, error_message text,
@@ -59,6 +61,63 @@ Deno.test("generation claims and finalize transactions preserve terminal results
     );
     await db.exec(migration);
     await db.exec(migration);
+    const photoMigration = await Deno.readTextFile(
+      new URL("20261009000000_add_photo_scene_categories.sql", root),
+    );
+    await db.exec(photoMigration);
+    await db.exec(photoMigration);
+
+    await t.step(
+      "photo normalization and both finalize RPCs remain service-only",
+      async () => {
+        const signatures = [
+          "normalize_memory_photo_categories(text[])",
+          "finalize_authenticated_generation(uuid,uuid,uuid,text,timestamptz,text,jsonb,text[])",
+          "finalize_guest_generation(uuid,uuid,timestamptz,text,jsonb,text[])",
+        ];
+        for (const signature of signatures) {
+          for (const role of ["anon", "authenticated", "service_role"]) {
+            strictEqual(
+              (await db.query<any>(
+                "select has_function_privilege($1,$2,'EXECUTE') as allowed",
+                [role, signature],
+              )).rows[0].allowed,
+              role === "service_role",
+            );
+          }
+        }
+      },
+    );
+
+    await t.step(
+      "photo categories are trimmed, validated, deduplicated and bounded in primary-first order",
+      async () => {
+        const categories = [
+          "unknown",
+          " natural_scenery ",
+          "natural_scenery",
+          "flowers_and_plants",
+          "pets_and_animals",
+          "home_life",
+        ];
+        deepStrictEqual(
+          (await db.query<any>(
+            "select normalize_memory_photo_categories($1::text[]) as tags",
+            [categories],
+          )).rows[0].tags,
+          ["natural_scenery", "flowers_and_plants", "pets_and_animals"],
+        );
+        for (const tags of [null, [], ["风景", "旅行"]]) {
+          deepStrictEqual(
+            (await db.query<any>(
+              "select normalize_memory_photo_categories($1::text[]) as tags",
+              [tags],
+            )).rows[0].tags,
+            [],
+          );
+        }
+      },
+    );
 
     const claim = async (id = requestID, anonymous = false, user = owner) =>
       (await db.query<{ result: string }>(
@@ -69,10 +128,11 @@ Deno.test("generation claims and finalize transactions preserve terminal results
       id: string | null,
       mem = memoryID,
       payload = sentences,
+      tags = ["natural_scenery"],
     ) =>
       db.query<any>(
-        "select finalize_authenticated_generation($1,$2,$3,'image.jpg',now(),'mimo',$4::jsonb,'{}') as balance",
-        [owner, mem, id, JSON.stringify(payload)],
+        "select finalize_authenticated_generation($1,$2,$3,'image.jpg',now(),'mimo',$4::jsonb,$5::text[]) as balance",
+        [owner, mem, id, JSON.stringify(payload), tags],
       );
 
     await t.step(
@@ -101,13 +161,30 @@ Deno.test("generation claims and finalize transactions preserve terminal results
         strictEqual((await finish(requestID)).rows[0].balance, 9);
         strictEqual(await claim(), "completed");
         strictEqual(
-          (await finish(requestID, crypto.randomUUID())).rows[0].balance,
+          (await finish(requestID, crypto.randomUUID(), sentences, [
+            "food_and_drinks",
+          ])).rows[0].balance,
           9,
         );
         strictEqual(
           (await db.query<any>("select count(*)::int as n from memories"))
             .rows[0].n,
           1,
+        );
+        deepStrictEqual(
+          (await db.query<any>("select tags from memories where id=$1", [
+            memoryID,
+          ])).rows[0].tags,
+          ["natural_scenery"],
+        );
+        const enrichment = (await db.query<any>(
+          "select sentences from generation_enrichment_jobs where memory_id=$1",
+          [memoryID],
+        )).rows[0];
+        strictEqual(enrichment.sentences.length, 6);
+        strictEqual(
+          enrichment.sentences[0].expression_purpose,
+          sentences[0].expression_purpose,
         );
         strictEqual(
           (await db.query<any>(
@@ -154,15 +231,45 @@ Deno.test("generation claims and finalize transactions preserve terminal results
         strictEqual(await claim(id, true), "acquired");
         strictEqual(await claim(id, true), "pending");
         const sql =
-          "select finalize_guest_generation($1,$2,now(),'mimo',$3::jsonb,'{}') as balance";
-        const args = [owner, id, JSON.stringify(sentences)];
+          "select finalize_guest_generation($1,$2,now(),'mimo',$3::jsonb,$4::text[]) as balance";
+        const args = [owner, id, JSON.stringify(sentences), [
+          "food_and_drinks",
+          "restaurants_and_cafes",
+          "food_and_drinks",
+          "unknown",
+        ]];
         strictEqual((await db.query<any>(sql, args)).rows[0].balance, 8);
+        deepStrictEqual(
+          (await db.query<any>(
+            "select tags from guest_generation_jobs where id=$1",
+            [id],
+          )).rows[0].tags,
+          ["food_and_drinks", "restaurants_and_cafes"],
+        );
+        strictEqual(
+          (await db.query<any>(
+            "select sentences from generation_enrichment_jobs where guest_job_id=$1",
+            [id],
+          )).rows[0].sentences[0].expression_purpose,
+          sentences[0].expression_purpose,
+        );
         await db.query<any>(
           "update guest_generation_jobs set status='acknowledged', acknowledged_at=now() where id=$1",
           [id],
         );
         strictEqual(await claim(id, true), "acknowledged");
-        strictEqual((await db.query<any>(sql, args)).rows[0].balance, 8);
+        strictEqual(
+          (await db.query<any>(sql, [...args.slice(0, 3), ["natural_scenery"]]))
+            .rows[0].balance,
+          8,
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select tags from guest_generation_jobs where id=$1",
+            [id],
+          )).rows[0].tags,
+          ["food_and_drinks", "restaurants_and_cafes"],
+        );
         await rejects(
           () => db.exec("update guest_generation_jobs set status='failed'"),
           /immutable/,
