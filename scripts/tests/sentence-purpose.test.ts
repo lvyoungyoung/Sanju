@@ -1,4 +1,5 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
+import { buildPromptText } from "../../supabase/functions/generate-memory-v2/content.ts";
 
 const source = (await Deno.readTextFile(
   new URL(
@@ -25,14 +26,6 @@ const helper = new URL(
 ).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
-  import { buildSentenceMetadataRules } from ${
-    JSON.stringify(
-      new URL(
-        "../../supabase/functions/_shared/sentence-metadata.ts",
-        import.meta.url,
-      ).href,
-    )
-  };
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
   import type { EnrichmentTiming, EnrichmentStage } from ${
     JSON.stringify(
@@ -61,7 +54,6 @@ const api = await import(
       "fetchSentenceEmbeddings",
       "isUUID",
       "toClientSentences",
-      "buildPromptText",
     ].map((name) => `export ${fn(name)}`).join("\n")
   }
 `)
@@ -95,11 +87,18 @@ const makeFetcher = (fail?: "sentence" | "purpose" | "both") =>
   }) as typeof fetch;
 
 Deno.test("foreground generation requests metadata without changing the sentence groups", () => {
-  for (const format of ["legacy_v1", "dual_tabs_v1"]) {
-    const prompt = api.buildPromptText("中等", format);
+  for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
+    const prompt = buildPromptText("中等", format);
     ok(prompt.includes("expression_purpose"));
     ok(prompt.includes("learning_topic_ids"));
     const json = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+    deepStrictEqual(
+      Object.keys(json).sort(),
+      format === "legacy_v1"
+        ? ["sentences", "tags"]
+        : ["image_descriptions", "scene_and_feelings", "tags"],
+    );
+    deepStrictEqual(json.tags, []);
     const items = json.sentences ??
       [...json.image_descriptions, ...json.scene_and_feelings];
     strictEqual(items.length, format === "legacy_v1" ? 3 : 6);
@@ -114,9 +113,9 @@ Deno.test("foreground generation requests metadata without changing the sentence
   }
 });
 Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
-  for (const level of ["启蒙", "简单", "中等", "高级"]) {
+  for (const level of ["启蒙", "简单", "中等", "高级"] as const) {
     {
-      const prompt = api.buildPromptText(level, "dual_tabs_v1");
+      const prompt = buildPromptText(level, "dual_tabs_v1");
       const feelingIndex = prompt.indexOf("1. 我当时的感受：");
       const conversationIndex = prompt.indexOf("2. 当时会对别人说什么：");
       const eventIndex = prompt.indexOf("3. 发生了什么：");
@@ -150,7 +149,7 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
   }
 });
 Deno.test("starter conversational guidance keeps short sentences and difficulty over style", () => {
-  const prompt = api.buildPromptText("启蒙", "dual_tabs_v1");
+  const prompt = buildPromptText("启蒙", "dual_tabs_v1");
   ok(prompt.includes("只表达一个事物、动作或简单感受"));
   ok(prompt.includes("极常见的具体词、简单感受词"));
   ok(prompt.includes("3 到 6 个英文单词"));
@@ -160,13 +159,13 @@ Deno.test("starter conversational guidance keeps short sentences and difficulty 
   ok(prompt.includes("友好自然直接"));
 });
 Deno.test("legacy image descriptions do not gain the hypothetical dialogue instruction", () => {
-  for (const level of ["启蒙", "简单", "中等", "高级"]) {
+  for (const level of ["启蒙", "简单", "中等", "高级"] as const) {
     {
-      const prompt = api.buildPromptText(level, "legacy_v1");
+      const prompt = buildPromptText(level, "legacy_v1");
       ok(!prompt.includes("当时会对别人说什么"));
       ok(prompt.includes("最直接可见的内容"));
       const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-      deepStrictEqual(Object.keys(payload).sort(), ["sentences"]);
+      deepStrictEqual(Object.keys(payload).sort(), ["sentences", "tags"]);
       strictEqual(payload.sentences.length, 3);
     }
   }
