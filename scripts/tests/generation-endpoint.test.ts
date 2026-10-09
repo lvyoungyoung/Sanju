@@ -70,7 +70,7 @@ const fetch = (async (input: any, init?: RequestInit) => {
   state.modelStarted?.();
   if (state.modelWait) await state.modelWait;
   const sentence = { english:'This is a cat.', chinese:'这是一只猫。',
-    ...(state.missingMetadata ? {} : {learning_topic_ids:['pet_life'], expression_purpose:'Describing a cat.'}) };
+    ...(state.missingMetadata ? {} : {learning_topic_ids:['pets_and_animals'], expression_purpose:'Describing a cat.'}) };
   const payload = state.dual
     ? {image_descriptions:[sentence,sentence,sentence],scene_and_feelings:[sentence,sentence,sentence]}
     : {sentences:[sentence,sentence,sentence]};
@@ -284,7 +284,7 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
       delivered.every((s: any) =>
         Array.isArray(s.learning_topic_ids) &&
         s.learning_topic_ids.length === 1 &&
-        s.learning_topic_ids[0] === "pet_life"
+        s.learning_topic_ids[0] === "pets_and_animals"
       ),
       true,
     );
@@ -334,7 +334,7 @@ Deno.test("unknown photo tags never reach storage for either account or provider
       const result = await response.json();
       strictEqual(result.memory.tags.length, 0);
       strictEqual(result.memory.sentences.length, 6);
-      strictEqual(result.memory.sentences[0].learning_topic_ids[0], "pet_life");
+      strictEqual(result.memory.sentences[0].learning_topic_ids[0], "pets_and_animals");
       strictEqual(
         state.finalizedSentences[0].expression_purpose,
         "Describing a cat.",
@@ -394,7 +394,7 @@ Deno.test("photo categories persist independently and survive replay for all pro
         strictEqual(result.memory.provider, provider);
         strictEqual(result.memory.sentences.length, legacy ? 3 : 6);
         deepStrictEqual(result.memory.sentences[0].learning_topic_ids, [
-          "pet_life",
+          "pets_and_animals",
         ]);
         const calls = state.calls;
         state.photoTags = ["natural_scenery"];

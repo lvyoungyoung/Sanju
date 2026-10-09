@@ -5,13 +5,15 @@ import {
   parseGeneratedContent,
 } from "../../supabase/functions/generate-memory-v2/content.ts";
 import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
+import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 const levels = ["启蒙", "简单", "中等", "高级"] as const;
 const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 
-// Remove only the new photo-level extension to detect unintended sentence prompt changes.
+// Compare the unchanged teaching rules independently of the category catalog.
 function sentencePromptBaseline(prompt: string): string {
-  return prompt.replace(`\n\n${buildPhotoCategoryRules()}`, "")
+  return prompt.replace(`\n\n${buildPhotoCategoryRules(false)}`, "")
+    .replace(`\n\n${buildSentenceMetadataRules()}`, "")
     .replace(
       "image_descriptions、scene_and_feelings 和 tags；tags 是照片分类 ID 数组",
       "image_descriptions 和 scene_and_feelings",
@@ -25,42 +27,42 @@ Deno.test("photo classification leaves the restored sentence prompt unchanged at
     [
       "legacy_v1",
       "启蒙",
-      "8584137b25432358848f253acb19143d4d890527060b60648912accd650c3a6a",
+      "4c3ec5c06d6f306bdd4d0fa180829e7fd78e758ab8ed7d88f85ac7dbffd95563",
     ],
     [
       "legacy_v1",
       "简单",
-      "2aa8be486c652412df60474d0a55f68d6db512d1af887b7824b8e54f9fa94d9c",
+      "c3323bd27520d0be0e0c1ad62e82d618247714eeb48271a46bd0ec43f70c3fc1",
     ],
     [
       "legacy_v1",
       "中等",
-      "67ce7ff417386a40667fd0fa6951c5667abc5581608a601ee929d492e17cbdda",
+      "74a8fbb7e26a280f0cdca8a1193065768fe0de53cb886c68cf8349c07f65d84a",
     ],
     [
       "legacy_v1",
       "高级",
-      "cb62800c18c8763445ac76195c2f092cd75d361d76c55b428b4697a414820715",
+      "647e45bb7969e2a9a9fa02445e2c49d7adae77724a26f19e399280d19ec08c8f",
     ],
     [
       "dual_tabs_v1",
       "启蒙",
-      "6156b3ce63842385c661e1348adce533fe42f73bca5bde765bb35f85dc235b0a",
+      "336dd2f943bfb17b89445e3ab7122dfd0110fca9e8ce10a65b947ce023036558",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "880e7a30dc93b6e69f44f9d16ca966ac1969a643424b48c1668affd740bc0df4",
+      "075213a0ef0c4a499c0ae7839397c582245cc6b952eff4f3deec222ea67b9712",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "02d746a47eef75e74380bd31e7b195845621dd2c8c754eda713d96daa7319809",
+      "7a99ddb2f16ac8957b9c8b6794fb849b45056bed8d3ce06a540777300fe7bb74",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "94a7d5ca65d64281233cc52e0fb212a1268f686052f6e6fabd39e41d4352c604",
+      "e28d008c35a4a969877562b9c828546a89d691fcbe4e102f9add006c2c636b44",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -132,7 +134,7 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
         }
       }
       ok(prompt.includes("self_and_style"));
-      ok(prompt.includes(buildPhotoCategoryRules()));
+  ok(prompt.includes(buildPhotoCategoryRules(false)));
       const parsed = parseGeneratedContent(JSON.stringify(example), format);
       ok(parsed);
       deepStrictEqual(parsed.tags, []);

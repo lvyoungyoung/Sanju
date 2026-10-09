@@ -19,6 +19,9 @@ on:
       - "scripts/tests/sentence-explanation*.test.ts"
       - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
+      - "三句/SceneCategories.swift"
+      - "三句/MemoryPhotoCategories.swift"
+      - "三句/*.lproj/SceneCategories.strings"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
   push:
@@ -41,6 +44,9 @@ on:
       - "scripts/tests/sentence-explanation*.test.ts"
       - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
+      - "三句/SceneCategories.swift"
+      - "三句/MemoryPhotoCategories.swift"
+      - "三句/*.lproj/SceneCategories.strings"
       - "三句/*.lproj/Localizable.strings"
       - ".github/workflows/backend-functions.yml"
   workflow_dispatch:

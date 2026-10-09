@@ -180,8 +180,8 @@ Deno.test("category cache initializes once and fails closed rather than silently
   reset();
   state.cacheComplete = false;
   strictEqual((await handler(request())).status, 200);
-  strictEqual(state.writes, 21);
-  strictEqual(state.calls, 4);
+  strictEqual(state.writes, 25);
+  strictEqual(state.calls, 5);
   reset();
   state.cacheComplete = false;
   state.cacheFail = true;

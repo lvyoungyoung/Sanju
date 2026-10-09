@@ -58,7 +58,7 @@ function fixture(
   const expectedMetadata = [{
     sentence_id: "sentence",
     expression_purpose: "Describing a cat.",
-    learning_topic_ids: ["pet_life"],
+    learning_topic_ids: ["pets_and_animals"],
   }];
   const modelCalls: string[] = [];
   let metadata = cached ? expectedMetadata : null;

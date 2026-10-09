@@ -12,46 +12,9 @@ import { readFunctionSource } from "./helpers/function-source.ts";
 
 const root = new URL("../../", import.meta.url);
 
-Deno.test("the 17 photo categories agree across AI, client, SQL and both languages", async () => {
-  strictEqual(PHOTO_CATEGORIES.length, 17);
-  strictEqual(new Set(PHOTO_CATEGORIES.map(([id]) => id)).size, 17);
-  const swift = await Deno.readTextFile(
-    new URL("三句/MemoryPhotoCategories.swift", root),
-  );
-  const entries = [
-    ...swift.matchAll(/\.init\(id: "([a-z_]+)", fallbackTitle: "([^"]+)"\)/g),
-  ].map((m) => [m[1], m[2]]);
-  deepStrictEqual(entries, PHOTO_CATEGORIES);
-  const sql = await Deno.readTextFile(
-    new URL(
-      "supabase/migrations/20261009000000_add_photo_scene_categories.sql",
-      root,
-    ),
-  );
-  const helper = sql.slice(0, sql.indexOf("-- Keep the existing signatures"));
-  deepStrictEqual(
-    [...helper.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]),
-    PHOTO_CATEGORIES.map(([id]) => id),
-  );
-  for (const locale of ["en", "zh-Hans"]) {
-    const strings = await Deno.readTextFile(
-      new URL(`三句/${locale}.lproj/Localizable.strings`, root),
-    );
-    const localized = [
-      ...strings.matchAll(/"photo_category\.([a-z_]+)" = "([^"]+)";/g),
-    ];
-    deepStrictEqual(
-      localized.map((m) => m[1]),
-      PHOTO_CATEGORIES.map(([id]) => id),
-    );
-    ok(localized.every((m) => m[2].trim().length > 0));
-    if (locale === "zh-Hans") {
-      deepStrictEqual(
-        localized.map((m) => m[2]),
-        PHOTO_CATEGORIES.map(([, name]) => name),
-      );
-    }
-  }
+Deno.test("photo classification uses the shared category catalog", () => {
+  strictEqual(PHOTO_CATEGORIES.length, 25);
+  strictEqual(new Set(PHOTO_CATEGORIES.map(([id]) => id)).size, 25);
 });
 
 Deno.test("photo categories retain primary-first order and ignore invalid or invented labels", () => {
@@ -102,7 +65,7 @@ Deno.test("photo categories parse independently without changing sentence metada
       example[group] = example[group].map(() => ({
         english: "This is a cat.",
         chinese: "这是一只猫。",
-        learning_topic_ids: ["pet_life"],
+        learning_topic_ids: ["pets_and_animals"],
         expression_purpose: "Describing a cat.",
       }));
     }
@@ -118,7 +81,7 @@ Deno.test("photo categories parse independently without changing sentence metada
       );
       ok(parsed);
       deepStrictEqual(parsed.tags, normalizePhotoCategories(tags));
-      deepStrictEqual(parsed.sentences[0].learning_topic_ids, ["pet_life"]);
+      deepStrictEqual(parsed.sentences[0].learning_topic_ids, ["pets_and_animals"]);
       strictEqual(parsed.sentences[0].expression_purpose, "Describing a cat.");
       strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
     }
@@ -173,7 +136,7 @@ Deno.test("guest recovery returns photo categories unchanged and preserves owner
   const harness = `
     export let handler: (req:Request) => Promise<Response>;
     export const job:any = {id:'guest-job', user_id:'owner', status:'completed', created_at:'2026-10-09T00:00:00Z',
-      remaining_credits:9, tags:['restaurants_and_cafes','food_and_drinks'], sentences:Array.from({length:6},()=>({english:'This is a cat.',chinese:'这是一只猫。',learning_topic_ids:['pet_life']}))};
+      remaining_credits:9, tags:['restaurants_and_cafes','food_and_drinks'], sentences:Array.from({length:6},()=>({english:'This is a cat.',chinese:'这是一只猫。',learning_topic_ids:['pets_and_animals']}))};
     const Deno = {env:{get:(name:string)=>name==='SUPABASE_LOCAL_URL'?undefined:name},serve:(fn:typeof handler)=>handler=fn};
     class Query {
       filters:[string,any][]=[]; patch:any;
@@ -202,7 +165,7 @@ Deno.test("guest recovery returns photo categories unchanged and preserves owner
     strictEqual(result.recovered, true);
     deepStrictEqual(result.memory.tags, job.tags);
     deepStrictEqual(result.memory.sentences[0].learning_topic_ids, [
-      "pet_life",
+      "pets_and_animals",
     ]);
     strictEqual(result.remainingCredits, 9);
   }

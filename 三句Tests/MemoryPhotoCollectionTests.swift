@@ -72,13 +72,13 @@ final class MemoryPhotoCollectionTests: XCTestCase {
     }
 
     func testDeletingOrUpdatingPhotosRebuildsMembership() {
-        let photo = memory(categories: ["cities_and_architecture"], topics: [["travel"]])
+        let photo = memory(categories: ["city_life"], topics: [["travel"]])
         var updated = photo
         updated.sentences = [SentenceRecord(english: "A quiet lake.", chinese: "安静的湖。", learningTopicIDs: ["natural_scenery"])]
-        XCTAssertEqual(MemoryPhotoCollection(memories: [updated]).topics.map(\.id), ["cities_and_architecture"])
+        XCTAssertEqual(MemoryPhotoCollection(memories: [updated]).topics.map(\.id), ["city_life"])
         updated.tags = ["natural_scenery"]
         let changed = MemoryPhotoCollection(memories: [updated])
-        XCTAssertTrue(changed.memories(in: "cities_and_architecture").isEmpty)
+        XCTAssertTrue(changed.memories(in: "city_life").isEmpty)
         XCTAssertEqual(changed.memories(in: "natural_scenery").map(\.id), [photo.id])
         XCTAssertTrue(MemoryPhotoCollection(memories: []).topics.isEmpty)
     }
@@ -140,8 +140,8 @@ final class MemoryPhotoCollectionTests: XCTestCase {
     }
 
     func testCategoryNormalizationKeepsPrimaryAndAtMostTwoSecondaryCategories() {
-        XCTAssertEqual(MemoryPhotoCategory.all.count, 17)
-        XCTAssertEqual(Set(MemoryPhotoCategory.all.map(\.id)).count, 17)
+        XCTAssertEqual(MemoryPhotoCategory.all.count, 25)
+        XCTAssertEqual(Set(MemoryPhotoCategory.all.map(\.id)).count, 25)
         XCTAssertEqual(MemoryPhotoCategory.normalizedIDs(["unknown", " natural_scenery ", "natural_scenery", "flowers_and_plants", "pets_and_animals", "home_life"]),
                        ["natural_scenery", "flowers_and_plants", "pets_and_animals"])
     }

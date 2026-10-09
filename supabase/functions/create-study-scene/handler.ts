@@ -1,4 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { SCENE_CATEGORY_IDS } from "../_shared/scene-categories.ts"
 import { matchStudyScene } from "./matching.ts"
 
 const MAX_STUDY_SCENES = 20
@@ -15,29 +16,6 @@ interface CreateStudySceneRequest {
   enrichment_status_only?: boolean
 }
 
-const LEARNING_TOPIC_IDS = new Set([
-  "self_and_style",
-  "family_time",
-  "children_growing_up",
-  "friends_gatherings",
-  "romance_and_companionship",
-  "pet_life",
-  "food_and_drinks",
-  "cooking",
-  "home_life",
-  "city_life",
-  "natural_scenery",
-  "plants_and_wildlife",
-  "travel",
-  "transport",
-  "sports_and_outdoors",
-  "festivals_and_celebrations",
-  "arts_and_entertainment",
-  "school_and_study",
-  "work_life",
-  "shopping",
-  "health_and_wellness",
-])
 
 export async function handleCreateStudyScene(req: Request): Promise<Response> {
   try {
@@ -69,7 +47,7 @@ export async function handleCreateStudyScene(req: Request): Promise<Response> {
     if (!preparing && !legacyEnrichmentStatus && (name.length < 2 || name.length > 24)) {
       return jsonResponse({ error: "Study scene name must be between 2 and 24 characters" }, 400)
     }
-    if (learningTopicID && !LEARNING_TOPIC_IDS.has(learningTopicID)) {
+    if (learningTopicID && !SCENE_CATEGORY_IDS.has(learningTopicID)) {
       return jsonResponse({ error: "Invalid learning topic" }, 400)
     }
 

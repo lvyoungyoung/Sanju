@@ -1,33 +1,11 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { normalizeSceneCategoryIDs } from "../_shared/scene-categories.ts"
 
 interface RequestBody {
   guestJobID?: string
   generationFormat?: string
 }
 
-const LEARNING_TOPIC_IDS = new Set([
-  "self_and_style",
-  "family_time",
-  "children_growing_up",
-  "friends_gatherings",
-  "romance_and_companionship",
-  "pet_life",
-  "food_and_drinks",
-  "cooking",
-  "home_life",
-  "city_life",
-  "natural_scenery",
-  "plants_and_wildlife",
-  "travel",
-  "transport",
-  "sports_and_outdoors",
-  "festivals_and_celebrations",
-  "arts_and_entertainment",
-  "school_and_study",
-  "work_life",
-  "shopping",
-  "health_and_wellness",
-])
 
 Deno.serve(async (req) => {
   try {
@@ -176,15 +154,5 @@ function isUUID(value: unknown): value is string {
 }
 
 function normalizeLearningTopicIDs(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .map((item) => String(item ?? "").trim())
-        .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
-    )
-  ).slice(0, 2)
+  return normalizeSceneCategoryIDs(value, 2)
 }

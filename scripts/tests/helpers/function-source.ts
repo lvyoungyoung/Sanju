@@ -11,9 +11,10 @@ export async function readFunctionSource(entry: URL): Promise<string> {
     let dependencies = ""
     for (const match of source.matchAll(/^import .* from ["']([^"']+)["'].*$/gm)) {
       const specifier = match[1]
-      if (!specifier.startsWith("./")) continue
+      const isSharedCatalog = specifier === "../_shared/scene-categories.ts"
+      if (!specifier.startsWith("./") && !isSharedCatalog) continue
       const dependency = new URL(specifier, url)
-      if (!dependency.href.startsWith(directory)) throw new Error("Unexpected function import")
+      if (!isSharedCatalog && !dependency.href.startsWith(directory)) throw new Error("Unexpected function import")
       dependencies += await visit(dependency)
     }
     return dependencies + "\n" + source.replace(/^import .*\n/gm, "").replace(/^export /gm, "")

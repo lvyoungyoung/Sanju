@@ -4,12 +4,18 @@ import XCTest
 final class LearningTopicsTests: XCTestCase {
     func testLifeSceneCatalogIsUniqueAndContainsOnlyCurrentTopics() {
         let ids = LearningTopic.all.map(\.id)
-        XCTAssertEqual(ids.count, 21)
+        XCTAssertEqual(ids.count, 25)
         XCTAssertEqual(Set(ids).count, ids.count)
         XCTAssertTrue(ids.contains("family_time"))
         XCTAssertTrue(ids.contains("food_and_drinks"))
         XCTAssertFalse(ids.contains("food_and_cooking"))
         XCTAssertFalse(ids.contains("practical_records"))
+        XCTAssertFalse(ids.contains("pet_life"))
+        XCTAssertFalse(ids.contains("plants_and_wildlife"))
+        XCTAssertTrue(ids.contains("pets_and_animals"))
+        XCTAssertTrue(ids.contains("flowers_and_plants"))
+        XCTAssertEqual(ids, MemoryPhotoCategory.all.map(\.id))
+        XCTAssertEqual(LearningTopic.all.map(\.title), MemoryPhotoCategory.all.map(\.title))
     }
 
     func testNamesResolveToTheirExactCategory() {

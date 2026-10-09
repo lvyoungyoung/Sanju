@@ -9,6 +9,7 @@ import {
 } from "../supabase/functions/_shared/sentence-metadata.ts";
 
 import * as generation from "../supabase/functions/generate-memory-v2/content.ts";
+import { buildPhotoCategoryRules } from "../supabase/functions/generate-memory-v2/photo-categories.ts";
 
 const root = new URL("../", import.meta.url);
 const generationSource = await Deno.readTextFile(new URL("supabase/functions/generate-memory-v2/content.ts", root));
@@ -31,7 +32,8 @@ export function buildBenchmarkPrompts(level = "简单") {
   }
   const separate = combined.slice(0, exampleStart)
     .replace(fieldRule, "每一项必须且只能包含 english 和 chinese 两个字段")
-    .replace(rules, "") +
+    .replace(rules, "")
+    .replace(buildPhotoCategoryRules(false), buildPhotoCategoryRules()) +
     "\n" + JSON.stringify(example);
   return { combined, separate, metadata };
 }

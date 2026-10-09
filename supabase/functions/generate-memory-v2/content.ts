@@ -1,4 +1,5 @@
 import { buildSentenceMetadataRules } from "../_shared/sentence-metadata.ts"
+import { normalizeSceneCategoryIDs } from "../_shared/scene-categories.ts"
 import { buildPhotoCategoryRules, normalizePhotoCategories } from "./photo-categories.ts"
 
 export interface Sentence {
@@ -24,31 +25,6 @@ interface GeneratedContent {
 
 export type ProviderName = "mimo" | "kimi" | "deepseek"
 
-const LEARNING_TOPICS = [
-  ["self_and_style", "自己与穿搭"],
-  ["family_time", "家人相处"],
-  ["children_growing_up", "孩子成长"],
-  ["friends_gatherings", "朋友相聚"],
-  ["romance_and_companionship", "恋爱与陪伴"],
-  ["pet_life", "宠物日常"],
-  ["food_and_drinks", "吃喝"],
-  ["cooking", "下厨"],
-  ["home_life", "居家"],
-  ["city_life", "城市生活"],
-  ["natural_scenery", "自然风景"],
-  ["plants_and_wildlife", "花草与动物"],
-  ["travel", "旅行"],
-  ["transport", "交通出行"],
-  ["sports_and_outdoors", "运动与户外"],
-  ["festivals_and_celebrations", "节日与庆祝"],
-  ["arts_and_entertainment", "文化娱乐"],
-  ["school_and_study", "学校与学习"],
-  ["work_life", "工作"],
-  ["shopping", "购物"],
-  ["health_and_wellness", "身体与健康"],
-] as const
-
-const LEARNING_TOPIC_IDS: Set<string> = new Set(LEARNING_TOPICS.map(([id]) => id))
 
 export function buildPromptText(
   englishLevel: "启蒙" | "简单" | "中等" | "高级",
@@ -89,7 +65,7 @@ ${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文
 
 ${buildSentenceMetadataRules()}
 
-${buildPhotoCategoryRules()}
+${buildPhotoCategoryRules(false)}
 
 你必须严格遵守以下输出规则：
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
@@ -112,7 +88,7 @@ ${difficultyPriorityPrompt}
 
 ${buildSentenceMetadataRules()}
 
-${buildPhotoCategoryRules()}
+${buildPhotoCategoryRules(false)}
 
 你必须严格遵守以下输出规则：
 1. 你的回复必须是一个 JSON 对象
@@ -292,17 +268,7 @@ function normalizeExpressionPurpose(value: unknown): string | undefined {
 }
 
 function normalizeLearningTopicIDs(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .map((item) => String(item ?? "").trim())
-        .filter((topicID) => LEARNING_TOPIC_IDS.has(topicID))
-    )
-  ).slice(0, 2)
+  return normalizeSceneCategoryIDs(value, 2)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
