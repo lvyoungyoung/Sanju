@@ -24,9 +24,14 @@ const helper = new URL(
   "../../supabase/functions/_shared/fetch-with-timeout.ts",
   import.meta.url,
 ).href;
+const sceneCategories = new URL(
+  "../../supabase/functions/_shared/scene-categories.ts",
+  import.meta.url,
+).href;
 const api = await import(
   "data:application/typescript," + encodeURIComponent(`
   import { fetchWithTimeout } from ${JSON.stringify(helper)};
+  import { normalizeSceneCategoryIDs } from ${JSON.stringify(sceneCategories)};
   import type { EnrichmentTiming, EnrichmentStage } from ${
     JSON.stringify(
       new URL(
@@ -39,12 +44,6 @@ const api = await import(
   type SentencePresentationGroup = "what_i_see" | "what_i_say";
   type GenerationFormat = "legacy_v1" | "dual_tabs_v1";
   const Deno = {env:{get:()=>"test"}};
-  ${
-    source.slice(
-      source.indexOf("const LEARNING_TOPICS"),
-      source.indexOf("function buildPromptText"),
-    )
-  }
   ${
     [
       "normalizeExpressionPurpose",
@@ -185,6 +184,7 @@ Deno.test("purpose parsing is bounded and missing purposes do not discard valid 
     learning_topic_ids: ["natural_scenery"],
   }]);
   strictEqual(parsed[0].expression_purpose, "Describing a lake.");
+  deepStrictEqual(parsed[0].learning_topic_ids, ["natural_scenery"]);
   for (
     const topics of [undefined, null, ["invalid"], [
       "natural_scenery",
