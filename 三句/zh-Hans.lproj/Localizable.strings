@@ -157,6 +157,13 @@
 "content.empty.add_photo_message" = "添加一张你想记住的照片，让它变成可以反复学习的英语。";
 "content.empty.add_photo" = "添加照片";
 "memories.page_title" = "回忆";
+"memories.browse.time" = "按时间";
+"memories.browse.topic" = "按主题";
+"memories.browse.label" = "回忆查看方式";
+"memories.topic.uncategorized" = "未分类";
+"memories.topic.photo_count" = "%d 张照片";
+"memories.topic.photo_count.one" = "%d 张照片";
+"memories.topic.empty" = "这个主题下暂时没有照片";
 "memories.hero.count_label" = "已记录";
 "memories.tags.all" = "全部";
 "memories.tags.accessibility_label" = "回忆分类筛选";

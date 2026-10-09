@@ -480,7 +480,7 @@ final class AppModel: ObservableObject {
     @Published var draftGeneratedMemory: MemoryEntry?
     @Published var draftGeneratedMemoryID: UUID?
     @Published var selectedTab: AppTab = .newLearning
-    @Published var memoriesNavigationPath: [UUID] = []
+    @Published var memoriesNavigationPath: [MemoryNavigationRoute] = []
     @Published var studyNavigationPath: [StudySceneDetailRoute] = []
     @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
@@ -711,7 +711,7 @@ final class AppModel: ObservableObject {
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.memoriesNavigationPath = [memoryID]
+            self.memoriesNavigationPath = [.memory(memoryID)]
         }
     }
 

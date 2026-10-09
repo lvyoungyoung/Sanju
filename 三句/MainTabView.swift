@@ -38,8 +38,13 @@ struct MainTabView: View {
 
             NavigationStack(path: $appModel.memoriesNavigationPath) {
                 MemoriesView()
-                    .navigationDestination(for: UUID.self) { memoryID in
-                        MemoryDetailView(memoryID: memoryID)
+                    .navigationDestination(for: MemoryNavigationRoute.self) { route in
+                        switch route {
+                        case .memory(let memoryID):
+                            MemoryDetailView(memoryID: memoryID)
+                        case .photoTopic(let topicID):
+                            MemoriesView(topicID: topicID)
+                        }
                     }
             }
             .tag(AppTab.memories)

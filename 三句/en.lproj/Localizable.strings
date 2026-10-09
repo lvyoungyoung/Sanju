@@ -157,6 +157,13 @@
 "content.empty.add_photo_message" = "Add a photo you want to remember and turn it into English you can practice.";
 "content.empty.add_photo" = "Add a photo";
 "memories.page_title" = "Memories";
+"memories.browse.time" = "By time";
+"memories.browse.topic" = "By topic";
+"memories.browse.label" = "Browse memories";
+"memories.topic.uncategorized" = "Uncategorized";
+"memories.topic.photo_count" = "%d photos";
+"memories.topic.photo_count.one" = "%d photo";
+"memories.topic.empty" = "No photos in this topic yet";
 "memories.hero.count_label" = "Saved";
 "memories.tags.all" = "All";
 "memories.tags.accessibility_label" = "Memory category filter";

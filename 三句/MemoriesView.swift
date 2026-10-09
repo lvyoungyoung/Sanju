@@ -13,6 +13,13 @@ struct MemoriesView: View {
     @State private var pageTitleOriginY: CGFloat?
     @State private var pageTitleMinY: CGFloat = 0
     @State private var albumFlipSession: AlbumFlipPresentation?
+    @State private var browseMode: MemoryBrowseMode = .time
+    @State private var photoCollection: MemoryPhotoCollection?
+    let topicID: String?
+
+    init(topicID: String? = nil) {
+        self.topicID = topicID
+    }
 
     private let columns = [
         GridItem(.flexible(), spacing: AppSpacing.medium),
@@ -26,7 +33,15 @@ struct MemoriesView: View {
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.large) {
-                    pageHeader
+                    if topicID == nil {
+                        pageHeader
+                        MemoryBrowseTabs(mode: $browseMode)
+                    } else {
+                        Text(MemoryPhotoCollection.photoCountTitle(scopedMemories.count))
+                            .font(.subheadline)
+                            .foregroundStyle(AppTextColor.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
                         PendingCloudSyncProgressCard(
@@ -51,10 +66,27 @@ struct MemoriesView: View {
                             }
                             .padding(.top, 36)
                         } else {
-                            AddPhotoEmptyState(destination: .memories) {
-                                appModel.selectedTab = .newLearning
+                            if topicID != nil {
+                                ContentUnavailableView(
+                                    L10n.string("memories.topic.empty", "这个主题下暂时没有照片"),
+                                    systemImage: "photo.on.rectangle"
+                                )
+                                .padding(.top, 36)
+                            } else {
+                                AddPhotoEmptyState(destination: .memories) {
+                                    appModel.selectedTab = .newLearning
+                                }
+                                .padding(.top, 36)
                             }
-                            .padding(.top, 36)
+                        }
+                    } else if !isShowingPhotos {
+                        LazyVGrid(columns: columns, spacing: AppSpacing.medium) {
+                            ForEach(collection.topics) { topic in
+                                NavigationLink(value: MemoryNavigationRoute.photoTopic(topic.id)) {
+                                    MemoryPhotoTopicCard(topic: topic)
+                                }
+                                .buttonStyle(StudioPressStyle())
+                            }
                         }
                     } else {
                         LazyVStack(alignment: .leading, spacing: AppSpacing.xxLarge) {
@@ -66,7 +98,7 @@ struct MemoriesView: View {
 
                                     LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.medium) {
                                         ForEach(section.items) { item in
-                                            NavigationLink(value: item.memory.id) {
+                                            NavigationLink(value: MemoryNavigationRoute.memory(item.memory.id)) {
                                                 MemoryThumbnailTile(
                                                     memory: item.memory,
                                                     animationDelay: item.animationDelay
@@ -105,10 +137,10 @@ struct MemoriesView: View {
                     await appModel.refreshRemoteContent()
                 }
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if hasFlippableSentences {
+                    if isShowingPhotos && hasFlippableSentences {
                         Button {
                             albumFlipSession = AlbumFlipPresentation(
-                                items: AlbumFlipItem.makeItems(from: appModel.memories),
+                                items: collection.flipItems(in: topicID),
                                 ownerID: appModel.albumFlipOwnerID
                             )
                         } label: {
@@ -137,19 +169,28 @@ struct MemoriesView: View {
                 AlbumFlipView(items: session.items, ownerID: session.ownerID)
                     .environmentObject(appModel)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle(topicTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(topicID == nil ? .hidden : .visible, for: .navigationBar)
             .task(id: appModel.isRestoringAuthenticatedSession ? nil : appModel.supabaseSession?.userID) {
-                rebuildMemorySections(using: currentVisibleMemories(from: appModel.memories))
+                rebuildPhotoContent(using: appModel.memories)
                 guard !appModel.isRestoringAuthenticatedSession else { return }
                 hasCompletedInitialLoad = false
                 isPerformingInitialLoad = false
                 await performInitialLoadIfNeeded()
             }
             .onChange(of: appModel.memories) { _, newMemories in
-                updateVisibleMemoryCount(using: newMemories)
-                rebuildMemorySections(using: currentVisibleMemories(from: newMemories))
+                rebuildPhotoContent(using: newMemories)
+            }
+            .onChange(of: appModel.albumFlipOwnerID) { _, _ in
+                albumFlipSession = nil
+                memoryPendingDeletion = nil
+                visibleMemoryCount = memoryPageSize
+                browseMode = .time
+                rebuildPhotoContent(using: appModel.memories)
             }
             .onPreferenceChange(MemoryFooterMinYPreferenceKey.self) { footerMinY in
+                guard isShowingPhotos else { return }
                 guard hasMoreMemoriesToDisplay else { return }
                 guard footerMinY < proxy.size.height + loadMoreFooterThreshold else { return }
                 Task {
@@ -195,9 +236,20 @@ struct MemoriesView: View {
     }
 
     private var hasFlippableSentences: Bool {
-        appModel.memories.contains { memory in
+        scopedMemories.contains { memory in
             memory.sentences.contains { !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         }
+    }
+
+    private var collection: MemoryPhotoCollection {
+        photoCollection ?? MemoryPhotoCollection(memories: appModel.memories)
+    }
+
+    private var scopedMemories: [MemoryEntry] { collection.memories(in: topicID) }
+    private var isShowingPhotos: Bool { topicID != nil || browseMode == .time }
+    private var topicTitle: String {
+        guard let topicID else { return L10n.string("memories.page_title", "回忆") }
+        return LearningTopic.topic(for: topicID)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
     }
 
     private var pageTitleOpacity: Double {
@@ -248,6 +300,12 @@ struct MemoriesView: View {
         memorySections = makeSections(from: memories)
     }
 
+    private func rebuildPhotoContent(using memories: [MemoryEntry]) {
+        photoCollection = MemoryPhotoCollection(memories: memories)
+        updateVisibleMemoryCount(using: scopedMemories)
+        rebuildMemorySections(using: currentVisibleMemories(from: scopedMemories))
+    }
+
     private func currentVisibleMemories(from memories: [MemoryEntry]) -> [MemoryEntry] {
         Array(memories.prefix(visibleMemoryCount))
     }
@@ -271,7 +329,7 @@ struct MemoriesView: View {
 
     private var contentState: PhotoContentState {
         .resolve(
-            hasContent: !appModel.memories.isEmpty,
+            hasContent: !scopedMemories.isEmpty,
             isLoading: appModel.isRestoringAuthenticatedSession || appModel.isSyncingRemoteMemories || shouldShowInitialLoadingState || appModel.memoryLoadState == .loading,
             hasError: appModel.memoryLoadState == .failed
         )
@@ -317,7 +375,7 @@ struct MemoriesView: View {
     }
 
     private var hasMoreMemoriesToDisplay: Bool {
-        visibleMemoryCount < appModel.memories.count
+        visibleMemoryCount < scopedMemories.count
     }
 
     @MainActor
@@ -344,26 +402,75 @@ struct MemoriesView: View {
     @MainActor
     private func loadMoreMemoriesIfNeeded(currentMemoryID: UUID) async {
         guard !isLoadingMoreMemories else { return }
-        guard currentMemoryID == currentVisibleMemories(from: appModel.memories).last?.id else { return }
+        guard currentMemoryID == currentVisibleMemories(from: scopedMemories).last?.id else { return }
         await loadMoreMemoriesIfNeeded()
     }
 
     @MainActor
     private func loadMoreMemoriesIfNeeded() async {
         guard !isLoadingMoreMemories else { return }
+        guard isShowingPhotos else { return }
         guard hasMoreMemoriesToDisplay else { return }
 
         isLoadingMoreMemories = true
-        let nextVisibleCount = min(visibleMemoryCount + memoryPageSize, appModel.memories.count)
+        let nextVisibleCount = min(visibleMemoryCount + memoryPageSize, scopedMemories.count)
         visibleMemoryCount = nextVisibleCount
-        let newlyVisibleMemories = currentVisibleMemories(from: appModel.memories)
+        let newlyVisibleMemories = currentVisibleMemories(from: scopedMemories)
         rebuildMemorySections(using: newlyVisibleMemories)
 
-        let remoteLoadTarget = newlyVisibleMemories.compactMap { memory in
-            appModel.memories.firstIndex(where: { $0.id == memory.id }).map { $0 + 1 }
-        }.max() ?? nextVisibleCount
-        await appModel.loadMoreRemoteMemoriesIfNeeded(through: remoteLoadTarget)
+        // Topic photos can be scattered across the full library. Load only visible thumbnails.
+        if topicID == nil {
+            let remoteLoadTarget = newlyVisibleMemories.compactMap { memory in
+                appModel.memories.firstIndex(where: { $0.id == memory.id }).map { $0 + 1 }
+            }.max() ?? nextVisibleCount
+            await appModel.loadMoreRemoteMemoriesIfNeeded(through: remoteLoadTarget)
+        }
         isLoadingMoreMemories = false
+    }
+}
+
+struct MemoryBrowseTabs: View {
+    @Binding var mode: MemoryBrowseMode
+
+    var body: some View {
+        PreferenceSegmentedControl(
+            titles: MemoryBrowseMode.allCases.map(\.title),
+            selection: Binding(
+                get: { mode.rawValue },
+                set: { mode = MemoryBrowseMode(rawValue: $0) ?? .time }
+            ),
+            accessibilityTitle: L10n.string("memories.browse.label", "回忆查看方式")
+        )
+        .frame(height: 44)
+    }
+}
+
+private struct MemoryPhotoTopicCard: View {
+    let topic: MemoryPhotoTopic
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let cover = topic.cover {
+                MemoryThumbnailTile(memory: cover, animationDelay: 0, cornerRadius: 10)
+                    .accessibilityHidden(true)
+            }
+            VStack(alignment: .leading, spacing: 5) {
+                Text(topic.title)
+                    .font(.system(.headline, weight: .semibold))
+                    .foregroundStyle(AppTextColor.primary)
+                    .lineLimit(2, reservesSpace: true)
+                Text(MemoryPhotoCollection.photoCountTitle(topic.memories.count))
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 6)
+        }
+        .padding(8)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -459,6 +566,7 @@ private struct MemoryThumbnailTile: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let memory: MemoryEntry
     let animationDelay: Double
+    var cornerRadius: CGFloat = AppCornerRadius.card
     @State private var hasAppeared = false
     @State private var cachedImage: UIImage?
     @State private var imageLoadTask: Task<Void, Never>?
@@ -480,7 +588,7 @@ private struct MemoryThumbnailTile: View {
                     MemoryThumbnailSkeleton()
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .opacity(hasAppeared ? 1 : 0.01)
             .scaleEffect(hasAppeared ? 1 : 0.97)
             .offset(y: hasAppeared ? 0 : 8)
