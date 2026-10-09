@@ -175,7 +175,7 @@ struct MemoryDetailView: View {
     }
 }
 
-private struct MemoryDetailImageView: View {
+struct MemoryDetailImageView: View {
     let imageData: Data
 
     private var image: UIImage? {

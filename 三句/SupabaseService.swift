@@ -10,6 +10,8 @@ import Foundation
 protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServicing {
     var isConfigured: Bool { get }
 
+    func sentenceExplanation(session: SupabaseSession, request: SentenceExplanationRequest) async throws -> SentenceExplanation?
+
     func fetchAlbumFlipProgress(session: SupabaseSession) async throws -> [AlbumFlipProgress]
     func syncAlbumFlipFeedback(session: SupabaseSession, events: [AlbumFlipEvent]) async throws -> [AlbumFlipProgress]
 
@@ -146,6 +148,10 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
 }
 
 extension SupabaseServicing {
+    func sentenceExplanation(session: SupabaseSession, request: SentenceExplanationRequest) async throws -> SentenceExplanation? {
+        throw URLError(.unsupportedURL)
+    }
+
     func upsertProfile(
         session: SupabaseSession,
         appleUserID: String,
@@ -1125,6 +1131,16 @@ struct SupabaseService: SupabaseServicing {
         )
         let response: SupabaseStudyTopicExpressionResponse = try await perform(request)
         return response.expressions.compactMap(Self.makeStudyTopicExpression(from:))
+    }
+
+    func sentenceExplanation(session: SupabaseSession, request input: SentenceExplanationRequest) async throws -> SentenceExplanation? {
+        var request = try makeRequest(
+            path: "/functions/v1/explain-sentence", method: "POST", bearerToken: session.accessToken, body: input
+        )
+        request.timeoutInterval = 75
+        let response: SentenceExplanationResponse = try await perform(request)
+        if let explanation = response.explanation, !explanation.isValid { throw URLError(.cannotParseResponse) }
+        return response.explanation
     }
 
     func fetchSentenceStudyCounts(

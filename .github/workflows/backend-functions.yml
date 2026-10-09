@@ -16,6 +16,7 @@ on:
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
+      - "scripts/tests/sentence-explanation*.test.ts"
       - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
@@ -37,6 +38,7 @@ on:
       - "scripts/tests/generation-*.test.ts"
       - "scripts/tests/helpers/**"
       - "scripts/tests/speech-synthesis.test.ts"
+      - "scripts/tests/sentence-explanation*.test.ts"
       - "scripts/tests/stability-boundaries.test.ts"
       - "三句/LearningTopics.swift"
       - "三句/*.lproj/Localizable.strings"
@@ -62,6 +64,7 @@ on:
           - confirm-purchase
           - create-study-scene
           - delete-account
+          - explain-sentence
           - extract-study-topic-expressions
           - generate-memory-v2
           - process-generation-enrichment
@@ -105,6 +108,9 @@ jobs:
 
       - name: Test speech streaming and request limits
         run: deno test --no-lock --allow-read scripts/tests/speech-synthesis.test.ts
+
+      - name: Test on-demand sentence explanations
+        run: deno test --no-lock --allow-read scripts/tests/sentence-explanation.test.ts scripts/tests/sentence-explanation-database.test.ts
 
       - name: Test cleanup authorization, migration guards and purchase validation
         run: deno test --no-lock --allow-read scripts/tests/stability-boundaries.test.ts

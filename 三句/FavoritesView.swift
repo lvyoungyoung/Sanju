@@ -309,10 +309,15 @@ private struct FavoriteSentenceCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             HStack(alignment: .top) {
-                Text(item.favorite.sentence.english)
-                    .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                    .foregroundStyle(AppTextColor.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                NavigationLink {
+                    SentenceDetailView(memoryID: item.favorite.memoryID, sentenceID: item.id)
+                } label: {
+                    Text(item.favorite.sentence.english)
+                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
+                        .foregroundStyle(AppTextColor.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
 
                 Button {
                     appModel.speech.speak(item.favorite.sentence.english)
