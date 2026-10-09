@@ -64,9 +64,36 @@ returns text[] language sql immutable set search_path = public, pg_temp as $$
   ), 2);
 $$;
 
+-- Canonical metadata can outlive a catalog. Never let the preservation trigger
+-- restore obsolete IDs during cleanup or a later guest-vector promotion.
+create or replace function public.preserve_enriched_sentence_categories()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare topics text[];
+begin
+  select e.learning_topic_ids into topics
+  from public.sentence_embeddings e join public.memories m on m.id = new.memory_id
+  where e.sentence_id = new.id and e.user_id = m.user_id;
+  if topics is not null then
+    new.learning_topic_ids := public.normalize_scene_category_ids(topics, 2);
+  end if;
+  return new;
+end;
+$$;
+
 alter table public.memory_sentences drop constraint if exists memory_sentences_learning_topic_ids_check;
 alter table public.study_scenes drop constraint if exists study_scenes_learning_topic_id_check;
 alter table public.learning_topic_embeddings drop constraint if exists learning_topic_embeddings_topic_id_check;
+
+-- Clean metadata sources first; NULL still means classification is unfinished.
+-- Only category arrays change, never vectors, purposes or ownership.
+update public.sentence_embeddings
+set learning_topic_ids = public.normalize_scene_category_ids(learning_topic_ids, 2)
+where learning_topic_ids is not null
+  and learning_topic_ids is distinct from public.normalize_scene_category_ids(learning_topic_ids, 2);
+update public.guest_sentence_embeddings
+set learning_topic_ids = public.normalize_scene_category_ids(learning_topic_ids, 2)
+where learning_topic_ids is not null
+  and learning_topic_ids is distinct from public.normalize_scene_category_ids(learning_topic_ids, 2);
 
 update public.memory_sentences
 set learning_topic_ids = public.normalize_scene_category_ids(learning_topic_ids, 2)
@@ -224,6 +251,7 @@ end;
 $$;
 
 -- Catalog IDs are public metadata; normalization is an internal write helper.
+revoke all on function public.preserve_enriched_sentence_categories() from public, anon, authenticated;
 revoke all on function public.normalize_scene_category_ids(text[], integer) from public, anon, authenticated;
 revoke all on function public.normalize_memory_photo_categories(text[]) from public, anon, authenticated;
 revoke all on function public.learning_topic_ids_from_json(jsonb) from public, anon, authenticated;

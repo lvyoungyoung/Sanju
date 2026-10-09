@@ -68,6 +68,13 @@ null. Obsolete category cache entries are removed and the cache is lazily rebuil
 when the existing matching endpoint needs it. Existing sentence and purpose
 vectors are not regenerated.
 
+Canonical category arrays in `sentence_embeddings` and
+`guest_sentence_embeddings` are normalized before sentence rows. An unfinished
+classification (`NULL`) remains unfinished, rather than becoming an empty result.
+The preservation trigger also normalizes its canonical source before copying it
+back, including when staged guest vectors arrive after deployment. This keeps
+obsolete IDs from undoing cleanup or violating the new sentence constraint.
+
 Photo/sentence content and IDs, favorites, study progress, credit balances and
 purchase records are not reset. Generation/finalization transaction bodies,
 idempotency, model routing and recovery ownership checks are unchanged.
@@ -86,6 +93,21 @@ The enrichment worker is bundled by `generate-memory-v2`; the retired
 no deployment. No new secrets or proxy changes are required.
 Pushing code does not deploy these changes.
 
+### Retrying the failed staging migration
+
+The initial `20261009003000` migration failed with SQLSTATE `23514` when
+`preserve_enriched_sentence_categories` restored old categories from the vector
+table during sentence cleanup. The previous isolated fixture omitted this
+trigger. The pending migration has been corrected; the regression fixture now
+loads the real preservation, guest promotion and matching triggers.
+
+Start a new Backend Database run from the updated `main`, choosing `staging` and
+`apply`. Do not rerun the old workflow commit, manually delete constraints, or
+mark the failed migration applied. No additional migration file, Edge Function
+change, client change, secret or proxy setting is required for this fix. The
+three function deployments listed above are still needed to finish the original
+category release after its migration succeeds.
+
 ## Local Verification
 
 - `bash scripts/check-edge-functions.sh`
@@ -97,5 +119,8 @@ Pushing code does not deploy these changes.
 Database tests execute the actual migration repeatedly in isolated PostgreSQL,
 exercise every ID, table constraints, cache version/preparation, ownership,
 service-role-only write helpers and real authenticated/anonymous finalization
-with exactly-once debiting. Endpoint tests use local doubles and no live API
+with exactly-once debiting. They include canonical and staged old categories,
+preserved vectors/purposes/ownership, unfinished classification and late guest
+promotion with production trigger definitions active.
+Endpoint tests use local doubles and no live API
 calls. Remote deployment and device generation remain release-time checks.

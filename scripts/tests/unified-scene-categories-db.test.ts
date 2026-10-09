@@ -46,7 +46,11 @@ Deno.test("unified category migration validates storage, matching and atomic gen
         primary key(topic_id,model,catalog_version));
       create table study_scene_embeddings(scene_id uuid primary key, user_id uuid, model text, embedding real[]);
       create table sentence_embeddings(sentence_id uuid primary key, user_id uuid, model text,
-        embedding real[], expression_purpose text, purpose_embedding real[]);
+        embedding real[], expression_purpose text, purpose_embedding real[], learning_topic_ids text[],
+        updated_at timestamptz default now());
+      create table guest_sentence_embeddings(sentence_id uuid primary key, guest_user_id uuid, guest_job_id uuid,
+        model text, embedding real[], expression_purpose text, purpose_embedding real[], learning_topic_ids text[],
+        updated_at timestamptz default now());
       create table study_scene_sentences(scene_id uuid, sentence_id uuid, match_score integer, match_source text,
         primary key(scene_id,sentence_id));
       create table sentence_study_progress(sentence_id uuid, correct_count integer);
@@ -69,7 +73,49 @@ Deno.test("unified category migration validates storage, matching and atomic gen
     );
     await db.exec(definition(matching, "study_scene_similarity_scores"));
     await db.exec(definition(matching, "semantic_study_scene_candidates"));
+    await db.exec(
+      definition(matching, "refresh_semantic_study_scene_matches_for_sentence"),
+    );
+    const metadataMigration = await read(
+      "20260926001000_defer_sentence_metadata.sql",
+    );
+    const promotionMigration = await read(
+      "20260923001000_match_sentence_or_expression_purpose.sql",
+    );
+    for (
+      const name of [
+        "preserve_enriched_sentence_categories",
+        "promote_guest_sentence_embedding_for_id",
+        "match_sentence_to_semantic_study_scenes",
+      ]
+    ) {
+      await db.exec(definition(metadataMigration, name));
+    }
+    for (
+      const name of [
+        "promote_guest_sentence_embedding",
+        "promote_late_guest_sentence_embedding",
+      ]
+    ) {
+      await db.exec(definition(promotionMigration, name));
+    }
+    await db.exec(`
+      create trigger preserve_enriched_sentence_categories
+      before insert or update of learning_topic_ids on memory_sentences
+      for each row execute function preserve_enriched_sentence_categories();
+      create trigger promote_guest_sentence_embedding_after_memory_sentence_insert
+      after insert on memory_sentences for each row execute function promote_guest_sentence_embedding();
+      create trigger promote_late_guest_sentence_embedding
+      after insert or update on guest_sentence_embeddings for each row execute function promote_late_guest_sentence_embedding();
+      create trigger match_sentence_to_semantic_study_scenes
+      after insert or update of learning_topic_ids on memory_sentences
+      for each row execute function match_sentence_to_semantic_study_scenes();
+    `);
     const oldMemory = crypto.randomUUID(), oldSentence = crypto.randomUUID();
+    const retainedSentence = crypto.randomUUID(),
+      catalogSentence = crypto.randomUUID();
+    const stagedSentence = crypto.randomUUID(),
+      unfinishedSentence = crypto.randomUUID();
     await db.query(
       "insert into memories values($1,$2,array['cities_and_architecture'],'photo.jpg',now(),'mimo')",
       [oldMemory, owner],
@@ -82,12 +128,91 @@ Deno.test("unified category migration validates storage, matching and atomic gen
       oldSentence,
     ]);
     await db.query(
+      "insert into sentence_embeddings(sentence_id,user_id,model,embedding,expression_purpose,purpose_embedding,learning_topic_ids) values($1,$2,$3,$4,'Describing an animal.',$4,array['pet_life'])",
+      [oldSentence, owner, model, [0, ...vector.slice(0, -1)]],
+    );
+    await db.query(
+      "insert into memory_sentences(id,memory_id,english,is_favorite,learning_topic_ids) values($1,$2,'The lake is calm.',true,array['natural_scenery','pet_life']),($3,$2,'A moment to remember.',false,'{}')",
+      [retainedSentence, oldMemory, catalogSentence],
+    );
+    await db.query(
+      "insert into sentence_embeddings(sentence_id,user_id,model,embedding,expression_purpose,purpose_embedding,learning_topic_ids) values($1,$2,$3,$4,'Describing a calm lake.',$4,array['natural_scenery','pet_life'])",
+      [retainedSentence, owner, model, [0, ...vector.slice(0, -1)]],
+    );
+    await db.query(
+      "insert into guest_sentence_embeddings(sentence_id,guest_user_id,guest_job_id,model,embedding,expression_purpose,purpose_embedding,learning_topic_ids) values($1,$2,$3,$4,$5,'Describing a calm lake.',$5,array['pet_life','natural_scenery']),($6,$2,$3,$4,$5,'Describing a calm lake.',$5,null)",
+      [
+        stagedSentence,
+        other,
+        crypto.randomUUID(),
+        model,
+        vector,
+        unfinishedSentence,
+      ],
+    );
+    const vectorSnapshot = async () => ({
+      authenticated: (await db.query(
+        "select sentence_id,user_id,model,embedding,expression_purpose,purpose_embedding,updated_at from sentence_embeddings order by sentence_id",
+      )).rows,
+      guest: (await db.query(
+        "select sentence_id,guest_user_id,guest_job_id,model,embedding,expression_purpose,purpose_embedding,updated_at from guest_sentence_embeddings order by sentence_id",
+      )).rows,
+    });
+    const beforeVectors = await vectorSnapshot();
+    await db.query(
       "insert into learning_topic_embeddings values('pet_life',$1,'photo-life-v1',$2)",
       [model, vector],
     );
     const migration = await read("20261009003000_unify_scene_categories.sql");
     await db.exec(migration);
     await db.exec(migration);
+
+    await t.step(
+      "canonical and staged categories are cleaned with real preservation and promotion triggers active",
+      async () => {
+        deepStrictEqual(await vectorSnapshot(), beforeVectors);
+        const categories = async (table: string, sentence: string) =>
+          (await db.query<any>(
+            `select learning_topic_ids from ${table} where sentence_id=$1`,
+            [sentence],
+          )).rows[0].learning_topic_ids;
+        deepStrictEqual(
+          await categories("sentence_embeddings", oldSentence),
+          [],
+        );
+        deepStrictEqual(
+          await categories("sentence_embeddings", retainedSentence),
+          ["natural_scenery"],
+        );
+        deepStrictEqual(
+          await categories("guest_sentence_embeddings", stagedSentence),
+          ["natural_scenery"],
+        );
+        strictEqual(
+          await categories("guest_sentence_embeddings", unfinishedSentence),
+          null,
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where id=$1",
+            [retainedSentence],
+          )).rows[0].learning_topic_ids,
+          ["natural_scenery"],
+        );
+        // A stale client payload must not overwrite the cleaned canonical metadata.
+        await db.query(
+          "update memory_sentences set learning_topic_ids=array['cooking'] where id=$1",
+          [oldSentence],
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where id=$1",
+            [oldSentence],
+          )).rows[0].learning_topic_ids,
+          [],
+        );
+      },
+    );
 
     await t.step(
       "new migration runs repeatedly without resetting content, favorites, progress or credits",
@@ -144,7 +269,7 @@ Deno.test("unified category migration validates storage, matching and atomic gen
           );
           await db.query(
             "update memory_sentences set learning_topic_ids=$1 where id=$2",
-            [[id], oldSentence],
+            [[id], catalogSentence],
           );
           await db.query(
             "insert into learning_topic_embeddings values($1,$2,$3,$4)",
@@ -154,17 +279,21 @@ Deno.test("unified category migration validates storage, matching and atomic gen
         await rejects(
           () =>
             db.query(
-              "update memory_sentences set learning_topic_ids=array['pet_life']",
+              "update memory_sentences set learning_topic_ids=array['pet_life'] where id=$1",
+              [catalogSentence],
             ),
           /check constraint/,
         );
         await rejects(
           () =>
-            db.query("update memory_sentences set learning_topic_ids=$1", [[
-              SCENE_CATEGORIES[0][0],
-              SCENE_CATEGORIES[1][0],
-              SCENE_CATEGORIES[2][0],
-            ]]),
+            db.query(
+              "update memory_sentences set learning_topic_ids=$1 where id=$2",
+              [[
+                SCENE_CATEGORIES[0][0],
+                SCENE_CATEGORIES[1][0],
+                SCENE_CATEGORIES[2][0],
+              ], catalogSentence],
+            ),
           /check constraint/,
         );
         await rejects(
@@ -223,11 +352,11 @@ Deno.test("unified category migration validates storage, matching and atomic gen
         );
         await db.query(
           "update memory_sentences set learning_topic_ids=array['pets_and_animals'] where id=$1",
-          [oldSentence],
+          [catalogSentence],
         );
         await db.query(
-          "insert into sentence_embeddings values($1,$2,$3,$4,'Describing an animal.',$5)",
-          [oldSentence, owner, model, [0, ...vector.slice(0, -1)], vector],
+          "insert into sentence_embeddings(sentence_id,user_id,model,embedding,expression_purpose,purpose_embedding,learning_topic_ids) values($1,$2,$3,$4,'Describing an animal.',$5,array['pets_and_animals'])",
+          [catalogSentence, owner, model, [0, ...vector.slice(0, -1)], vector],
         );
         await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
           owner,
@@ -246,8 +375,8 @@ Deno.test("unified category migration validates storage, matching and atomic gen
           )).rows[0].settings;
         strictEqual((await settings()).needs_preparation, false);
         const scores = (await db.query<any>(
-          "select * from study_scene_similarity_scores($1,$2)",
-          [scene, owner],
+          "select * from study_scene_similarity_scores($1,$2,$3)",
+          [scene, owner, catalogSentence],
         )).rows;
         strictEqual(scores[0].category_topic_id, "pets_and_animals");
         await db.query(
@@ -343,8 +472,64 @@ Deno.test("unified category migration validates storage, matching and atomic gen
     );
 
     await t.step(
+      "late guest-vector promotion cannot restore retired categories after migration",
+      async () => {
+        // Simulate a delayed worker publishing categories from before deployment.
+        await db.query(
+          "update guest_sentence_embeddings set learning_topic_ids=array['pet_life','natural_scenery'] where sentence_id=$1",
+          [stagedSentence],
+        );
+        await db.query(
+          "insert into memory_sentences(id,memory_id,english,learning_topic_ids) values($1,$2,'The lake is calm.',array['natural_scenery'])",
+          [stagedSentence, oldMemory],
+        );
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from memory_sentences where id=$1",
+            [stagedSentence],
+          )).rows[0].learning_topic_ids,
+          ["natural_scenery"],
+        );
+        const promoted = (await db.query<any>(
+          "select user_id,embedding,purpose_embedding,expression_purpose from sentence_embeddings where sentence_id=$1",
+          [stagedSentence],
+        )).rows[0];
+        deepStrictEqual(promoted, {
+          user_id: owner,
+          embedding: vector,
+          purpose_embedding: vector,
+          expression_purpose: "Describing a calm lake.",
+        });
+        strictEqual(
+          (await db.query<any>(
+            "select count(*)::int as n from guest_sentence_embeddings where sentence_id=$1",
+            [stagedSentence],
+          )).rows[0].n,
+          0,
+        );
+        await db.exec(migration);
+        deepStrictEqual(
+          (await db.query<any>(
+            "select learning_topic_ids from sentence_embeddings where sentence_id=$1",
+            [stagedSentence],
+          )).rows[0].learning_topic_ids,
+          ["natural_scenery"],
+        );
+      },
+    );
+
+    await t.step(
       "normalization remains a service-only write helper",
       async () => {
+        for (const role of ["anon", "authenticated"]) {
+          strictEqual(
+            (await db.query<any>(
+              "select has_function_privilege($1,'preserve_enriched_sentence_categories()','EXECUTE') as allowed",
+              [role],
+            )).rows[0].allowed,
+            false,
+          );
+        }
         for (
           const fn of [
             "normalize_scene_category_ids(text[],integer)",
