@@ -1,4 +1,4 @@
-import { type SentenceExplanation, validateExplanation } from "./content.ts"
+import { EXPLANATION_VERSION, type SentenceExplanation, validateExplanation } from "./content.ts"
 
 export type ExplanationInput = {
   sentenceID: string
@@ -73,7 +73,7 @@ export function createExplanationHandler(deps: ExplanationDependencies) {
         input = { ...input, english: source.english, chinese: source.chinese }
       }
       const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(
-        JSON.stringify([1, input.english, input.chinese, input.language]),
+        JSON.stringify([EXPLANATION_VERSION, input.english, input.chinese, input.language]),
       ))
       const fingerprint = Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("")
       const claim = await deps.claim(user.id, fingerprint, input.generate)

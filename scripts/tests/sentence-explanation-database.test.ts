@@ -13,6 +13,11 @@ Deno.test("sentence explanation migration: cache, lease fencing, quotas, permiss
         ('00000000-0000-4000-8000-000000000002');
     `)
     await db.exec(await Deno.readTextFile("supabase/migrations/20261009001000_add_sentence_explanations.sql"))
+    // A real saved legacy row must survive the follow-up migration unchanged.
+    await db.exec(`insert into public.sentence_explanations(user_id, fingerprint, content)
+      values ('00000000-0000-4000-8000-000000000002', repeat('d', 64), '{"version":1,"points":[]}');`)
+    await db.exec(await Deno.readTextFile("supabase/migrations/20261009002000_update_sentence_explanation_points.sql"))
+    strictEqual((await db.query<{ version: string }>("select content->>'version' as version from public.sentence_explanations where fingerprint = repeat('d', 64)")).rows[0].version, "1")
     const owner = "00000000-0000-4000-8000-000000000001"
     const other = "00000000-0000-4000-8000-000000000002"
     const hash = "a".repeat(64)
@@ -22,7 +27,7 @@ Deno.test("sentence explanation migration: cache, lease fencing, quotas, permiss
       )
       return result.rows[0].value
     }
-    async function finish(id: string, content: unknown = { version: 1, points: [] }) {
+    async function finish(id: string, content: unknown = { version: 2, points: [] }) {
       const result = await db.query<{ value: boolean }>(
         "select public.finish_sentence_explanation($1, $2, $3, $4::jsonb) as value", [owner, hash, id, JSON.stringify(content)],
       )
@@ -33,7 +38,7 @@ Deno.test("sentence explanation migration: cache, lease fencing, quotas, permiss
     }
 
     deepStrictEqual(await claim(owner, hash, false), { state: "missing" })
-    strictEqual(await count("sentence_explanations"), 0)
+    strictEqual(await count("sentence_explanations"), 1)
     strictEqual(await count("sentence_explanation_limits"), 0)
 
     const first = await claim()
@@ -46,7 +51,11 @@ Deno.test("sentence explanation migration: cache, lease fencing, quotas, permiss
     const replacement = await claim()
     strictEqual(replacement.state, "claimed")
     strictEqual(await finish(first.claimID!), false)
-    const complete = { version: 1, points: [{ title: "break", explanation: "休息" }] }
+    await rejects(() => finish(replacement.claimID!, { version: 3 }), /Invalid explanation/)
+    await rejects(() => finish(replacement.claimID!, { points: [] }), /Invalid explanation/)
+    const complete = { version: 2, points: [{ title: "break", explanation: "休息", example: {
+      english: "Let's take a break.", chinese: "我们休息一下吧。",
+    } }] }
     strictEqual(await finish(replacement.claimID!, complete), true)
     deepStrictEqual(await claim(), { state: "ready", content: complete })
     deepStrictEqual(await claim(owner, hash, false), { state: "ready", content: complete })

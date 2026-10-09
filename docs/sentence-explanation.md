@@ -6,11 +6,12 @@ Tap a favorite sentence to open its own detail page. The original photo, English
 Chinese and existing playback control appear first. Opening the page only reads
 saved content; it never asks an AI to generate an explanation.
 
-Tapping **AI解析 / AI explanation** requests 1–4 concise teaching points, exactly
-two translated example sentences and one four-option cloze exercise. The first
-selection reveals the correct choice and a short explanation. **再练一次 / Try
-again** resets only this exercise; it does not change SRS, mastery, flip history
-or image-generation credits. Reentering starts a fresh exercise attempt.
+Tapping **AI解析 / AI explanation** requests a single **重点解析 / Key expressions**
+card with 1–4 useful words or phrases from the original sentence. Each point
+contains the word or phrase, a concise explanation and one new English example
+with a Chinese translation, in that order. There is no separate examples section
+or practice exercise. Explanations do not change SRS, mastery, flip history or
+image-generation credits.
 
 ## Modules and persistence
 
@@ -20,7 +21,7 @@ or image-generation credits. Reentering starts a fresh exercise attempt.
   and invalidation of stale results.
 - `AppModel+SentenceExplanation`: existing session lifecycle and account-revision
   guards. A saved local result can be read without network access.
-- `SentenceExplanationCache`: account/content/language-scoped atomic local files
+- `SentenceExplanationCache`: account/format/content/language-scoped atomic local files
   in Application Support. Only complete validated explanations are written.
 - `explain-sentence`: authenticated lookup/generation endpoint; Chinese and
   English UI languages have separate explanations. Logged-in users' sentence
@@ -29,7 +30,13 @@ or image-generation credits. Reentering starts a fresh exercise attempt.
 - `sentence_explanations`: cloud cache keyed by authenticated owner and a SHA-256
   fingerprint of schema version, original English/Chinese and explanation
   language. Source changes invalidate the key. Account deletion cascades to the
-  cloud cache and request limits. Exercise answers are never persisted.
+  cloud cache and request limits.
+
+The current format is version 2: `{version:2, points:[{title, explanation,
+example:{english,chinese}}]}`. Both local and cloud keys include the format
+version, so saved version-1 content is not displayed as an incomplete version-2
+explanation. Existing cloud rows are preserved. Opening the page still does not
+regenerate content; the user explicitly taps AI explanation for the new format.
 
 Cache content is intentionally account-scoped. Guest-to-account migration does not
 transfer these auxiliary explanations in this MVP; the sentence itself still
@@ -63,9 +70,10 @@ remain server-only. Internal Supabase calls use `SUPABASE_LOCAL_URL` when presen
 
 ## Release and verification
 
-1. Apply `20261009001000_add_sentence_explanations.sql` to staging.
+1. Apply `20261009001000_add_sentence_explanations.sql` if not already applied,
+   then `20261009002000_update_sentence_explanation_points.sql` to staging.
 2. Deploy **explain-sentence** using Backend Functions, then run the updated app.
-3. Verify a cache miss, explicit generation, exercise feedback, retry, reentry,
+3. Verify a cache miss, explicit generation, word/phrase examples, retry, reentry,
    offline reuse, anonymous use and a different account. Check Chinese/English
    and light/dark modes. No other Edge Function or proxy setting needs updating.
 
@@ -74,10 +82,15 @@ Local checks: `deno check --no-lock supabase/functions/explain-sentence/index.ts
 and the simulator `SentenceExplanationTests` suite. These use mocks/isolated local
 files and do not contact staging/production or trigger purchases.
 
-Local verification on 2026-10-09: explanation handler/database 12 tests passed;
-simulator sentence-explanation suite 12 tests passed, including rendering in
-light/dark modes and accessibility text sizes. Existing generation, speech and
-stability suites: 45 tests passed. SQL was executed in isolated in-memory
-PostgreSQL, including lease expiry, quota resets, private permissions and
-account-deletion cascades. All registered Edge Functions passed type checking.
-No live provider request or staging/production deployment was performed.
+The tests cover complete translated examples, rejection of invalid/legacy content,
+format-scoped cache keys and on-demand generation. Database checks execute both
+migrations in isolated in-memory PostgreSQL, including saved legacy rows, lease
+expiry, quota resets, private permissions and account-deletion cascades. Simulator
+rendering checks cover light/dark modes and accessibility text sizes. No live
+provider request or staging/production deployment is part of these local checks.
+
+Local verification on 2026-10-09 for version 2: all 14 explanation handler/database
+tests and 12 simulator tests passed. Existing generation, speech and stability
+regression suites passed 45 tests. All registered Edge Functions passed type
+checking. The rendered point/example card was inspected in light and dark modes,
+including accessibility text sizes. No live AI requests or deployment were made.

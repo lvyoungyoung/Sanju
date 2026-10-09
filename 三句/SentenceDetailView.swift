@@ -108,83 +108,33 @@ struct SentenceExplanationContent: View {
     let explanation: SentenceExplanation
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.section) {
-            section(L10n.string("sentence_detail.key_points", "理解这句话")) {
-                ForEach(explanation.points.indices, id: \.self) { index in
-                    let point = explanation.points[index]
-                    VStack(alignment: .leading, spacing: AppSpacing.small) {
-                        Text(point.title).font(.system(.body, weight: .semibold)).foregroundStyle(AppPalette.accentText)
-                        Text(point.explanation).font(.body).foregroundStyle(AppTextColor.primary)
-                    }
-                }
-            }
-            section(L10n.string("sentence_detail.examples", "换个场景，也能这样说")) {
-                ForEach(explanation.examples.indices, id: \.self) { index in
-                    let example = explanation.examples[index]
-                    VStack(alignment: .leading, spacing: AppSpacing.small) {
-                        Text(example.english).font(.system(.body, weight: .medium)).foregroundStyle(AppTextColor.primary)
-                        Text(example.chinese).font(.subheadline).foregroundStyle(AppTextColor.secondary)
-                    }
-                }
-            }
-            section(L10n.string("sentence_detail.practice", "试着用一用")) {
-                SentenceExplanationExerciseView(exercise: explanation.exercise)
-            }
-        }
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
-            Text(title).font(.system(.headline, weight: .semibold)).foregroundStyle(AppTextColor.primary)
-            content()
+            Text(L10n.string("sentence_detail.key_points", "重点解析"))
+                .font(.system(.headline, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+            ForEach(explanation.points.indices, id: \.self) { index in
+                let point = explanation.points[index]
+                VStack(alignment: .leading, spacing: AppSpacing.small) {
+                    Text(point.title)
+                        .font(.system(.body, weight: .semibold))
+                        .foregroundStyle(AppPalette.accentText)
+                    Text(point.explanation).font(.body).foregroundStyle(AppTextColor.primary)
+                    VStack(alignment: .leading, spacing: AppSpacing.small) {
+                        Text(point.example.english)
+                            .font(.system(.body, weight: .medium))
+                            .foregroundStyle(AppTextColor.primary)
+                        Text(point.example.chinese).font(.subheadline).foregroundStyle(AppTextColor.secondary)
+                    }
+                    .padding(.top, AppSpacing.small)
+                }
+                if index < explanation.points.count - 1 {
+                    Divider().overlay(AppStroke.subtle)
+                        .padding(.vertical, AppSpacing.xSmall)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppSpacing.xLarge)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
-    }
-}
-
-struct SentenceExplanationExerciseView: View {
-    let exercise: SentenceExplanation.Exercise
-    @State private var attempt = SentenceExerciseAttempt()
-
-    private var selectedIndex: Int? { attempt.selectedIndex }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            Text(exercise.prompt).font(.subheadline).foregroundStyle(AppTextColor.secondary)
-            Text(exercise.sentence).font(.system(.body, weight: .medium)).foregroundStyle(AppTextColor.primary)
-            ForEach(exercise.options.indices, id: \.self) { index in
-                Button { attempt.select(index, exercise: exercise) } label: {
-                    HStack(spacing: AppSpacing.medium) {
-                        Text(String(UnicodeScalar(65 + index)!)).font(.system(.subheadline, weight: .semibold))
-                            .foregroundStyle(AppTextColor.secondary)
-                        Text(exercise.options[index]).foregroundStyle(AppTextColor.primary)
-                        Spacer(minLength: 0)
-                        if selectedIndex != nil, index == exercise.answerIndex {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        } else if selectedIndex == index {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                        }
-                    }
-                    .padding(AppSpacing.medium)
-                    .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-                    .background(selectedIndex == index ? AppPalette.accent.opacity(0.12) : AppSurfaceColor.subtleFill,
-                                in: RoundedRectangle(cornerRadius: AppCornerRadius.small))
-                }
-                .buttonStyle(.plain)
-                .disabled(selectedIndex != nil)
-            }
-            if let selectedIndex {
-                Text(selectedIndex == exercise.answerIndex
-                     ? L10n.string("sentence_detail.correct", "答对了")
-                     : L10n.string("sentence_detail.incorrect", "再记住这个用法"))
-                    .font(.system(.subheadline, weight: .semibold)).foregroundStyle(AppPalette.accentText)
-                Text(exercise.explanation).font(.subheadline).foregroundStyle(AppTextColor.secondary)
-                    .accessibilityIdentifier("sentence_detail.answer_explanation")
-                Button(L10n.string("sentence_detail.try_again", "再练一次")) { attempt.reset() }
-                    .font(.subheadline).foregroundStyle(AppPalette.accentText)
-            }
-        }
     }
 }

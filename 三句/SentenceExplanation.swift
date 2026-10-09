@@ -3,9 +3,12 @@ import Combine
 import Foundation
 
 nonisolated struct SentenceExplanation: Codable, Equatable, Sendable {
+    static let formatVersion = 2
+
     struct Point: Codable, Equatable, Sendable {
         let title: String
         let explanation: String
+        let example: Example
     }
 
     struct Example: Codable, Equatable, Sendable {
@@ -13,32 +16,20 @@ nonisolated struct SentenceExplanation: Codable, Equatable, Sendable {
         let chinese: String
     }
 
-    struct Exercise: Codable, Equatable, Sendable {
-        let prompt: String
-        let sentence: String
-        let options: [String]
-        let answerIndex: Int
-        let explanation: String
-    }
-
     let version: Int
     let points: [Point]
-    let examples: [Example]
-    let exercise: Exercise
 
     var isValid: Bool {
         func valid(_ text: String, _ limit: Int) -> Bool {
             !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.utf16.count <= limit
         }
-        return version == 1 && (1...4).contains(points.count)
-            && points.allSatisfy { valid($0.title, 120) && valid($0.explanation, 800) }
-            && examples.count == 2 && examples.allSatisfy { valid($0.english, 300) && valid($0.chinese, 400) }
-            && Set(examples.map { $0.english.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == 2
-            && valid(exercise.prompt, 200) && valid(exercise.sentence, 300)
-            && exercise.sentence.components(separatedBy: "____").count == 2
-            && exercise.options.count == 4 && exercise.options.allSatisfy { valid($0, 100) }
-            && Set(exercise.options.map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == 4
-            && exercise.options.indices.contains(exercise.answerIndex) && valid(exercise.explanation, 800)
+        return version == Self.formatVersion && (1...4).contains(points.count)
+            && points.allSatisfy {
+                valid($0.title, 120) && valid($0.explanation, 800)
+                    && valid($0.example.english, 300) && valid($0.example.chinese, 400)
+            }
+            && Set(points.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == points.count
+            && Set(points.map { $0.example.english.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }).count == points.count
     }
 }
 
@@ -50,7 +41,7 @@ nonisolated struct SentenceExplanationRequest: Codable, Equatable, Sendable {
     let generate: Bool
 
     func cacheKey(owner: String) -> String {
-        let components = [owner.lowercased(), "1", english, chinese, language]
+        let components = [owner.lowercased(), String(SentenceExplanation.formatVersion), english, chinese, language]
         let data = (try? JSONEncoder().encode(components)) ?? Data()
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
@@ -60,18 +51,7 @@ nonisolated struct SentenceExplanationResponse: Decodable {
     let explanation: SentenceExplanation?
 }
 
-nonisolated struct SentenceExerciseAttempt {
-    private(set) var selectedIndex: Int?
-
-    mutating func select(_ index: Int, exercise: SentenceExplanation.Exercise) {
-        guard selectedIndex == nil, exercise.options.indices.contains(index) else { return }
-        selectedIndex = index
-    }
-
-    mutating func reset() { selectedIndex = nil }
-}
-
-/// Account-scoped files keep saved explanations available offline; exercise answers are never stored.
+/// Account- and format-scoped files keep complete explanations available offline.
 actor SentenceExplanationCache {
     static let shared = SentenceExplanationCache()
     private let directory: URL

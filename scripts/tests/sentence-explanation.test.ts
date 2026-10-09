@@ -1,16 +1,18 @@
 import { deepStrictEqual, strictEqual, throws, ok } from "node:assert"
 import { createExplanationHandler, type ExplanationDependencies, type ExplanationInput } from "../../supabase/functions/explain-sentence/handler.ts"
-import { type SentenceExplanation, validateExplanation, explanationPrompt } from "../../supabase/functions/explain-sentence/content.ts"
+import { EXPLANATION_VERSION, type SentenceExplanation, validateExplanation, explanationPrompt } from "../../supabase/functions/explain-sentence/content.ts"
 import { generateExplanation } from "../../supabase/functions/explain-sentence/model.ts"
 
 const content: SentenceExplanation = {
-  version: 1,
-  points: [{ title: "a little break", explanation: "短暂休息，语气自然。" }],
-  examples: [
-    { english: "Let's take a little break.", chinese: "我们休息一小会儿吧。" },
-    { english: "I need a little break from work.", chinese: "我需要暂时放下工作休息一下。" },
+  version: 2,
+  points: [
+    { title: "a little break", explanation: "短暂休息，语气自然。", example: {
+      english: "Let's take a little break.", chinese: "我们休息一小会儿吧。",
+    } },
+    { title: "need", explanation: "表示需要某物或做某事。", example: {
+      english: "I need a warm cup of tea.", chinese: "我需要一杯热茶。",
+    } },
   ],
-  exercise: { prompt: "选择合适的词。", sentence: "Let's ____ a little break.", options: ["take", "make", "do", "put"], answerIndex: 0, explanation: "take a break 是休息的固定搭配。" },
 }
 const input: ExplanationInput = {
   sentenceID: "00000000-0000-4000-8000-000000000001", english: "I need a little break.", chinese: "我需要休息一下。", language: "zh", generate: true,
@@ -30,17 +32,33 @@ function dependencies(overrides: Partial<ExplanationDependencies> = {}): Explana
   }
 }
 
-Deno.test("explanation strictly validates full content and exactly two examples", () => {
+Deno.test("each key expression requires an explanation and one translated example", () => {
   deepStrictEqual(validateExplanation(content), content)
-  for (const invalid of [null, {}, { ...content, version: 2 }, { ...content, points: [] },
-    { ...content, examples: content.examples.slice(0, 1) },
-    { ...content, examples: [content.examples[0], content.examples[0]] },
-    { ...content, exercise: { ...content.exercise, answerIndex: 4 } },
-    { ...content, exercise: { ...content.exercise, options: ["take", " Take ", "do", "put"] } },
-    { ...content, exercise: { ...content.exercise, sentence: "No blank here." } },
-    { ...content, exercise: { ...content.exercise, sentence: "____ and ____" } },
-    { ...content, points: [{ title: "word", explanation: "x".repeat(801) }] }]) {
+  const point = content.points[0]
+  for (const invalid of [null, {}, { ...content, version: 1 }, { ...content, points: [] },
+    { ...content, points: Array(5).fill(point) },
+    { ...content, points: [point, point] },
+    { ...content, points: [{ ...point, title: " " }] },
+    { ...content, points: [{ ...point, explanation: "x".repeat(801) }] },
+    { ...content, points: [{ ...point, example: undefined }] },
+    { ...content, points: [{ ...point, example: { english: "", chinese: "中文" } }] },
+    { ...content, points: [{ ...point, example: { english: "An example.", chinese: " " } }] },
+    { ...content, points: [{ ...point, example: { english: "x".repeat(301), chinese: "中文" } }] },
+    { ...content, points: [point, { ...content.points[1], example: point.example }] }]) {
     throws(() => validateExplanation(invalid))
+  }
+  deepStrictEqual(validateExplanation({ ...content, examples: [], exercise: {} }), content)
+})
+
+Deno.test("prompt only requests words or phrases with their own examples", () => {
+  for (const language of ["zh", "en"] as const) {
+    const prompt = explanationPrompt(language)
+    ok(prompt.includes("Each point's title must be the word or phrase itself"))
+    ok(prompt.includes("exactly one new, natural English example"))
+    ok(prompt.includes('"version":2'))
+    ok(prompt.includes('"example":'))
+    strictEqual(prompt.includes('"examples":'), false)
+    strictEqual(prompt.includes('"exercise":'), false)
   }
 })
 
@@ -89,6 +107,24 @@ Deno.test("fingerprints distinguish source changes and explanation languages", a
   strictEqual(hashes.size, 3)
 })
 
+Deno.test("v2 cache fingerprints never reuse the previous explanation format", async () => {
+  const handler = createExplanationHandler(dependencies({
+    claim: async (_owner, fingerprint) => {
+      const hash = async (version: number) => {
+        const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(
+          JSON.stringify([version, input.english, input.chinese, input.language]),
+        ))
+        return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("")
+      }
+      strictEqual(fingerprint, await hash(EXPLANATION_VERSION))
+      strictEqual(fingerprint === await hash(1), false)
+      return { state: "missing" }
+    },
+    generate: () => { throw new Error("Opening must not regenerate") },
+  }))
+  strictEqual((await handler(request({ ...input, generate: false }))).status, 200)
+})
+
 Deno.test("busy and quota responses do not invoke providers or publish results", async () => {
   for (const [state, status] of [["busy", 409], ["limited", 429]] as const) {
     const handler = createExplanationHandler(dependencies({
@@ -103,7 +139,7 @@ Deno.test("invalid model results and save failures release the lease and never r
     let released = false
     let saved = false
     const handler = createExplanationHandler(dependencies({
-      generate: () => Promise.resolve(invalid ? { ...content, examples: [] } : content),
+      generate: () => Promise.resolve(invalid ? { ...content, points: [] } : content),
       finish: () => { saved = true; return Promise.resolve(false) },
       release: () => { released = true; return Promise.resolve() },
     }))

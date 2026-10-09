@@ -1,18 +1,19 @@
+import CryptoKit
 import SwiftUI
 import XCTest
 @testable import 三句
 
 @MainActor
 final class SentenceExplanationTests: XCTestCase {
-    private func explanation(answer: Int = 0, examples: Int = 2, options: [String] = ["take", "make", "do", "put"]) -> SentenceExplanation {
+    private func explanation(version: Int = 2, pointCount: Int = 1, exampleEnglish: String = "Let's take a little break.") -> SentenceExplanation {
         SentenceExplanation(
-            version: 1,
-            points: [.init(title: "take a little break", explanation: "休息一小会儿。take a break 是一个自然的日常搭配。")],
-            examples: (0..<examples).map { index in
-                .init(english: index == 0 ? "Let's take a little break." : "I need a little break from work.",
-                      chinese: index == 0 ? "我们休息一小会儿吧。" : "我需要暂时放下工作休息一下。")
-            },
-            exercise: .init(prompt: "选择合适的词。", sentence: "Let's ____ a little break.", options: options, answerIndex: answer, explanation: "take a break 表示休息。")
+            version: version,
+            points: (0..<pointCount).map { index in
+                .init(title: index == 0 ? "take a little break" : "need",
+                      explanation: index == 0 ? "休息一小会儿。take a break 是一个自然的日常搭配。" : "表示需要某物或做某事。",
+                      example: .init(english: index == 0 ? exampleEnglish : "I need a warm cup of tea.",
+                                     chinese: index == 0 ? "我们休息一小会儿吧。" : "我需要一杯热茶。"))
+            }
         )
     }
 
@@ -20,13 +21,15 @@ final class SentenceExplanationTests: XCTestCase {
         SentenceExplanationRequest(sentenceID: UUID(), english: english, chinese: "我需要休息一下。", language: language, generate: generate)
     }
 
-    func testValidResultRequiresTwoExamplesAndAnUnambiguousExerciseShape() {
+    func testEveryKeyExpressionRequiresItsOwnTranslatedExample() {
         XCTAssertTrue(explanation().isValid)
-        XCTAssertFalse(explanation(answer: -1).isValid)
-        XCTAssertFalse(explanation(answer: 4).isValid)
-        XCTAssertFalse(explanation(examples: 1).isValid)
-        XCTAssertFalse(explanation(options: ["take", "Take ", "do", "put"]).isValid)
-        XCTAssertFalse(explanation(options: ["take", "make", "do"]).isValid)
+        XCTAssertTrue(explanation(pointCount: 2).isValid)
+        XCTAssertFalse(explanation(version: 1).isValid)
+        XCTAssertFalse(explanation(pointCount: 0).isValid)
+        XCTAssertFalse(explanation(pointCount: 5).isValid)
+        XCTAssertFalse(explanation(exampleEnglish: " ").isValid)
+        XCTAssertFalse(explanation(exampleEnglish: String(repeating: "x", count: 301)).isValid)
+        XCTAssertFalse(SentenceExplanation(version: 2, points: Array(repeating: explanation().points[0], count: 2)).isValid)
     }
 
     func testCacheKeyIsScopedByAccountContentAndLanguageNotGenerationFlag() {
@@ -36,7 +39,7 @@ final class SentenceExplanationTests: XCTestCase {
         XCTAssertNotEqual(request().cacheKey(owner: "user"), request(english: "A new sentence.").cacheKey(owner: "user"))
     }
 
-    func testCachePersistsCompleteContentAndDoesNotPersistExerciseAttempts() async throws {
+    func testCachePersistsCompleteContentWithoutTheRemovedSections() async throws {
         let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = SentenceExplanationCache(directory: directory)
@@ -48,7 +51,9 @@ final class SentenceExplanationTests: XCTestCase {
         let stored = await reopened.load(key: key)
         XCTAssertEqual(stored, explanation())
         let raw = try String(contentsOf: directory.appendingPathComponent(key + ".json"), encoding: .utf8)
-        XCTAssertFalse(raw.contains("selectedIndex"))
+        XCTAssertTrue(raw.contains("\"example\""))
+        XCTAssertFalse(raw.contains("\"examples\""))
+        XCTAssertFalse(raw.contains("\"exercise\""))
         let otherUser = await reopened.load(key: request().cacheKey(owner: "another-user"))
         XCTAssertNil(otherUser)
     }
@@ -57,7 +62,7 @@ final class SentenceExplanationTests: XCTestCase {
         let directory = URL.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let cache = SentenceExplanationCache(directory: directory)
-        await cache.save(explanation(examples: 1), key: "invalid")
+        await cache.save(explanation(exampleEnglish: ""), key: "invalid")
         let invalid = await cache.load(key: "invalid")
         XCTAssertNil(invalid)
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
@@ -86,7 +91,7 @@ final class SentenceExplanationTests: XCTestCase {
 
     func testFailureAllowsRetryAndNeverDisplaysPartialContent() async {
         let model = SentenceExplanationModel()
-        await model.load(generate: true) { self.explanation(examples: 1) }
+        await model.load(generate: true) { self.explanation(exampleEnglish: "") }
         XCTAssertNil(model.explanation)
         XCTAssertNotNil(model.errorMessage)
         XCTAssertFalse(model.isLoading)
@@ -133,33 +138,26 @@ final class SentenceExplanationTests: XCTestCase {
         XCTAssertFalse(model.isLoading)
     }
 
-    func testExerciseLocksFirstChoiceAndCanBePracticedAgain() {
-        var attempt = SentenceExerciseAttempt()
-        let exercise = explanation().exercise
-        attempt.select(-1, exercise: exercise)
-        XCTAssertNil(attempt.selectedIndex)
-        attempt.select(2, exercise: exercise)
-        XCTAssertEqual(attempt.selectedIndex, 2)
-        attempt.select(0, exercise: exercise)
-        XCTAssertEqual(attempt.selectedIndex, 2)
-        attempt.reset()
-        XCTAssertNil(attempt.selectedIndex)
-        attempt.select(0, exercise: exercise)
-        XCTAssertEqual(attempt.selectedIndex, exercise.answerIndex)
-        XCTAssertNil(SentenceExerciseAttempt().selectedIndex)
+    func testNewCacheKeysDoNotReuseThePreviousFormat() throws {
+        let input = request()
+        let legacyData = try JSONEncoder().encode(["user", "1", input.english, input.chinese, input.language])
+        let legacyKey = SHA256.hash(data: legacyData).map { String(format: "%02x", $0) }.joined()
+        XCTAssertNotEqual(input.cacheKey(owner: "user"), legacyKey)
+        let oldJSON = Data(#"{"version":1,"points":[{"title":"break","explanation":"休息"}],"examples":[],"exercise":{}}"#.utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(SentenceExplanation.self, from: oldJSON))
     }
 
     func testExplanationCardsRenderInBothThemesAndWithLargeText() throws {
         for scheme in [ColorScheme.light, .dark] {
             for size in [DynamicTypeSize.large, .accessibility1] {
-                let view = SentenceExplanationContent(explanation: explanation())
+                let view = SentenceExplanationContent(explanation: explanation(pointCount: 2))
                     .padding(20).frame(width: 375)
                     .background(AppSurfaceColor.page)
                     .environment(\.colorScheme, scheme)
                     .environment(\.dynamicTypeSize, size)
                 let image = try XCTUnwrap(ImageRenderer(content: view).uiImage)
                 XCTAssertEqual(image.size.width, 375)
-                XCTAssertGreaterThan(image.size.height, 400)
+                XCTAssertGreaterThan(image.size.height, 300)
                 let attachment = XCTAttachment(image: image)
                 attachment.name = "SentenceExplanation-\(scheme)-\(size)"
                 attachment.lifetime = .keepAlways

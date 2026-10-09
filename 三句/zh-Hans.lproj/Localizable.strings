@@ -7,12 +7,7 @@
 "sentence_detail.rate_limited" = "解析次数较多，请稍后再试。";
 "sentence_detail.in_progress" = "这句话正在解析，请稍后重试。";
 "sentence_detail.offline" = "请连接网络后再获取解析。";
-"sentence_detail.key_points" = "理解这句话";
-"sentence_detail.examples" = "换个场景，也能这样说";
-"sentence_detail.practice" = "试着用一用";
-"sentence_detail.correct" = "答对了";
-"sentence_detail.incorrect" = "再记住这个用法";
-"sentence_detail.try_again" = "再练一次";
+"sentence_detail.key_points" = "重点解析";
 "study.match.title" = "匹配范围";
 "study.match.done" = "完成";
 "study.match.explanation" = "范围越宽，句子可能越多，但与主题的关联也可能更弱。";
