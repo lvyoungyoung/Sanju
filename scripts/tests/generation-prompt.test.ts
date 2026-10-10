@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "147022ef37b8454bdda8d73767adbabdadb2fe78320e69d696e75e82b43d846d",
+      "1c7020066752d5a775bf66f89a1a2d0a00ffb40c2cb6490a4828342be378c56b",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "ba3e3175600677ad5bb4efd80975a90947e3db72c1184e02e374ba22711b132a",
+      "e6bcd48aedb27c2fd7bd0a9fbbc4ed2abc9949f422413e7ed39e7b6038811345",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "45890923ea8733e9af2b10a52ef5b8b86a3d2af5677e137c3670919834c1b8e5",
+      "93cc4c90659a1cc2830808ccf6577f02b257b58797e1f54910ee94e157e2b19e",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "ac2482c3f4381d822194bce66169d2e30fd340da8d57522e18aa6e1023156944",
+      "644ea2e7fa029f5e0f4ae5b24ded38139a65a44d1188244c65f9ceb8d4171670",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -203,7 +203,7 @@ Deno.test("one natural conversational style keeps grounded humor and child-safe 
             "自然的日常口语",
             "可轻微幽默或俏皮",
             "须来自可见的对比、动作或细节",
-            "不虚构动作、对话、情绪或细节",
+            format === "dual_tabs_v1" ? "不把推测写成已知事实" : "不虚构动作、对话、情绪或细节",
           ]
         ) {
           ok(prompt.includes(text), `${level}: ${text}`);
@@ -218,7 +218,8 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   for (
     const text of [
       "不推测人物关系、背景和内心感受",
-      "大胆推测最可能的场景、关系和感受",
+      "提供合理的可能说法",
+      "不替用户断定唯一的情绪或意图",
       "不编造无依据的具体姓名、地点、时间、经历或事实",
       "不能声称对话已发生",
       "仅画面明确涉及拍照才考虑请人拍照",
@@ -267,47 +268,66 @@ Deno.test("both question types reach their own group at every difficulty", () =>
   }
 });
 
-Deno.test("photo descriptions keep two flexible statements and one grounded observation question", () => {
+Deno.test("both groups prioritize useful expressions over photo captions at every difficulty", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    for (const rule of [
+      "照片所示场景中用得上的英语",
+      "不是给照片配文",
+      "不输出分析过程",
+      "用户在这里会对谁说、想表达什么",
+      "下次遇到类似场景还能用吗",
+      "表达价值优先于细节覆盖、修辞和句式变化",
+      "不必覆盖所有意图",
+      "不要把所有照片都变成点餐、问路",
+      "六句提供不同的表达选择",
+    ]) ok(prompt.includes(rule), `${level}: ${rule}`);
+    ok(!prompt.includes("1. 我当时的感受："));
+    ok(!prompt.includes("2. 发生了什么："));
+  }
+});
+
+Deno.test("photo descriptions select useful observations instead of a fixed detail checklist", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
-    const subjectIndex = descriptionRules.indexOf("1. 主体：");
-    const detailIndex = descriptionRules.indexOf("2. 细节：");
-    const questionIndex = descriptionRules.indexOf("3. 观察问题：");
-    ok(subjectIndex >= 0 && detailIndex > subjectIndex && questionIndex > detailIndex);
     for (const rule of [
       "不推测人物关系、背景和内心感受",
       "两句客观陈述和一个观察问题",
-      "围绕画面中的具体细节",
-      "邀请描述特点或与周围的联系",
-      "允许不同回答",
+      "把眼前值得注意的东西说清楚",
+      "选择两个值得向别人指出或分享的观察",
+      "不固定为主体和细节",
+      "不为覆盖颜色、材质、光线而罗列细节",
+      "增加能表达的意思，不只堆形容词",
+      "让现场的人有理由交流",
+      "不要求对方描述照片",
       "不做识别或数数测验",
       "不问经历或泛泛感受",
-      "前两句角度可灵活调整",
-      "不硬凑动作、互动或细节",
       "三句不重复，问题不只是陈述改问句",
-      "不固定句式，难度优先",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
     ok(!descriptionRules.includes("可直接看出答案"));
     ok(!/例如|示例|example/i.test(descriptionRules));
   }
 });
 
-Deno.test("feeling expressions avoid a fixed first-person template without adding example sentences", () => {
+Deno.test("scene expressions select communication needs without fixing feelings or events", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     for (const rule of [
-      "围绕画面中的具体对象或活动",
-      "通过喜欢、期待、想做什么或对眼前事物的评价表达感受",
+      "贴合具体对象或活动",
+      "按场景选择最有用的两种表达意图",
+      "表达需要、偏好或感受，分享经历，提出建议或邀请",
+      "不固定为感受加经历",
+      "不复述画面描述",
+      "不替用户断定唯一的情绪或意图",
       "不机械套用 I feel + 形容词",
       "不强制第一人称开头",
-      "句式服从难度，不为变化刻意复杂化",
-      "第一句按场景自然选择主语和句式",
-      "第二句优先 I/we",
+      "句式服从难度",
     ]) ok(prompt.includes(rule), `${level}: ${rule}`);
     ok(!prompt.includes("第一、三句优先 I/we"));
-    const feelingRule = prompt.slice(prompt.indexOf("1. 我当时的感受："), prompt.indexOf("2. 发生了什么："));
-    ok(!/例如|示例|example/i.test(feelingRule), "Do not seed another repeated English opening with an example");
+    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
+    ok(!/例如|示例|example/i.test(sceneRules), "Do not seed another repeated English opening with an example");
+    ok(!sceneRules.includes("第二句优先 I/we"));
     ok(!buildPromptText(level, "legacy_v1").includes("不机械套用 I feel"));
   }
 });
@@ -322,13 +342,13 @@ Deno.test("each group ends in a question aligned with its own purpose without ch
       "问题遵守难度，不附答案或新增字段",
       "问身边的人一句自然的聊天问题，不是看图理解题",
       "本次用开放式问题",
-      "不硬凑物品归属、翻看他人物品或许可问题",
+      "不硬凑归属或许可问题，不问翻看私人物品",
     ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
     const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
     for (const group of ["image_descriptions", "scene_and_feelings"]) {
       example[group][2] = { ...example[group][2], english: group === "image_descriptions"
-        ? "How would you describe the light on the water?" : "Would you like to stay here longer?",
-        chinese: group === "image_descriptions" ? "你会怎样描述水面上的光？" : "你想在这里多待一会儿吗？" };
+        ? "What is making the water look so bright?" : "Would you like to stay here longer?",
+        chinese: group === "image_descriptions" ? "是什么让水面看起来这么亮？" : "你想在这里多待一会儿吗？" };
     }
     const parsed = parseGeneratedContent(JSON.stringify(example), "dual_tabs_v1");
     ok(parsed);
