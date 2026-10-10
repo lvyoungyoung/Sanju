@@ -829,7 +829,7 @@ private struct NewLearningResultPanel<Content: View>: View {
 
 private struct NewLearningSentenceList: View {
     let memory: MemoryEntry
-    @State private var selectedGroup: SentencePresentationGroup = .whatISee
+    @State private var selectedGroup: SentencePresentationGroup = .whatIDSay
 
     private var displayedSentences: [SentenceRecord] {
         memory.sentences.filter { sentence in

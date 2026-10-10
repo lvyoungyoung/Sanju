@@ -68,7 +68,7 @@ struct MemoryDetailImageSkeleton: View {
 
 struct MemoryDetailSentencePanel: View {
     let memory: MemoryEntry
-    @State private var selectedGroup: SentencePresentationGroup = .whatISee
+    @State private var selectedGroup: SentencePresentationGroup = .whatIDSay
 
     private var displayedSentences: [SentenceRecord] {
         memory.sentences.filter { sentence in

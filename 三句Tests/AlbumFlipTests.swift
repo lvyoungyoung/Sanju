@@ -47,6 +47,50 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertTrue(items.allSatisfy { $0.memoryCreatedAt == memory.createdAt })
     }
 
+    func testPresentationTabsPutSceneExpressionsBeforePhotoDescriptions() {
+        XCTAssertEqual(SentencePresentationGroup.allCases, [.whatIDSay, .whatISee])
+        XCTAssertEqual(SentencePresentationGroup.whatIDSay.rawValue, "what_i_say")
+        XCTAssertEqual(SentencePresentationGroup.whatISee.rawValue, "what_i_see")
+    }
+
+    func testEveryPhotoRoundShowsSceneExpressionsFirstRegardlessOfRandomDraw() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
+        let expectedGroups: [SentencePresentationGroup] = [.whatIDSay, .whatIDSay, .whatIDSay,
+                                                         .whatISee, .whatISee, .whatISee]
+        for drawLast in [false, true] {
+            let deck = AlbumFlipDeck(items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+                                     mode: .photoRounds, randomIndex: { drawLast ? $0 - 1 : 0 })
+            for _ in 0..<3 {
+                var visited = Set<String>()
+                for group in expectedGroups {
+                    let item = try XCTUnwrap(deck.currentItem)
+                    XCTAssertEqual(item.sentence.presentationGroup, group)
+                    XCTAssertTrue(visited.insert(item.id).inserted)
+                    deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID))
+                }
+                XCTAssertEqual(visited, Set(items.map(\.id)))
+                XCTAssertTrue(deck.isShowingRoundBreak)
+                XCTAssertEqual(deck.upcomingSpeechTexts, deck.cards.prefix(5).map { $0.item.sentence.english })
+                deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID))
+            }
+        }
+    }
+
+    func testPhotoRoundStillWorksWhenOnlyOnePresentationGroupExists() throws {
+        let allItems = AlbumFlipItem.makeItems(from: [makeMemory()])
+        for group in SentencePresentationGroup.allCases {
+            let items = allItems.filter { $0.sentence.presentationGroup == group }
+            let deck = AlbumFlipDeck(items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+                                     mode: .photoRounds, randomIndex: { _ in 0 })
+            for _ in items {
+                XCTAssertEqual(deck.currentItem?.sentence.presentationGroup, group)
+                deck.advance(.again, cardID: try XCTUnwrap(deck.currentPageID))
+            }
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertEqual(deck.cards.count, items.count)
+        }
+    }
+
     func testFavoriteToggleOnlyChangesCurrentSentenceWithoutRecordingStudyOrFlipFeedback() async throws {
         let model = AppModel()
         model.memories = [makeMemory()]

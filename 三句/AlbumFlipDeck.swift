@@ -166,7 +166,12 @@ final class AlbumFlipDeck: ObservableObject {
     private func appendCard() {
         if mode == .photoRounds {
             guard !remainingRoundItems.isEmpty else { return }
-            let index = randomIndex(remainingRoundItems.count)
+            // Finish the scene expressions before drawing the photo descriptions each round.
+            let sceneIndices = remainingRoundItems.indices.filter {
+                remainingRoundItems[$0].sentence.presentationGroup == .whatIDSay
+            }
+            let candidates = sceneIndices.isEmpty ? Array(remainingRoundItems.indices) : sceneIndices
+            let index = candidates[randomIndex(candidates.count)]
             cards.append(AlbumFlipCard(item: remainingRoundItems.remove(at: index)))
             return
         }

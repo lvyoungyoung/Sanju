@@ -9,8 +9,8 @@ import Combine
 import Foundation
 
 enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
-    case whatISee = "what_i_see"
     case whatIDSay = "what_i_say"
+    case whatISee = "what_i_see"
 
     var localizedTabTitle: String {
         switch self {
