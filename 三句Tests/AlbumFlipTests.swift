@@ -1,4 +1,5 @@
 import Combine
+import PhotosUI
 import SwiftUI
 import XCTest
 @testable import 三句
@@ -780,6 +781,88 @@ final class AlbumFlipTests: XCTestCase {
         }
     }
 
+    func testPhotoPickerCancellationAndReopeningDoNotReuseASelection() {
+        let selection = AlbumFlipPhotoSelection()
+        let first = PhotosPickerItem(itemIdentifier: "first-photo")
+        selection.select(first)
+        XCTAssertNil(selection.takeSelectionAfterDismissal())
+
+        selection.begin()
+        XCTAssertTrue(selection.isPresented)
+        XCTAssertNil(selection.selectedItem)
+        XCTAssertNil(selection.takeSelectionAfterDismissal())
+        selection.isPresented = false
+        selection.select(first)
+        XCTAssertNil(selection.takeSelectionAfterDismissal(), "A late callback after cancellation must be ignored")
+
+        selection.begin()
+        selection.select(first)
+        XCTAssertFalse(selection.isPresented)
+        XCTAssertEqual(selection.takeSelectionAfterDismissal(), first)
+        XCTAssertNil(selection.takeSelectionAfterDismissal(), "A selected photo is handed off only once")
+
+        selection.begin()
+        XCTAssertNil(selection.selectedItem)
+        selection.isPresented = false
+        XCTAssertNil(selection.takeSelectionAfterDismissal())
+    }
+
+    func testPhotoPickerIsPresentedOverTheAlbumAndCancellationKeepsTheSameCard() async throws {
+        let model = AppModel()
+        model.isNetworkAvailable = false
+        model.albumFlipHistorySync = nil
+        model.speech.sessionProvider = { throw CancellationError() }
+        defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: [makeMemory()]),
+                                 store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+                                 mode: .photoRounds)
+        for _ in 0..<6 { deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID)) }
+        let pageID = deck.currentPageID
+        let bufferedIDs = deck.cards.map(\.id)
+        let selection = AlbumFlipPhotoSelection()
+        let presentation = AlbumFlipPresentationTestState()
+        let view = AlbumFlipPresentationTestHost(model: model, deck: deck, selection: selection, presentation: presentation)
+        _ = try await renderInWindow(view, size: CGSize(width: 393, height: 852), settleDuration: .milliseconds(900)) {
+            let root = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController)
+            let album = try XCTUnwrap(root.presentedViewController)
+            selection.begin()
+            try await Task.sleep(for: .milliseconds(1500))
+            XCTAssertTrue(root.presentedViewController === album)
+            XCTAssertNotNil(album.presentedViewController, "The picker must be presented on top of the album")
+            if let window = root.view.window {
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "AlbumFlip-PhotoPicker-OverAlbum"
+                attachment.lifetime = .keepAlways
+                self.add(attachment)
+            }
+
+            selection.isPresented = false
+            try await Task.sleep(for: .milliseconds(700))
+            XCTAssertNil(album.presentedViewController)
+            XCTAssertTrue(root.presentedViewController === album, "Cancelling must not dismiss the album")
+            XCTAssertTrue(presentation.isShowingAlbum)
+            XCTAssertTrue(presentation.selectedItems.isEmpty)
+            XCTAssertEqual(deck.currentPageID, pageID)
+            XCTAssertEqual(deck.cards.map(\.id), bufferedIDs)
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertEqual(deck.viewedCount, 6)
+
+            selection.begin()
+            try await Task.sleep(for: .milliseconds(700))
+            XCTAssertNotNil(album.presentedViewController)
+            let item = PhotosPickerItem(itemIdentifier: "newly-selected-photo")
+            selection.select(item)
+            try await Task.sleep(for: .milliseconds(1200))
+            XCTAssertEqual(presentation.selectedItems, [item])
+            XCTAssertFalse(presentation.isShowingAlbum)
+            XCTAssertNil(root.presentedViewController, "The album closes only after a confirmed photo selection")
+        }
+    }
+
     private var samplePhoto: UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 640, height: 480)).image { context in
             UIColor.orange.setFill()
@@ -802,7 +885,9 @@ final class AlbumFlipTests: XCTestCase {
         controller.additionalSafeAreaInsets = safeAreaInsets
         let previousKeyWindow = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first(where: \.isKeyWindow)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        let scene = try XCTUnwrap(previousKeyWindow?.windowScene ?? UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(origin: .zero, size: size)
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer {
@@ -844,6 +929,31 @@ final class AlbumFlipTests: XCTestCase {
                 presentationGroup: index < 3 ? .whatISee : .whatIDSay
             )
         })
+    }
+}
+
+@MainActor
+private final class AlbumFlipPresentationTestState: ObservableObject {
+    @Published var isShowingAlbum = false
+    var selectedItems: [PhotosPickerItem] = []
+}
+
+private struct AlbumFlipPresentationTestHost: View {
+    let model: AppModel
+    let deck: AlbumFlipDeck
+    let selection: AlbumFlipPhotoSelection
+    @ObservedObject var presentation: AlbumFlipPresentationTestState
+
+    var body: some View {
+        Color.clear
+            .onAppear { presentation.isShowingAlbum = true }
+            .fullScreenCover(isPresented: $presentation.isShowingAlbum) {
+                AlbumFlipView(deck: deck, ownerID: "guest", photoSelection: selection) { item in
+                    presentation.selectedItems.append(item)
+                }
+                .environmentObject(model)
+                .environment(\.scenePhase, .active)
+            }
     }
 }
 

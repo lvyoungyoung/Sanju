@@ -1,4 +1,29 @@
+import Combine
+import PhotosUI
 import SwiftUI
+
+@MainActor
+final class AlbumFlipPhotoSelection: ObservableObject {
+    @Published var isPresented = false
+    @Published private(set) var selectedItem: PhotosPickerItem?
+
+    func begin() {
+        selectedItem = nil
+        isPresented = true
+    }
+
+    func select(_ item: PhotosPickerItem?) {
+        guard isPresented else { return }
+        selectedItem = item
+        if item != nil { isPresented = false }
+    }
+
+    func takeSelectionAfterDismissal() -> PhotosPickerItem? {
+        guard !isPresented else { return nil }
+        defer { selectedItem = nil }
+        return selectedItem
+    }
+}
 
 struct AlbumFlipView: View {
     @EnvironmentObject private var appModel: AppModel
@@ -6,6 +31,7 @@ struct AlbumFlipView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var deck: AlbumFlipDeck
+    @StateObject private var photoSelection = AlbumFlipPhotoSelection()
     @State private var drag = CGSize.zero
     @State private var isHorizontalDrag: Bool?
     @State private var isAdvancing = false
@@ -17,7 +43,7 @@ struct AlbumFlipView: View {
     @State private var speechPrefetchID: UUID?
     @State private var favoriteFeedback: FavoriteFeedback?
     private let ownerID: String
-    private let onChooseAnotherPhoto: (() -> Void)?
+    private let onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)?
 
     private struct FavoriteFeedback {
         let id = UUID()
@@ -27,19 +53,24 @@ struct AlbumFlipView: View {
 
     init(
         items: [AlbumFlipItem], ownerID: String, defaults: UserDefaults = .standard,
-        mode: AlbumFlipMode = .continuous, onChooseAnotherPhoto: (() -> Void)? = nil
+        mode: AlbumFlipMode = .continuous, onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)? = nil
     ) {
         self.ownerID = ownerID
-        self.onChooseAnotherPhoto = onChooseAnotherPhoto
+        self.onSelectAnotherPhoto = onSelectAnotherPhoto
         _deck = StateObject(wrappedValue: AlbumFlipDeck(
             items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: ownerID), mode: mode
         ))
     }
 
-    init(deck: AlbumFlipDeck, ownerID: String, onChooseAnotherPhoto: (() -> Void)? = nil) {
+    init(
+        deck: AlbumFlipDeck, ownerID: String,
+        photoSelection: AlbumFlipPhotoSelection? = nil,
+        onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)? = nil
+    ) {
         self.ownerID = ownerID
-        self.onChooseAnotherPhoto = onChooseAnotherPhoto
+        self.onSelectAnotherPhoto = onSelectAnotherPhoto
         _deck = StateObject(wrappedValue: deck)
+        _photoSelection = StateObject(wrappedValue: photoSelection ?? AlbumFlipPhotoSelection())
     }
 
     var body: some View {
@@ -70,6 +101,30 @@ struct AlbumFlipView: View {
         }
         // Keep the full-screen background outside the swipe content's clipping region.
         .background(AppSurfaceColor.page.ignoresSafeArea())
+        .sheet(isPresented: $photoSelection.isPresented, onDismiss: finishPhotoSelection) {
+            NavigationStack {
+                PhotosPicker(
+                    selection: Binding(
+                        get: { photoSelection.selectedItem.map { [$0] } ?? [] },
+                        set: { photoSelection.select($0.first) }
+                    ),
+                    maxSelectionCount: 1,
+                    selectionBehavior: .continuous,
+                    matching: .images,
+                    photoLibrary: .shared()
+                ) { EmptyView() }
+                .photosPickerStyle(.inline)
+                .photosPickerDisabledCapabilities(.selectionActions)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L10n.string("common.close", "关闭")) {
+                            photoSelection.isPresented = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.large])
+        }
         .onAppear {
             isVisible = true
             deck.onFeedback = { [weak model = appModel] in model?.albumFlipHistorySync?.uploadPending() }
@@ -247,12 +302,14 @@ struct AlbumFlipView: View {
                 advance(.familiar, exitWidth: exitWidth)
             }
         case .roundBreak:
-            AlbumFlipRoundBreakCard(size: size, isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
+            AlbumFlipRoundBreakCard(size: size, isPhotoSelectionEnabled: appModel.isNetworkAvailable && onSelectAnotherPhoto != nil) {
                 guard isVisible, !isAdvancing, deck.isShowingRoundBreak,
                       scenePhase == .active, appModel.albumFlipOwnerID == ownerID,
                       appModel.isNetworkAvailable else { return }
-                onChooseAnotherPhoto?()
-                close()
+                guard onSelectAnotherPhoto != nil else { return }
+                appModel.speech.stop()
+                if let speechPrefetchID { appModel.speech.pauseAlbumSpeechPrefetch(id: speechPrefetchID) }
+                photoSelection.begin()
             }
             .accessibilityAction(named: L10n.string("album_flip.round.continue", "继续翻一翻")) {
                 advance(.familiar, exitWidth: exitWidth)
@@ -366,7 +423,7 @@ struct AlbumFlipView: View {
     }
 
     private func advance(_ feedback: AlbumFlipFeedback, exitWidth: CGFloat) {
-        guard !isAdvancing, isVisible, let pageID = deck.currentPageID,
+        guard !isAdvancing, isVisible, !photoSelection.isPresented, let pageID = deck.currentPageID,
               appModel.albumFlipOwnerID == ownerID else { return }
         appModel.speech.stop()
         withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.26), completionCriteria: .removed) {
@@ -404,12 +461,20 @@ struct AlbumFlipView: View {
     }
 
     private func speakCurrentCard(automatically: Bool) {
-        guard isVisible, !isAdvancing, scenePhase == .active,
+        guard isVisible, !isAdvancing, !photoSelection.isPresented, scenePhase == .active,
               appModel.albumFlipOwnerID == ownerID, let pageID = deck.currentPageID,
               let item = deck.currentItem else { return }
         guard !automatically || (!isMuted && spokenCardID != pageID) else { return }
         spokenCardID = pageID
         appModel.speech.speak(item.sentence.english)
+    }
+
+    private func finishPhotoSelection() {
+        guard let item = photoSelection.takeSelectionAfterDismissal(), isVisible,
+              appModel.albumFlipOwnerID == ownerID, let onSelectAnotherPhoto else { return }
+        // The picker has finished dismissing; only a confirmed selection closes the album.
+        onSelectAnotherPhoto(item)
+        close()
     }
 
     private func close() {
@@ -420,7 +485,7 @@ struct AlbumFlipView: View {
     }
 
     private func updateSpeechLookahead() {
-        guard isVisible, !isAdvancing, appModel.albumFlipOwnerID == ownerID,
+        guard isVisible, !isAdvancing, !photoSelection.isPresented, appModel.albumFlipOwnerID == ownerID,
               let speechPrefetchID, let current = deck.currentItem else { return }
         appModel.speech.updateAlbumSpeechPrefetch(
             id: speechPrefetchID, current: current.sentence.english,

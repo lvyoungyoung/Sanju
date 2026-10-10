@@ -31,7 +31,7 @@ struct NewLearningView: View {
     @State private var activePendingRecoveryTask: Task<Void, Never>?
     @State private var photoLoadRequestID = UUID()
     @State private var albumFlipSession: GeneratedAlbumFlipSession?
-    @State private var shouldChoosePhotoAfterAlbumFlip = false
+    @State private var selectedPhotoAfterAlbumFlip: PhotosPickerItem?
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -90,7 +90,8 @@ struct NewLearningView: View {
 
                                     Button {
                                         appModel.speech.stop()
-                                        shouldChoosePhotoAfterAlbumFlip = false
+                                        selectedPhotoAfterAlbumFlip = nil
+                                        selectedItem = nil
                                         albumFlipSession = GeneratedAlbumFlipSession(
                                             items: AlbumFlipItem.makeItems(from: [displayedMemory]),
                                             ownerID: appModel.albumFlipOwnerID
@@ -212,13 +213,13 @@ struct NewLearningView: View {
                 .environmentObject(appModel)
         }
         .fullScreenCover(item: $albumFlipSession, onDismiss: {
-            guard shouldChoosePhotoAfterAlbumFlip else { return }
-            shouldChoosePhotoAfterAlbumFlip = false
-            // Wait until the album is dismissed before presenting the system photo picker.
-            beginPhotoSelection(clearingGeneratedMemory: true)
+            guard let item = selectedPhotoAfterAlbumFlip else { return }
+            selectedPhotoAfterAlbumFlip = nil
+            shouldClearGeneratedMemoryOnNextPhotoSelection = true
+            selectedItem = item
         }) { session in
-            AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .photoRounds) {
-                shouldChoosePhotoAfterAlbumFlip = true
+            AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .photoRounds) { item in
+                selectedPhotoAfterAlbumFlip = item
             }
             .environmentObject(appModel)
         }
