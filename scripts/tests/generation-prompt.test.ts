@@ -11,7 +11,7 @@ import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sen
 const levels = ["启蒙", "简单", "中等", "高级"] as const;
 const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 
-// Compare the unchanged teaching rules independently of the category catalog.
+// Compare teaching rules independently of the category catalog.
 function sentencePromptBaseline(prompt: string): string {
   return prompt.replace(`\n\n${buildPhotoCategoryRules(false)}`, "")
     .replace(`\n\n${buildSentenceMetadataRules()}`, "")
@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "1c7020066752d5a775bf66f89a1a2d0a00ffb40c2cb6490a4828342be378c56b",
+      "0d1b38e286c3448355628b2d9a24741d10c62a5919bd98f63a76e8dc3bbce32b",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "e6bcd48aedb27c2fd7bd0a9fbbc4ed2abc9949f422413e7ed39e7b6038811345",
+      "e05abcb1867c57b9ee0f49b7cea35ca84116861e60264fa1ce22e3e87d320c12",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "93cc4c90659a1cc2830808ccf6577f02b257b58797e1f54910ee94e157e2b19e",
+      "2de6e9c8fc3df8a8fa9c993cda46d38d1ebbbb81d65258c230a611e321a0c7f9",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "644ea2e7fa029f5e0f4ae5b24ded38139a65a44d1188244c65f9ceb8d4171670",
+      "034baed15be238d63abcea808a3f24ea97f484dc64645f87a8af5d4892d4a022",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -106,10 +106,17 @@ Deno.test("photo classification preserves all existing sentence output requireme
 
 Deno.test("natural beginner guidance stays compact without shrinking output rules", () => {
   const prompt = buildPromptText("简单", "dual_tabs_v1");
-  const sentenceOnly = sentencePromptBaseline(prompt);
+  const styleStart = prompt.indexOf("场景表达风格自适应：");
+  const styleEnd = prompt.indexOf("前两句按场景选择最有用的两种表达意图");
+  ok(styleStart >= 0 && styleEnd > styleStart);
+  const styleRules = prompt.slice(styleStart, styleEnd);
+  ok(styleRules.length <= 500, `Style rules grew to ${styleRules.length} characters`);
+  const originalRules = prompt.replace(styleRules, "");
+  const sentenceOnly = sentencePromptBaseline(originalRules);
   ok(sentenceOnly.indexOf("你必须严格遵守以下输出规则：") <= (5066 - 861) / 2);
   ok(sentenceOnly.length <= 2900);
-  ok(prompt.length <= 4000, `Prompt grew to ${prompt.length} characters`);
+  ok(originalRules.length <= 4000);
+  ok(prompt.length <= 4500, `Prompt grew to ${prompt.length} characters`);
 });
 
 Deno.test("combined generation preserves sentence groups, categories and purposes", () => {
@@ -261,7 +268,7 @@ Deno.test("both question types reach their own group at every difficulty", () =>
         const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
         strictEqual(example.image_descriptions.length, 3);
         strictEqual(example.scene_and_feelings.length, 3);
-        ok(prompt.length <= 4000, `Prompt grew to ${prompt.length} characters`);
+        ok(prompt.length <= 4500, `Prompt grew to ${prompt.length} characters`);
         strictEqual(buildPromptText(level, "legacy_v1", types), buildPromptText(level, "legacy_v1"));
       }
     }
@@ -284,6 +291,28 @@ Deno.test("both groups prioritize useful expressions over photo captions at ever
     ]) ok(prompt.includes(rule), `${level}: ${rule}`);
     ok(!prompt.includes("1. 我当时的感受："));
     ok(!prompt.includes("2. 发生了什么："));
+  }
+});
+
+Deno.test("adaptive style applies only to scene expressions and never overrides difficulty or intent", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    const styleStart = prompt.indexOf("场景表达风格自适应：");
+    const sceneStart = prompt.indexOf("scene_and_feelings：");
+    const styleEnd = prompt.indexOf("前两句按场景选择最有用的两种表达意图");
+    ok(styleStart > sceneStart && styleEnd > styleStart);
+    const style = prompt.slice(styleStart, styleEnd);
+    for (const rule of [
+      "仅作用于本组", "场景、色调与氛围", "选一种最契合的语气",
+      "吐槽/丧萌", "温暖/治愈", "诗意/探索", "标准/轻快",
+      "不凭咖啡或阴天单独决定", "不猜测周一、深夜或疲惫",
+      "无明确风格线索时用此项", "不写抽象哲理、比喻或文学独白",
+      "不改变表达意图、难度、词数或问题类型", "不强加情绪", "不写修辞问句",
+    ]) ok(style.includes(rule), `${level}: ${rule}`);
+    strictEqual(style.includes("启蒙仅用温暖或轻快的儿童口语"), level === "启蒙");
+    ok(!prompt.slice(0, sceneStart).includes("风格自适应"));
+    ok(!buildPromptText(level, "legacy_v1").includes("风格自适应"));
+    ok(!/例如|示例|example/i.test(style));
   }
 });
 
