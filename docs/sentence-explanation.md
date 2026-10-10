@@ -62,11 +62,15 @@ day per authenticated owner (including anonymous owners). Cache reads and hits
 do not consume this budget or the user's paid image-generation balance. A busy
 claim returns 409; a budget limit returns 429. Neither triggers automatic retries.
 
-Provider order: configured DeepSeek (`deepseek-flash`), MiMo
-(`mimo-v2.6-flash`), Kimi (`kimi-k2.5`). Each has a 20-second full-response
+Provider order: configured MiMo (`mimo-v2.6-flash`), DeepSeek
+(`deepseek-flash`), Kimi (`kimi-k2.5`). Each has a 20-second full-response
 deadline; the client allows 75 seconds. Existing `*_API_KEY` and `*_BASE_URL`
 secrets are reused. BASE_URL must be the full chat-completions endpoint. Keys
 remain server-only. Internal Supabase calls use `SUPABASE_LOCAL_URL` when present.
+
+The 2026-10-10 provider-order change only requires redeploying `explain-sentence`.
+No client update, migration or new environment variable is needed. Existing saved
+explanations remain cached; switching the provider does not regenerate them.
 
 ## Release and verification
 

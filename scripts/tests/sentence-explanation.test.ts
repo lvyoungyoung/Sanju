@@ -172,6 +172,28 @@ Deno.test("input, token and body bounds are validated without reaching the datab
   }
 })
 
+Deno.test("explanation endpoint prioritizes MiMo and successful responses skip fallback", async () => {
+  const source = await Deno.readTextFile("supabase/functions/explain-sentence/index.ts")
+  const order = source.match(/for \(const name of (\[[^\]]+\]) as const\)/)?.[1]
+  ok(order)
+  deepStrictEqual(JSON.parse(order), ["mimo", "deepseek", "kimi"])
+  let calls = 0
+  const fetcher = (async (_url: string | URL | Request, init?: RequestInit) => {
+    calls += 1
+    const body = JSON.parse(String(init?.body))
+    strictEqual(body.model, "mimo-v2.6-flash")
+    strictEqual(body.max_completion_tokens, 2048)
+    strictEqual(new Headers(init?.headers).get("api-key"), "test-secret")
+    return Response.json({ choices: [{ message: { content: JSON.stringify(content) } }] })
+  }) as typeof fetch
+  deepStrictEqual(await generateExplanation(input, [
+    { name: "mimo", url: "https://mimo.invalid", key: "test-secret" },
+    { name: "deepseek", url: "https://deepseek.invalid", key: "test-secret" },
+    { name: "kimi", url: "https://kimi.invalid", key: "test-secret" },
+  ], fetcher), content)
+  strictEqual(calls, 1)
+})
+
 Deno.test("provider fallback rejects invalid JSON and uses server-side credentials", async () => {
   const calls: string[] = []
   const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -179,15 +201,26 @@ Deno.test("provider fallback rejects invalid JSON and uses server-side credentia
     const body = JSON.parse(String(init?.body))
     strictEqual(body.messages[1].content, JSON.stringify({ english: input.english, chinese: input.chinese }))
     strictEqual(body.thinking.type, "disabled")
-    if (calls.length === 1) return Response.json({ choices: [{ message: { content: "{}" } }] })
-    strictEqual(new Headers(init?.headers).get("api-key"), "test-secret")
+    if (calls.length === 1) {
+      strictEqual(body.model, "mimo-v2.6-flash")
+      strictEqual(new Headers(init?.headers).get("api-key"), "test-secret")
+      return Response.json({ choices: [{ message: { content: "{}" } }] })
+    }
+    strictEqual(new Headers(init?.headers).get("Authorization"), "Bearer test-secret")
+    if (calls.length === 2) {
+      strictEqual(body.model, "deepseek-flash")
+      strictEqual(body.max_tokens, 2048)
+      return new Response("Unavailable", { status: 503 })
+    }
+    strictEqual(body.model, "kimi-k2.5")
     return Response.json({ choices: [{ message: { content: "```json\n" + JSON.stringify(content) + "\n```" } }] })
   }) as typeof fetch
   deepStrictEqual(await generateExplanation(input, [
-    { name: "deepseek", url: "https://first.invalid", key: "test-secret" },
-    { name: "mimo", url: "https://second.invalid", key: "test-secret" },
+    { name: "mimo", url: "https://first.invalid", key: "test-secret" },
+    { name: "deepseek", url: "https://second.invalid", key: "test-secret" },
+    { name: "kimi", url: "https://third.invalid", key: "test-secret" },
   ], fetcher), content)
-  strictEqual(calls.length, 2)
+  strictEqual(calls.length, 3)
   ok(explanationPrompt("zh").includes("Simplified Chinese"))
   ok(explanationPrompt("en").includes("in English"))
 })

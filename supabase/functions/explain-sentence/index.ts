@@ -5,7 +5,7 @@ import { generateExplanation, type ExplanationProvider } from "./model.ts"
 const url = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
 const providers: ExplanationProvider[] = []
-for (const name of ["deepseek", "mimo", "kimi"] as const) {
+for (const name of ["mimo", "deepseek", "kimi"] as const) {
   const prefix = name.toUpperCase()
   const endpoint = Deno.env.get(`${prefix}_BASE_URL`)
   const key = Deno.env.get(`${prefix}_API_KEY`)
