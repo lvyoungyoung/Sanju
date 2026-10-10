@@ -8,7 +8,6 @@ protocol StudyOverviewFetching {
     func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int
     func fetchMasteredSentenceCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyCounts(session: SupabaseSession, sentenceIDs: [UUID]) async throws -> [UUID: Int]
-    func fetchUserStudySceneSummaries(session: SupabaseSession) async throws -> [UserStudySceneSummary]
 }
 
 // A missing result means "keep the current value", not zero or an empty list.
@@ -19,14 +18,11 @@ struct StudyOverviewSnapshot {
     let sentenceCount: Int?
     let masteredCount: Int?
     let favoriteCounts: [UUID: Int]?
-    let scenes: [UserStudySceneSummary]?
 
     static func load(
         from service: StudyOverviewFetching,
         session: SupabaseSession,
-        favoriteSentenceIDs: Set<UUID>,
-        onScenesLoaded: (([UserStudySceneSummary]?) -> Void)? = nil,
-        onContentLoaded: (([UserStudySceneSummary]?, Int?) -> Void)? = nil
+        favoriteSentenceIDs: Set<UUID>
     ) async throws -> StudyOverviewSnapshot {
         async let dueCount = fetch { try await service.fetchSentenceStudyDueCount(session: session) }
         async let todayCount = fetch { try await service.fetchSentenceStudyTodayCount(session: session) }
@@ -36,21 +32,13 @@ struct StudyOverviewSnapshot {
         async let favoriteCounts = fetch {
             favoriteSentenceIDs.isEmpty ? [:] : try await service.fetchSentenceStudyCounts(session: session, sentenceIDs: Array(favoriteSentenceIDs))
         }
-        async let scenes = fetch { try await service.fetchUserStudySceneSummaries(session: session) }
-        let loadedScenes = try await scenes
-        try Task.checkCancellation()
-        onScenesLoaded?(loadedScenes)
-        let content = try await (loadedScenes, sentenceCount)
-        try Task.checkCancellation()
-        onContentLoaded?(content.0, content.1)
         return try await StudyOverviewSnapshot(
             dueCount: dueCount,
             todayCount: todayCount,
             reviewableTodayCount: reviewableTodayCount,
             sentenceCount: sentenceCount,
             masteredCount: masteredCount,
-            favoriteCounts: favoriteCounts,
-            scenes: scenes
+            favoriteCounts: favoriteCounts
         )
     }
 

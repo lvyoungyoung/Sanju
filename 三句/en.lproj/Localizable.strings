@@ -1,6 +1,6 @@
 "account.delete.loading" = "Deleting account. Please keep the app open.";
 "sentence_detail.title" = "Sentence details";
-"sentence_detail.analyze" = "AI explanation";
+"sentence_detail.analyze" = "Tap for an AI explanation";
 "sentence_detail.analyzing" = "Explaining…";
 "sentence_detail.loading_saved" = "Loading explanation…";
 "sentence_detail.analysis_failed" = "Couldn't load the explanation. Please try again later.";
@@ -152,7 +152,7 @@
 "common.save" = "Save";
 "common.saving" = "Saving...";
 "favorites.action.unfavorite" = "Remove Favorite";
-"favorites.empty.subtitle" = "Tap the star on a generated result and your most useful, favorite sentences will stay here.";
+"favorites.empty.subtitle" = "Save sentences from your generated results to practice them here.";
 "favorites.empty.title" = "No Favorites Yet";
 "favorites.hero.count_label" = "Saved";
 "favorites.hero.eyebrow" = "Favorites";
@@ -264,6 +264,8 @@
 "profile.restoring.title" = "Restoring account information";
 "profile.section.about" = "About";
 "profile.section.account" = "Account";
+"profile.section.learning_settings" = "Learning Settings";
+"profile.section.more" = "More";
 "profile.section.learning_reminder" = "Study Reminder";
 "profile.section.preferences" = "Generation Preferences";
 "profile.section.widget" = "Widget";
@@ -496,6 +498,10 @@
 "album_flip.again" = "See again";
 "album_flip.familiar" = "Feels familiar";
 "album_flip.hint" = "Swipe left to revisit, right if it feels familiar";
+"album_flip.favorite_hint" = "Double-tap to save";
+"album_flip.favorite_feedback_hint" = "You can also double-tap to save.";
+"album_flip.saved" = "Saved";
+"album_flip.unsaved" = "Removed from favorites";
 "album_flip.replay" = "Listen again";
 "album_flip.playing" = "Playing";
 "album_flip.mute" = "Turn off automatic playback";

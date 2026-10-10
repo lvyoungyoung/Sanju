@@ -450,7 +450,6 @@ extension AppModel {
         memories = []
         memoryLoadState = .idle
         studyOverviewLoadState = .idle
-        studySceneLoadState = .idle
         isSyncingRemoteMemories = false
         clearPendingMemoryImageUploads()
         clearPendingGeneratedMemoryImage()
@@ -470,10 +469,7 @@ extension AppModel {
         sentenceStudyTodayCount = 0
         sentenceStudyReviewableTodayCount = 0
         sentenceStudyTopicSummaries = [:]
-        userStudySceneSummaries = []
-        userStudySceneDetailSentenceCache.removeAll()
         studyOverviewRefreshID = UUID()
-        studySceneSummariesRefreshID = UUID()
         sentenceStudyQueue = []
         isLoadingSentenceStudyQueue = false
         isShowingSentenceStudySession = false
@@ -744,7 +740,6 @@ extension AppModel {
             } else {
                 memoryLoadState = .failed
                 studyOverviewLoadState = .failed
-                studySceneLoadState = .failed
             }
             isRestoringAuthenticatedSession = false
         }

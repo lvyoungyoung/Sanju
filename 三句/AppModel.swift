@@ -354,7 +354,7 @@ struct PendingGuestCreditMigration: Codable, Hashable {
 enum AppTab: Hashable {
     case newLearning
     case memories
-    case study
+    case favorites
     case profile
 }
 
@@ -495,13 +495,9 @@ final class AppModel: ObservableObject {
     @Published var sentenceStudyTodayCount = 0
     @Published var sentenceStudyReviewableTodayCount = 0
     @Published var sentenceStudyTopicSummaries: [SentenceStudyTopic: SentenceStudyTopicSummary] = [:]
-    @Published var userStudySceneSummaries: [UserStudySceneSummary] = []
     @Published var memoryLoadState: ContentLoadState = .idle
     @Published var studyOverviewLoadState: ContentLoadState = .idle
-    @Published var studySceneLoadState: ContentLoadState = .idle
     var studyOverviewRefreshID = UUID()
-    var studySceneSummariesRefreshID = UUID()
-    var userStudySceneDetailSentenceCache: [UUID: [SentenceStudyQueueItem]] = [:]
     @Published var sentenceStudyQueue: [SentenceStudyQueueItem] = []
     @Published var isLoadingSentenceStudyQueue = false
     @Published var isShowingSentenceStudySession = false
@@ -513,7 +509,6 @@ final class AppModel: ObservableObject {
     @Published var draftGeneratedMemoryID: UUID?
     @Published var selectedTab: AppTab = .newLearning
     @Published var memoriesNavigationPath: [MemoryNavigationRoute] = []
-    @Published var studyNavigationPath: [StudySceneDetailRoute] = []
     @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
     let speech = SpeechService()
@@ -735,14 +730,12 @@ final class AppModel: ObservableObject {
     func openNewLearningFromExternalLink() {
         selectedTab = .newLearning
         memoriesNavigationPath = []
-        studyNavigationPath = []
         profileNavigationPath = []
     }
 
     func openMemoryFromExternalLink(_ memoryID: UUID) {
         selectedTab = .memories
         memoriesNavigationPath = []
-        studyNavigationPath = []
         profileNavigationPath = []
 
         Task { @MainActor [weak self] in

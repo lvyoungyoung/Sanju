@@ -82,6 +82,24 @@ final class SentenceExplanationTests: XCTestCase {
         XCTAssertFalse(model.isLoading)
     }
 
+    func testSavedLookupDoesNotShowGenerationActivityAndStillAllowsExplicitGeneration() async {
+        let model = SentenceExplanationModel()
+        await model.load(generate: false) {
+            XCTAssertTrue(model.isLoading)
+            XCTAssertFalse(model.isGenerating)
+            return nil
+        }
+        XCTAssertFalse(model.isLoading)
+        XCTAssertFalse(model.isGenerating)
+        await model.load(generate: true) {
+            XCTAssertTrue(model.isLoading)
+            XCTAssertTrue(model.isGenerating)
+            return self.explanation()
+        }
+        XCTAssertEqual(model.explanation, explanation())
+        XCTAssertFalse(model.isGenerating)
+    }
+
     func testSavedContentPreventsRepeatedGeneration() async {
         let model = SentenceExplanationModel()
         await model.load(generate: false) { self.explanation() }

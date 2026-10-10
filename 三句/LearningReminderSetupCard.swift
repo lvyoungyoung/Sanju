@@ -30,32 +30,38 @@ struct LearningReminderSetupCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.small) {
             HStack(spacing: AppSpacing.medium) {
-                Toggle("", isOn: reminderEnabledBinding)
-                    .labelsHidden()
+                Toggle(isOn: reminderEnabledBinding) {
+                    Label(L10n.string("profile.section.learning_reminder", "学习提醒"), systemImage: "bell")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(AppTextColor.primary)
+                }
                     .tint(AppPalette.accentText)
                     .disabled(isSaving)
-
-                Spacer(minLength: 0)
-
                 if isSaving {
                     ProgressView()
                         .controlSize(.small)
                         .tint(AppPalette.accentText)
-                } else if isEnabled {
-                    Button(action: onEditTime) {
-                        Text(reminderTimeText)
-                            .font(.system(size: 17, weight: .semibold))
-                            .monospacedDigit()
-                            .foregroundStyle(Color(red: 0.74, green: 0.39, blue: 0.10))
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 9)
-                            .background(
-                                Capsule(style: .continuous)
-                                    .fill(AppPalette.apricot)
-                            )
-                    }
-                    .buttonStyle(.plain)
                 }
+            }
+            .frame(minHeight: 24)
+
+            if isEnabled && !isSaving {
+                Button(action: onEditTime) {
+                    HStack {
+                        Text(L10n.string("profile.learning_reminder.time", "提醒时间"))
+                        Spacer(minLength: AppSpacing.small)
+                        Text(reminderTimeText).monospacedDigit()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .accessibilityHidden(true)
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 32)
             }
 
             if let statusMessage {
@@ -65,9 +71,7 @@ struct LearningReminderSetupCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.horizontal, AppSpacing.large)
-        .padding(.vertical, AppSpacing.medium)
-        .profileCardSurface()
+        .padding(20)
     }
 
     private static let timeFormatter: DateFormatter = {

@@ -3,7 +3,6 @@ import SwiftUI
 
 struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.colorScheme) private var colorScheme
     @State private var isShowingPurchaseSheet = false
     @State private var isShowingWidgetSetupSheet = false
     @State private var isShowingSignOutAlert = false
@@ -40,12 +39,22 @@ struct ProfileView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: AppSpacing.section) {
-                if let profile = authenticatedProfile {
-                    profileHero(profile: profile)
-                } else if shouldShowAuthenticatedRestoreSkeleton {
+                if shouldShowAuthenticatedRestoreSkeleton {
                     restoringAuthenticatedSkeleton
                 } else {
-                    guestHero
+                    ProfileIdentityHeader(
+                        profile: authenticatedProfile,
+                        hasPurchaseHistory: appModel.hasPurchaseHistory,
+                        onEditNickname: {
+                            nicknameDraft = authenticatedProfile?.nickname ?? ""
+                            nicknameEditErrorMessage = nil
+                            isShowingNicknameEditor = true
+                        },
+                        onSignIn: {
+                            guard !interceptIfGenerationInProgress() else { return }
+                            appModel.isShowingSignInSheet = true
+                        }
+                    )
                 }
 
                 if shouldShowAuthenticatedRestoreSkeleton {
@@ -61,44 +70,8 @@ struct ProfileView: View {
                     )
                 }
 
-                VStack(alignment: .leading, spacing: 14) {
-                    Text(L10n.string("profile.section.preferences", "生成偏好"))
-                        .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                        .foregroundStyle(.secondary)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(L10n.string("profile.preference.english_level", "难度"))
-                            .font(.system(.subheadline, weight: .semibold))
-                        EnglishLevelPicker(selection: englishLevelBinding)
-
-                    }
-                    .foregroundStyle(AppTextColor.primary)
-                    .padding(20)
-                    .profileCardSurface()
-                }
-
-                NavigationLink(value: ProfileNavigationRoute.speechSettings) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "speaker.wave.2")
-                        Text(L10n.string("speech.settings.title", "朗读设置"))
-                            .font(.body.weight(.semibold))
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(AppTextColor.tertiary)
-                    }
-                    .foregroundStyle(AppTextColor.primary)
-                    .padding(20)
-                    .profileCardSurface()
-                }
-                .buttonStyle(.plain)
-
-                widgetSection
-
-                learningReminderSection
-
-                aboutSection
-
+                learningSettingsSection
+                moreSection
                 accountSection
             }
             .padding(.horizontal, AppSpacing.section)
@@ -244,95 +217,23 @@ struct ProfileView: View {
         )
     }
 
-    private var learningStatisticsSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            Text(L10n.string("profile.section.learning_statistics", "学习统计"))
-                .font(.system(size: AppFontSize.sectionLabel, weight: .semibold))
-                .foregroundStyle(AppTextColor.secondary)
-
-            NavigationLink {
-                StudyTopicMapView()
-            } label: {
-                VStack(spacing: AppSpacing.medium) {
-                    HStack(spacing: 0) {
-                        ProfileLearningStatistic(
-                            value: appModel.recordedMemoriesCount,
-                            title: L10n.string("profile.statistics.photos", "照片")
-                        )
-
-                        ProfileLearningStatistic(
-                            value: appModel.memorySentenceCount,
-                            title: L10n.string("profile.statistics.sentences", "句子")
-                        )
-
-                        ProfileLearningStatistic(
-                            value: appModel.masteredSentenceCount,
-                            title: L10n.string("profile.statistics.mastered", "已掌握")
-                        )
-                    }
-
-                    Divider()
-
-                    HStack(spacing: AppSpacing.small) {
-                        Text(L10n.string("profile.statistics.topic_map", "主题地图"))
-                            .font(.system(size: AppFontSize.body, weight: .semibold))
-                        Spacer(minLength: AppSpacing.small)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: AppIconSize.compact, weight: .semibold))
-                    }
-                    .foregroundStyle(AppPalette.accentText)
-                }
-                .padding(AppSpacing.large)
-                .background(
-                    AppSurfaceColor.card,
-                    in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                        .stroke(AppStroke.highlight, lineWidth: 1)
-                }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     private var accountSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: AppSpacing.small) {
             if shouldShowAuthenticatedRestoreSkeleton {
-                Text(L10n.string("profile.section.account", "账户"))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-
-                RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
-                    .fill(ProfileCardStyle.surface)
-                    .frame(height: AppControlHeight.prominent)
-
-                RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
-                    .fill(ProfileCardStyle.surface)
-                    .frame(height: AppControlHeight.prominent)
-
-                Divider()
-                    .padding(.vertical, 4)
+                ProgressView()
+                    .tint(AppTextColor.secondary)
+                    .frame(minHeight: 44)
             } else if authenticatedProfile != nil {
-                Text(L10n.string("profile.section.account", "账户"))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-
                 Button(role: .destructive) {
                     guard !interceptIfGenerationInProgress() else { return }
                     guard !interceptIfPendingCloudSyncInProgress() else { return }
                     isShowingSignOutAlert = true
                 } label: {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(L10n.string("profile.sign_out.action", "退出登录"))
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                    }
-                    .foregroundStyle(Color(red: 0.81, green: 0.29, blue: 0.20))
-                    .padding(18)
-                    .profileCardSurface()
+                    Text(L10n.string("profile.sign_out.action", "退出登录"))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(AppTextColor.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(appModel.isDeletingAccount)
@@ -342,42 +243,32 @@ struct ProfileView: View {
                     deleteAccountConfirmationText = ""
                     isShowingDeleteAccountAlert = true
                 } label: {
-                    HStack {
-                        Image(systemName: "person.crop.circle.badge.xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(L10n.string("account.delete.entry", "删除账号"))
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                    }
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .padding(18)
-                    .profileCardSurface()
+                    Text(L10n.string("account.delete.entry", "删除账号"))
+                        .font(.footnote)
+                        .foregroundStyle(AppTextColor.tertiary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(appModel.isDeletingAccount)
-                Divider()
-                    .padding(.vertical, 4)
             }
 
 #if DEBUG || STAGING
             Button(role: .destructive) {
                 isShowingLocalTestResetAlert = true
             } label: {
-                HStack {
-                    Image(systemName: "wrench.and.screwdriver")
-                        .font(.system(size: 16, weight: .semibold))
+                HStack(spacing: AppSpacing.small) {
                     Text(L10n.string("profile.debug.reset.entry", "清理本机测试数据"))
-                        .font(.system(size: 16, weight: .semibold))
-                    Spacer()
+                        .font(.footnote)
                     Text(L10n.string("profile.debug.badge", "测试"))
                         .font(.system(size: 12, weight: .bold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(Capsule().fill(AppPalette.accent.opacity(0.16)))
                 }
-                .foregroundStyle(AppPalette.accentText)
-                .padding(18)
-                .profileCardSurface()
+                .foregroundStyle(AppTextColor.secondary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(appModel.isDeletingAccount)
@@ -385,66 +276,85 @@ struct ProfileView: View {
         }
     }
 
-    private var aboutSection: some View {
+    private var moreSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string("profile.section.about", "关于"))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(AppTextColor.secondary)
+            sectionTitle(L10n.string("profile.section.more", "更多"))
 
-            NavigationLink(value: ProfileNavigationRoute.aboutUs) {
-                HStack {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text(L10n.string("profile.about.entry", "关于我们"))
-                        .font(.system(size: 16, weight: .semibold))
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color(.tertiaryLabel))
+            VStack(spacing: 0) {
+                Button {
+                    isShowingWidgetSetupSheet = true
+                } label: {
+                    ProfileSettingsRow(
+                        title: L10n.string("profile.widget.title", "添加桌面小组件"),
+                        systemImage: "square.grid.2x2"
+                    )
                 }
-                .foregroundStyle(Color(.secondaryLabel))
-                .padding(18)
-                .profileCardSurface()
+                .buttonStyle(.plain)
+                settingsDivider
+                NavigationLink(value: ProfileNavigationRoute.aboutUs) {
+                    ProfileSettingsRow(
+                        title: L10n.string("profile.about.entry", "关于我们"),
+                        systemImage: "info.circle"
+                    )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .profileCardSurface()
         }
     }
 
-    private var widgetSection: some View {
+    private var learningSettingsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string("profile.section.widget", "桌面小组件"))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(AppTextColor.secondary)
+            sectionTitle(L10n.string("profile.section.learning_settings", "学习设置"))
 
-            WidgetSetupLinkCard {
-                isShowingWidgetSetupSheet = true
-            }
-        }
-    }
-
-    private var learningReminderSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.string("profile.section.learning_reminder", "学习提醒"))
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(AppTextColor.secondary)
-
-            LearningReminderSetupCard(
-                reminderTime: $learningReminderTime,
-                isEnabled: appModel.isLearningReminderEnabled,
-                isSaving: isSavingLearningReminder,
-                statusMessage: learningReminderStatusMessage,
-                statusIsError: learningReminderStatusIsError,
-                onSave: saveLearningReminder,
-                onDisable: disableLearningReminder,
-                onEditTime: {
-                    learningReminderTime = appModel.learningReminderDate
-                    isShowingLearningReminderTimePicker = true
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Label(L10n.string("profile.preference.english_level", "难度"), systemImage: "slider.horizontal.3")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(AppTextColor.primary)
+                    EnglishLevelPicker(selection: englishLevelBinding)
                 }
-            )
+                .padding(20)
+
+                settingsDivider
+                ProfileSpeechSettingsLink(speech: appModel.speech)
+                settingsDivider
+
+                LearningReminderSetupCard(
+                    reminderTime: $learningReminderTime,
+                    isEnabled: appModel.isLearningReminderEnabled,
+                    isSaving: isSavingLearningReminder,
+                    statusMessage: learningReminderStatusMessage,
+                    statusIsError: learningReminderStatusIsError,
+                    onSave: saveLearningReminder,
+                    onDisable: disableLearningReminder,
+                    onEditTime: {
+                        learningReminderTime = appModel.learningReminderDate
+                        isShowingLearningReminderTimePicker = true
+                    }
+                )
+            }
+            .profileCardSurface()
         }
         .onAppear {
             learningReminderTime = appModel.learningReminderDate
         }
+    }
+
+    private var settingsDivider: some View {
+        Rectangle()
+            .fill(AppStroke.subtle)
+            .frame(height: 0.5)
+            .padding(.horizontal, 20)
+            .accessibilityHidden(true)
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(AppTextColor.secondary)
+            .padding(.leading, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private var authenticatedProfile: UserProfile? {
@@ -456,105 +366,12 @@ struct ProfileView: View {
         appModel.isRestoringAuthenticatedSession && authenticatedProfile == nil
     }
 
-    @ViewBuilder
-    private func profileHero(profile: UserProfile) -> some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: ProfileCardStyle.cornerRadius, style: .continuous)
-                .fill(AppPalette.profile)
-
-            VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                HStack(alignment: .center, spacing: AppSpacing.medium) {
-                    ProfileAvatarView()
-
-                    VStack(alignment: .leading, spacing: AppSpacing.small) {
-                        HStack(alignment: .center, spacing: AppSpacing.xLarge) {
-                            Text(profile.nickname)
-                                .font(.system(size: AppFontSize.heroStat + 1, weight: .bold))
-                                .foregroundStyle(AppHeroTextColor.title)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .layoutPriority(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Button {
-                                nicknameDraft = profile.nickname
-                                nicknameEditErrorMessage = nil
-                                isShowingNicknameEditor = true
-                            } label: {
-                                Image(systemName: "square.and.pencil")
-                                    .font(.system(size: AppFontSize.body, weight: .semibold))
-                                    .foregroundStyle(Color(red: 0.45, green: 0.31, blue: 0.10))
-                                    .padding(7)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous)
-                                            .fill(Color.white.opacity(0.68))
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if let email = profile.email, !email.isEmpty {
-                            Text(email)
-                                .font(.system(size: AppFontSize.metadata))
-                                .foregroundStyle(AppHeroTextColor.tertiary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(AppSpacing.xLarge)
-        }
-        .appHeroShadow()
-    }
-
-    private var guestHero: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.medium) {
-            HStack(spacing: AppSpacing.medium) {
-                ProfileAvatarView(isMonochrome: true)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.string("profile.guest.title", "未登录"))
-                        .font(.system(size: AppFontSize.stat, weight: .bold))
-                        .foregroundStyle(AppTextColor.primary)
-                }
-
-                Spacer(minLength: 8)
-
-                Button {
-                    guard !interceptIfGenerationInProgress() else { return }
-                    appModel.isShowingSignInSheet = true
-                } label: {
-                    Text(L10n.string("auth.mode.sign_in.action", "登录"))
-                        .font(.system(size: AppFontSize.body, weight: .semibold))
-                        .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
-                        .padding(.horizontal, AppSpacing.section)
-                        .padding(.vertical, AppSpacing.small + 2)
-                        .background(colorScheme == .dark ? Color.white : Color.black, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-
-            if appModel.hasPurchaseHistory {
-                Text(L10n.string("profile.guest.purchase_warning", "请尽快登录，以免换设备时丢失您购买的可用次数。"))
-                    .font(.system(size: AppFontSize.caption, weight: .medium))
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(AppSpacing.xLarge)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .profileCardSurface()
-        .appHeroShadow()
-    }
-
     private var restoringAuthenticatedSkeleton: some View {
         VStack(alignment: .leading, spacing: AppSpacing.medium) {
             HStack(spacing: AppSpacing.medium) {
                 RoundedRectangle(cornerRadius: AppCornerRadius.large, style: .continuous)
                     .fill(AppSurfaceColor.secondaryFill)
-                    .frame(width: 92, height: 92)
+                    .frame(width: 64, height: 64)
                     .overlay {
                         Image(systemName: "person.crop.circle")
                             .font(.system(size: 34, weight: .medium))
@@ -595,10 +412,9 @@ struct ProfileView: View {
                     .frame(width: 84, height: 10)
             }
         }
-        .padding(18)
+        .padding(AppSpacing.xLarge)
         .frame(maxWidth: .infinity, alignment: .leading)
         .profileCardSurface()
-        .appHeroShadow()
     }
 
     private func interceptIfGenerationInProgress() -> Bool {
@@ -857,31 +673,49 @@ private struct LightweightTopHint: View {
     }
 }
 
-private struct WidgetSetupLinkCard: View {
-    let onTap: () -> Void
+struct ProfileSettingsRow: View {
+    let title: String
+    let systemImage: String
+    var value: String? = nil
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.string("profile.widget.title", "添加桌面小组件"))
-                        .font(.system(size: AppFontSize.bodyProminent, weight: .semibold))
-                        .foregroundStyle(AppTextColor.primary)
-
-                    Text(L10n.string("profile.widget.subtitle", "把随机回忆放到桌面，点开就能继续学习。"))
-                        .font(.system(size: AppFontSize.metadata))
-                        .foregroundStyle(AppTextColor.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 10)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: AppFontSize.metadata, weight: .semibold))
-                    .foregroundStyle(AppTextColor.subtle)
+        HStack(spacing: AppSpacing.medium) {
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .regular))
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.body.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            Spacer(minLength: AppSpacing.small)
+            if let value {
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
             }
-            .padding(18)
-            .profileCardSurface()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AppTextColor.tertiary)
+                .accessibilityHidden(true)
+        }
+        .foregroundStyle(AppTextColor.primary)
+        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading)
+        .padding(20)
+        .contentShape(Rectangle())
+    }
+}
+
+struct ProfileSpeechSettingsLink: View {
+    @ObservedObject var speech: SpeechService
+
+    var body: some View {
+        NavigationLink(value: ProfileNavigationRoute.speechSettings) {
+            ProfileSettingsRow(
+                title: L10n.string("speech.settings.title", "朗读设置"),
+                systemImage: "speaker.wave.2",
+                value: speech.selectedVoice.rawValue
+            )
         }
         .buttonStyle(.plain)
     }
@@ -1063,15 +897,76 @@ private struct WidgetSetupMethodCard: View {
     }
 }
 
-private struct ProfileAvatarView: View {
-    var isMonochrome: Bool = false
+struct ProfileIdentityHeader: View {
+    let profile: UserProfile?
+    let hasPurchaseHistory: Bool
+    let onEditNickname: () -> Void
+    let onSignIn: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Image(systemName: "person")
-            .font(.system(size: 26, weight: .light))
-            .foregroundStyle(isMonochrome ? AppTextColor.primary : AppHeroTextColor.title)
-            .frame(width: 56, height: 56)
-            .background(isMonochrome ? AppSurfaceColor.elevated : Color.white.opacity(0.7), in: Circle())
+        VStack(alignment: .leading, spacing: AppSpacing.medium) {
+            HStack(spacing: AppSpacing.large) {
+                ProfileAvatarView()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(profile?.nickname ?? L10n.string("profile.guest.title", "未登录"))
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(AppTextColor.primary)
+                        .lineLimit(2)
+                    if let email = profile?.email, !email.isEmpty {
+                        Text(email)
+                            .font(.footnote)
+                            .foregroundStyle(AppTextColor.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if profile != nil {
+                    Button(action: onEditNickname) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(AppTextColor.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.string("profile.nickname.sheet_title", "修改昵称"))
+                } else {
+                    Button(action: onSignIn) {
+                        Text(L10n.string("auth.mode.sign_in.action", "登录"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(colorScheme == .dark ? Color.black : Color.white)
+                            .padding(.horizontal, AppSpacing.xLarge)
+                            .frame(minHeight: 44)
+                            .background(colorScheme == .dark ? Color.white : Color.black, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+                }
+            }
+
+            if profile == nil && hasPurchaseHistory {
+                Text(L10n.string("profile.guest.purchase_warning", "请尽快登录，以免换设备时丢失您购买的可用次数。"))
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AppSpacing.xLarge)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .profileCardSurface()
+    }
+}
+
+private struct ProfileAvatarView: View {
+    var body: some View {
+        Image("ProfileAvatar")
+            .resizable()
+            .scaledToFill()
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -1149,42 +1044,60 @@ private struct LearningReminderTimePickerSheet: View {
     }
 }
 
-private struct ProfileCreditCard: View {
+struct ProfileCreditCard: View {
     let credits: Int
     let isPurchaseDisabled: Bool
     let onPurchase: () -> Void
 
     var body: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L10n.string("profile.credits.title", "可用次数"))
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTextColor.secondary)
-
-                Text("\(credits)")
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(AppTextColor.title)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: AppSpacing.large) {
+                balance.fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: AppSpacing.large)
+                purchaseButton.fixedSize()
             }
-
-            Spacer()
-
-            Button(action: onPurchase) {
-                Text(isPurchaseDisabled ? L10n.string("profile.credits.restoring", "账号恢复中") : L10n.string("profile.credits.purchase", "购买次数"))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AppPalette.onAccent)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 44)
-                    .background(
-                        isPurchaseDisabled ? Color.black.opacity(0.18) : AppPalette.accent,
-                        in: RoundedRectangle(cornerRadius: 16)
-                    )
+            VStack(alignment: .leading, spacing: AppSpacing.large) {
+                balance
+                HStack {
+                    Spacer(minLength: 0)
+                    purchaseButton
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(isPurchaseDisabled)
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
         .profileCardSurface(AppPalette.apricot)
+    }
+
+    private var balance: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.string("profile.credits.title", "可用次数"))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppTextColor.secondary)
+            Text("\(credits)")
+                .font(.custom("AvenirNext-DemiBold", size: 44, relativeTo: .largeTitle))
+                .monospacedDigit()
+                .foregroundStyle(AppTextColor.title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .accessibilityIdentifier("profile.credits.balance")
+        }
+    }
+
+    private var purchaseButton: some View {
+        Button(action: onPurchase) {
+            Text(isPurchaseDisabled ? L10n.string("profile.credits.restoring", "账号恢复中") : L10n.string("profile.credits.purchase", "购买次数"))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppPalette.onAccent)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(
+                    isPurchaseDisabled ? Color.black.opacity(0.18) : AppPalette.accent,
+                    in: Capsule()
+                )
+        }
+        .buttonStyle(StudioPressStyle())
+        .disabled(isPurchaseDisabled)
     }
 }
 
@@ -1210,24 +1123,6 @@ private struct ProfileCreditCardSkeleton: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .profileCardSurface()
-    }
-}
-
-private struct ProfileLearningStatistic: View {
-    let value: Int
-    let title: String
-
-    var body: some View {
-        VStack(spacing: AppSpacing.xSmall) {
-            Text("\(value)")
-                .font(.system(size: AppFontSize.cardTitle, weight: .bold))
-                .foregroundStyle(AppTextColor.title)
-
-            Text(title)
-                .font(.system(size: AppFontSize.metadata, weight: .medium))
-                .foregroundStyle(AppTextColor.secondary)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

@@ -15,8 +15,15 @@ struct AlbumFlipView: View {
     @State private var crossedThreshold = false
     @State private var spokenCardID: UUID?
     @State private var speechPrefetchID: UUID?
+    @State private var favoriteFeedback: FavoriteFeedback?
     private let ownerID: String
     private let onChooseAnotherPhoto: (() -> Void)?
+
+    private struct FavoriteFeedback {
+        let id = UUID()
+        let cardID: UUID
+        let isFavorite: Bool
+    }
 
     init(
         items: [AlbumFlipItem], ownerID: String, defaults: UserDefaults = .standard,
@@ -80,6 +87,7 @@ struct AlbumFlipView: View {
             speechPrefetchID = appModel.speech.beginAlbumSpeechPrefetch()
         }
         .task(id: deck.cards.first?.id) {
+            favoriteFeedback = nil
             guard deck.cards.first != nil else {
                 endSpeechLookahead()
                 appModel.speech.stop()
@@ -94,9 +102,19 @@ struct AlbumFlipView: View {
             speakCurrentCard(automatically: true)
             updateSpeechLookahead()
         }
+        .task(id: favoriteFeedback?.id) {
+            guard let feedback = favoriteFeedback else { return }
+            do { try await Task.sleep(for: .seconds(feedback.isFavorite ? 2 : 1)) } catch { return }
+            guard favoriteFeedback?.id == feedback.id else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                favoriteFeedback = nil
+            }
+        }
+        .sensoryFeedback(.success, trigger: favoriteFeedback?.id) { _, newID in newID != nil }
         .onChange(of: scenePhase) { _, phase in
             // Returning from the background must not unexpectedly restart narration.
             if phase != .active {
+                favoriteFeedback = nil
                 if let speechPrefetchID { appModel.speech.pauseAlbumSpeechPrefetch(id: speechPrefetchID) }
                 appModel.speech.stop()
                 if !isAdvancing {
@@ -186,12 +204,29 @@ struct AlbumFlipView: View {
                 ) {
                     AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
                 }
+                .gesture(TapGesture(count: 2).onEnded {
+                    toggleCurrentCardFavorite(cardID: card.id)
+                })
+                // Keep the button outside the card's double-tap recognizer.
+                .overlay(alignment: .topTrailing) {
+                    AlbumFlipFavoriteButton(isFavorite: isFavorite(card.item)) {
+                        toggleCurrentCardFavorite(cardID: card.id)
+                    }
+                    .padding(12)
+                }
                 .overlay(alignment: .top) {
                     if isFront {
                         swipeBadge
                             .padding(20)
                             .allowsHitTesting(false)
                             .accessibilityHidden(true)
+                    }
+                }
+                .overlay {
+                    if isFront, let feedback = favoriteFeedback, feedback.cardID == card.id {
+                        AlbumFlipFavoriteFeedbackView(isFavorite: feedback.isFavorite)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
+                        .allowsHitTesting(false)
                     }
                 }
                 .shadow(color: .black.opacity(isFront ? 0.10 : 0.04), radius: 18, x: 0, y: 10)
@@ -202,6 +237,11 @@ struct AlbumFlipView: View {
                 .allowsHitTesting(isFront && !isAdvancing)
                 .accessibilityHidden(!isFront)
                 .simultaneousGesture(swipeGesture(cardID: card.id, cardWidth: size.width, exitWidth: exitWidth))
+                .accessibilityAction(named: isFavorite(card.item)
+                    ? L10n.string("favorites.action.unfavorite", "取消收藏")
+                    : L10n.string("new.result.favorite", "收藏")) {
+                    toggleCurrentCardFavorite(cardID: card.id)
+                }
                 .accessibilityAction(named: L10n.string("album_flip.again", "再看看")) {
                     advance(.again, exitWidth: exitWidth)
                 }
@@ -233,21 +273,15 @@ struct AlbumFlipView: View {
     }
 
     private func controls(exitWidth: CGFloat) -> some View {
-        VStack(spacing: 14) {
-            HStack(alignment: .top, spacing: 20) {
-                feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
-                AlbumFlipReplayButton(speech: appModel.speech, text: deck.cards.first?.item.sentence.english ?? "") {
-                    speakCurrentCard(automatically: false)
-                }
-                .disabled(isAdvancing || deck.cards.isEmpty)
-                feedbackButton(.familiar, icon: "checkmark", width: exitWidth)
+        HStack(alignment: .top, spacing: 20) {
+            feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
+            AlbumFlipReplayButton(speech: appModel.speech, text: deck.cards.first?.item.sentence.english ?? "") {
+                speakCurrentCard(automatically: false)
             }
-            .frame(maxWidth: 460)
-            Text(L10n.string("album_flip.hint", "左滑再看看，右滑熟悉了"))
-                .font(.caption)
-                .foregroundStyle(AppTextColor.secondary)
-                .multilineTextAlignment(.center)
+            .disabled(isAdvancing || deck.cards.isEmpty)
+            feedbackButton(.familiar, icon: "checkmark", width: exitWidth)
         }
+        .frame(maxWidth: 460)
         .frame(maxWidth: .infinity)
     }
 
@@ -321,7 +355,21 @@ struct AlbumFlipView: View {
                 isHorizontalDrag = nil
                 showsTranslation = false
                 crossedThreshold = false
+                favoriteFeedback = nil
             }
+        }
+    }
+
+    private func isFavorite(_ item: AlbumFlipItem) -> Bool {
+        appModel.memory(withID: item.memoryID)?.sentences.first(where: { $0.id == item.sentence.id })?.isFavorite ?? false
+    }
+
+    private func toggleCurrentCardFavorite(cardID: UUID) {
+        guard isVisible, !isAdvancing, scenePhase == .active,
+              let card = deck.cards.first, card.id == cardID,
+              appModel.toggleAlbumFlipSentenceFavorite(card.item, ownerID: ownerID) else { return }
+        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8)) {
+            favoriteFeedback = FavoriteFeedback(cardID: cardID, isFavorite: isFavorite(card.item))
         }
     }
 

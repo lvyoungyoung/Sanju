@@ -89,7 +89,7 @@ struct ContentView: View {
             return
         }
 
-        appModel.selectedTab = .study
+        appModel.selectedTab = .favorites
         if isShowingOnboarding { finishOnboarding() }
     }
 
@@ -197,22 +197,18 @@ struct ContentFooterHint: View {
     let isLoading: Bool
 
     var body: some View {
-        HStack(spacing: AppSpacing.small) {
-            if isLoading {
+        if isLoading {
+            HStack(spacing: AppSpacing.small) {
                 ProgressView()
                     .controlSize(.small)
-            }
 
-            Text(
-                isLoading
-                ? L10n.string("common.status.syncing_footer", "正在同步，请稍后")
-                : L10n.string("common.status.all_content_displayed", "已显示全部内容")
-            )
-                .font(.system(size: AppFontSize.metadata))
-                .foregroundStyle(.secondary)
+                Text(L10n.string("common.status.syncing_footer", "正在同步，请稍后"))
+                    .font(.system(size: AppFontSize.metadata))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 6)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.vertical, 6)
     }
 }
 

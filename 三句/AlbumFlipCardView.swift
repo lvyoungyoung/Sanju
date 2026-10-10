@@ -2,6 +2,61 @@ import ImageIO
 import SwiftUI
 import UIKit
 
+struct AlbumFlipFavoriteFeedbackView: View {
+    let isFavorite: Bool
+
+    var body: some View {
+        VStack(spacing: AppSpacing.small) {
+            Label(
+                isFavorite
+                    ? L10n.string("album_flip.saved", "已收藏")
+                    : L10n.string("album_flip.unsaved", "已取消收藏"),
+                systemImage: isFavorite ? "star.fill" : "star.slash"
+            )
+            .font(.headline)
+            .foregroundStyle(AppPalette.accentText)
+
+            if isFavorite {
+                Text(L10n.string("album_flip.favorite_feedback_hint", "双击也可以收藏哦"))
+                    .font(.caption)
+                    .foregroundStyle(AppTextColor.tertiary)
+            }
+        }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+}
+
+struct AlbumFlipFavoriteButton: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let isFavorite: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: isFavorite ? "star.fill" : "star")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(isFavorite ? AppPalette.accentText : AppTextColor.primary)
+                .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
+                .frame(width: 44, height: 44)
+                .background(AppSurfaceColor.card, in: Circle())
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 2)
+                .contentShape(Circle())
+        }
+        .buttonStyle(StudioPressStyle())
+        .accessibilityLabel(isFavorite
+            ? L10n.string("favorites.action.unfavorite", "取消收藏")
+            : L10n.string("new.result.favorite", "收藏"))
+        .accessibilityValue(isFavorite ? L10n.string("album_flip.saved", "已收藏") : "")
+        .accessibilityAddTraits(isFavorite ? .isSelected : [])
+        .accessibilityIdentifier("album_flip.favorite")
+    }
+}
+
 struct AlbumFlipSentenceCard<Photo: View>: View {
     let item: AlbumFlipItem
     let size: CGSize

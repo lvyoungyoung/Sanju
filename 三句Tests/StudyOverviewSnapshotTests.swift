@@ -9,24 +9,20 @@ final class StudyOverviewSnapshotTests: XCTestCase {
         expiresAt: .distantFuture, isAnonymous: false
     )
 
-    func testSuccessfulRefreshReturnsTheCompleteOverview() async throws {
+    func testSuccessfulRefreshReturnsFavoritesWithoutLoadingCustomTopics() async throws {
         let service = StubStudyOverviewService()
         let sentenceID = UUID()
         service.favoriteCounts = [sentenceID: 4]
-        let scene = makeScene()
-        service.scenes = [scene]
-
         let snapshot = try await StudyOverviewSnapshot.load(
             from: service, session: session, favoriteSentenceIDs: [sentenceID]
         )
-
         XCTAssertEqual(snapshot.dueCount, 3)
         XCTAssertEqual(snapshot.todayCount, 2)
         XCTAssertEqual(snapshot.reviewableTodayCount, 2)
         XCTAssertEqual(snapshot.sentenceCount, 12)
         XCTAssertEqual(snapshot.masteredCount, 1)
         XCTAssertEqual(snapshot.favoriteCounts, [sentenceID: 4])
-        XCTAssertEqual(snapshot.scenes, [scene])
+        XCTAssertFalse(service.requests.contains(.scenes))
     }
 
     func testNetworkFailuresDoNotProduceEmptyReplacementData() async throws {
@@ -35,41 +31,35 @@ final class StudyOverviewSnapshotTests: XCTestCase {
         let snapshot = try await StudyOverviewSnapshot.load(
             from: service, session: session, favoriteSentenceIDs: [UUID()]
         )
-
         XCTAssertNil(snapshot.dueCount)
         XCTAssertNil(snapshot.todayCount)
         XCTAssertNil(snapshot.reviewableTodayCount)
         XCTAssertNil(snapshot.sentenceCount)
         XCTAssertNil(snapshot.masteredCount)
         XCTAssertNil(snapshot.favoriteCounts)
-        XCTAssertNil(snapshot.scenes)
     }
 
     func testPartialFailureOnlyLeavesFailedFieldsUnchanged() async throws {
         let service = StubStudyOverviewService()
-        service.failedRequests = [.today, .scenes]
+        service.failedRequests = [.today]
         let snapshot = try await StudyOverviewSnapshot.load(
             from: service, session: session, favoriteSentenceIDs: []
         )
-
         XCTAssertEqual(snapshot.dueCount, 3)
         XCTAssertNil(snapshot.todayCount)
         XCTAssertEqual(snapshot.sentenceCount, 12)
-        XCTAssertNil(snapshot.scenes)
     }
 
-    func testSuccessfulEmptyResponseCanClearStaleContent() async throws {
+    func testEmptyFavoritesSkipTheStudyCountQuery() async throws {
         let service = StubStudyOverviewService()
         service.dueCount = 0
-        service.scenes = []
         let snapshot = try await StudyOverviewSnapshot.load(
             from: service, session: session, favoriteSentenceIDs: []
         )
-
         XCTAssertEqual(snapshot.dueCount, 0)
-        XCTAssertEqual(snapshot.scenes, [])
         XCTAssertEqual(snapshot.favoriteCounts, [:])
         XCTAssertFalse(service.requests.contains(.favorites))
+        XCTAssertFalse(service.requests.contains(.scenes))
     }
 
     func testCancellationStopsRefreshWithoutPublishingAnEmptyOverview() async {
@@ -85,71 +75,28 @@ final class StudyOverviewSnapshotTests: XCTestCase {
             } catch {
                 XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled)
             }
-            XCTAssertTrue(service.requests.contains(.due))
         }
     }
 
-    func testSlowRefreshKeepsExistingContentUntilAllResponsesArrive() async throws {
+    func testSlowRefreshKeepsExistingCountsUntilResponseArrives() async throws {
         let service = StubStudyOverviewService()
-        let oldScene = makeScene(name: "Old topic")
-        let newScene = makeScene(name: "New topic")
-        var displayedScenes = [oldScene]
-        var continuation: CheckedContinuation<[UserStudySceneSummary], Never>?
-        let waitingForScenes = expectation(description: "Waiting for the final response")
-        service.loadScenes = {
-            await withCheckedContinuation {
-                continuation = $0
-                waitingForScenes.fulfill()
-            }
+        var displayedCount = 8
+        var continuation: CheckedContinuation<Int, Never>?
+        let waiting = expectation(description: "Waiting for due count")
+        service.loadDueCount = {
+            await withCheckedContinuation { continuation = $0; waiting.fulfill() }
         }
-
         let task = Task {
             let snapshot = try await StudyOverviewSnapshot.load(
                 from: service, session: session, favoriteSentenceIDs: []
             )
-            if let scenes = snapshot.scenes { displayedScenes = scenes }
+            if let count = snapshot.dueCount { displayedCount = count }
         }
-        await fulfillment(of: [waitingForScenes], timeout: 2)
-        XCTAssertEqual(displayedScenes, [oldScene])
-
-        continuation?.resume(returning: [newScene])
-        try await task.value
-        XCTAssertEqual(displayedScenes, [newScene])
-    }
-
-    private func makeScene(name: String = "Topic") -> UserStudySceneSummary {
-        UserStudySceneSummary(id: UUID(), name: name, coverMemoryID: nil, summary: .empty)
-    }
-
-    func testTopicsArePublishedBeforeSlowStatisticsFinish() async throws {
-        let service = StubStudyOverviewService()
-        let scene = makeScene()
-        service.scenes = [scene]
-        let waitingForCount = expectation(description: "Statistics started")
-        let waitingForTotal = expectation(description: "Sentence count started")
-        let topicsArrived = expectation(description: "Topics published independently")
-        var continuation: CheckedContinuation<Int, Never>?
-        var totalContinuation: CheckedContinuation<Int, Never>?
-        service.loadDueCount = {
-            await withCheckedContinuation { continuation = $0; waitingForCount.fulfill() }
-        }
-        service.loadSentenceCount = {
-            await withCheckedContinuation { totalContinuation = $0; waitingForTotal.fulfill() }
-        }
-        let task = Task {
-            try await StudyOverviewSnapshot.load(
-                from: service, session: session, favoriteSentenceIDs: [],
-                onScenesLoaded: { scenes in
-                    XCTAssertEqual(scenes, [scene])
-                    topicsArrived.fulfill()
-                }
-            )
-        }
-        await fulfillment(of: [waitingForCount, waitingForTotal, topicsArrived], timeout: 2)
+        await fulfillment(of: [waiting], timeout: 2)
+        XCTAssertEqual(displayedCount, 8)
         continuation?.resume(returning: 3)
-        totalContinuation?.resume(returning: 12)
-        let snapshot = try await task.value
-        XCTAssertEqual(snapshot.dueCount, 3)
+        try await task.value
+        XCTAssertEqual(displayedCount, 3)
     }
 }
 
@@ -164,10 +111,7 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
     var requests: [Request] = []
     var dueCount = 3
     var favoriteCounts: [UUID: Int] = [:]
-    var scenes: [UserStudySceneSummary] = []
-    var loadScenes: (() async -> [UserStudySceneSummary])?
     var loadDueCount: (() async -> Int)?
-    var loadSentenceCount: (() async -> Int)?
 
     private func record(_ request: Request) throws {
         requests.append(request)
@@ -192,7 +136,6 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
 
     func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int {
         try record(.sentences)
-        if let loadSentenceCount { return await loadSentenceCount() }
         return 12
     }
 
@@ -208,7 +151,7 @@ private final class StubStudyOverviewService: StudyOverviewFetching {
 
     func fetchUserStudySceneSummaries(session: SupabaseSession) async throws -> [UserStudySceneSummary] {
         try record(.scenes)
-        if let loadScenes { return await loadScenes() }
-        return scenes
+        XCTFail("Favorites must not load removed custom topics")
+        return []
     }
 }

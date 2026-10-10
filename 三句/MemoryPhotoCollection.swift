@@ -25,7 +25,12 @@ struct MemoryPhotoTopic: Identifiable {
         MemoryPhotoCategory.category(for: id)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
     }
 
-    var cover: MemoryEntry? { memories.first }
+    // Topic photos are newest-first; keep the oldest photos at the front of the stack.
+    var cover: MemoryEntry? { memories.last }
+
+    var previewMemories: [MemoryEntry] { Array(memories.suffix(3).reversed()) }
+
+    var photoCountBadgeTitle: String { memories.count > 99 ? "99+" : String(memories.count) }
 }
 
 struct MemoryPhotoCollection {

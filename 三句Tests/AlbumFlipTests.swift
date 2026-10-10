@@ -46,6 +46,111 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertTrue(items.allSatisfy { $0.memoryCreatedAt == memory.createdAt })
     }
 
+    func testFavoriteToggleOnlyChangesCurrentSentenceWithoutRecordingStudyOrFlipFeedback() async throws {
+        let model = AppModel()
+        model.memories = [makeMemory()]
+        model.favoriteSentencesCount = 0
+        model.localSentenceStudyProgress = [:]
+        defer { model.speech.stop() }
+        let deck = makeDeck(AlbumFlipItem.makeItems(from: model.memories))
+        let card = try XCTUnwrap(deck.cards.first)
+        let cardIDs = deck.cards.map(\.id)
+        XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(card.item, ownerID: "guest"))
+        await model.refreshSentenceStudyDueCount()
+
+        XCTAssertEqual(model.memories[0].sentences.filter(\.isFavorite).map(\.id), [card.item.sentence.id])
+        XCTAssertEqual(model.favoriteSentencesCount, 1)
+        XCTAssertEqual(model.sentenceStudyDueCount, 1)
+        XCTAssertTrue(model.localSentenceStudyProgress.isEmpty)
+        XCTAssertEqual(deck.cards.map(\.id), cardIDs)
+        XCTAssertEqual(deck.viewedCount, 0)
+        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest").read().pending.isEmpty)
+
+        XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(card.item, ownerID: "guest"))
+        await model.refreshSentenceStudyDueCount()
+        XCTAssertTrue(model.memories[0].sentences.allSatisfy { !$0.isFavorite })
+        XCTAssertEqual(model.favoriteSentencesCount, 0)
+        XCTAssertEqual(model.sentenceStudyDueCount, 0)
+        XCTAssertTrue(model.localSentenceStudyProgress.isEmpty)
+        XCTAssertEqual(deck.cards.map(\.id), cardIDs)
+        XCTAssertEqual(deck.viewedCount, 0)
+        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest").read().pending.isEmpty)
+    }
+
+    func testRepeatedDoubleTapTogglesLiveStateInsteadOfStaleDeckItem() throws {
+        let model = AppModel()
+        model.memories = [makeMemory(count: 1)]
+        model.favoriteSentencesCount = 0
+        defer { model.speech.stop() }
+        let item = try XCTUnwrap(AlbumFlipItem.makeItems(from: model.memories).first)
+        XCTAssertFalse(item.sentence.isFavorite)
+        for expectedState in [true, false, true, false] {
+            XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+            XCTAssertEqual(model.memories[0].sentences[0].isFavorite, expectedState)
+            XCTAssertEqual(model.favoriteSentencesCount, expectedState ? 1 : 0)
+        }
+    }
+
+    func testDoubleTapUsesLiveStateIfFavoriteWasRemovedAfterDeckCreation() throws {
+        let model = AppModel()
+        model.memories = [makeMemory(count: 1)]
+        model.memories[0].sentences[0].isFavorite = true
+        defer { model.speech.stop() }
+        let item = try XCTUnwrap(AlbumFlipItem.makeItems(from: model.memories).first)
+        model.memories[0].sentences[0].isFavorite = false
+        model.favoriteSentencesCount = 0
+        XCTAssertTrue(item.sentence.isFavorite)
+        XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        XCTAssertTrue(model.memories[0].sentences[0].isFavorite)
+        XCTAssertEqual(model.favoriteSentencesCount, 1)
+    }
+
+    func testDoubleTapRejectsChangedOwnerAndRemovedMemoryOrSentence() throws {
+        let model = AppModel()
+        model.memories = [makeMemory(count: 1)]
+        model.favoriteSentencesCount = 0
+        defer { model.speech.stop() }
+        let item = try XCTUnwrap(AlbumFlipItem.makeItems(from: model.memories).first)
+        XCTAssertFalse(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "another-owner"))
+        let wrongMemory = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: item.memoryCreatedAt, sentence: item.sentence)
+        XCTAssertFalse(model.toggleAlbumFlipSentenceFavorite(wrongMemory, ownerID: "guest"))
+        model.memories[0].sentences = []
+        XCTAssertFalse(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        model.memories = []
+        XCTAssertFalse(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        XCTAssertEqual(model.favoriteSentencesCount, 0)
+    }
+
+    func testButtonAndDoubleTapCanAlternateUsingTheSameLiveFavoriteState() throws {
+        let model = AppModel()
+        model.memories = [makeMemory(count: 1)]
+        model.favoriteSentencesCount = 0
+        defer { model.speech.stop() }
+        let item = try XCTUnwrap(AlbumFlipItem.makeItems(from: model.memories).first)
+        let button = AlbumFlipFavoriteButton(isFavorite: false) {
+            XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        }
+        button.action()
+        XCTAssertTrue(model.memories[0].sentences[0].isFavorite)
+        XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        XCTAssertFalse(model.memories[0].sentences[0].isFavorite)
+        button.action()
+        XCTAssertTrue(model.memories[0].sentences[0].isFavorite)
+        XCTAssertEqual(model.favoriteSentencesCount, 1)
+    }
+
+    func testFavoriteToggleRemovesSentenceFavoritedAfterDeckCreation() throws {
+        let model = AppModel()
+        model.memories = [makeMemory(count: 1)]
+        model.favoriteSentencesCount = 0
+        defer { model.speech.stop() }
+        let item = try XCTUnwrap(AlbumFlipItem.makeItems(from: model.memories).first)
+        model.toggleFavorite(sentenceID: item.sentence.id)
+        XCTAssertTrue(model.toggleAlbumFlipSentenceFavorite(item, ownerID: "guest"))
+        XCTAssertFalse(model.memories[0].sentences[0].isFavorite)
+        XCTAssertEqual(model.favoriteSentencesCount, 0)
+    }
+
     func testRecencyWeightDecaysWithoutExcludingOldMemories() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let weights = [0, 7, 30, 90, 365].map { days in
@@ -368,6 +473,62 @@ final class AlbumFlipTests: XCTestCase {
         }.environment(\.dynamicTypeSize, .accessibility3)
         let image = try await renderInWindow(view, size: CGSize(width: 272, height: 365))
         XCTAssertEqual(image.size, CGSize(width: 272, height: 365))
+    }
+
+    func testFavoriteButtonRendersBothStatesOverThePhotoInBothThemes() async throws {
+        let item = AlbumFlipItem.makeItems(from: [makeMemory()])[0]
+        let size = CGSize(width: 272, height: 365)
+        for scheme in [ColorScheme.light, .dark] {
+            var images = [UIImage]()
+            for isFavorite in [false, true] {
+                let view = AlbumFlipSentenceCard(item: item, size: size, showsTranslation: false, onToggleTranslation: {}) {
+                    Image(uiImage: self.samplePhoto).resizable().scaledToFill()
+                }
+                .overlay(alignment: .topTrailing) {
+                    AlbumFlipFavoriteButton(isFavorite: isFavorite, action: {}).padding(12)
+                }
+                .environment(\.colorScheme, scheme)
+                let image = try await renderInWindow(view, size: size)
+                images.append(image)
+                XCTAssertEqual(image.size, size)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "AlbumFlip-Favorite-\(scheme)-\(isFavorite ? "saved" : "unsaved")"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            XCTAssertNotEqual(images[0].pngData(), images[1].pngData(), "Saved and unsaved icons must be visually distinct")
+        }
+    }
+
+    func testFavoriteFeedbackAddsHintOnlyWhenSavingAndFitsCompactScreens() async throws {
+        for typeSize in [DynamicTypeSize.large, .accessibility3] {
+            let saved = UIHostingController(rootView: AlbumFlipFavoriteFeedbackView(isFavorite: true)
+                .environment(\.dynamicTypeSize, typeSize))
+            let unsaved = UIHostingController(rootView: AlbumFlipFavoriteFeedbackView(isFavorite: false)
+                .environment(\.dynamicTypeSize, typeSize))
+            let proposal = CGSize(width: 272, height: 500)
+            let savedSize = saved.sizeThatFits(in: proposal)
+            let unsavedSize = unsaved.sizeThatFits(in: proposal)
+            XCTAssertLessThanOrEqual(savedSize.width, proposal.width)
+            XCTAssertLessThanOrEqual(unsavedSize.width, proposal.width)
+            XCTAssertGreaterThan(savedSize.height, unsavedSize.height,
+                                 "Only the saved feedback should include the double-tap hint")
+            for scheme in [ColorScheme.light, .dark] {
+                for isFavorite in [true, false] {
+                    let view = AlbumFlipFavoriteFeedbackView(isFavorite: isFavorite)
+                        .frame(maxWidth: 272)
+                        .frame(width: 320, height: 240)
+                        .background(AppSurfaceColor.page)
+                        .environment(\.dynamicTypeSize, typeSize)
+                        .environment(\.colorScheme, scheme)
+                    let image = try await renderInWindow(view, size: CGSize(width: 320, height: 240))
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "AlbumFlip-FavoriteFeedback-\(isFavorite)-\(scheme)-\(typeSize)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
     }
 
     func testFullScreenAlbumLayout() async throws {

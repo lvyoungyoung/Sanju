@@ -1,6 +1,17 @@
 import Foundation
 
 extension AppModel {
+    @discardableResult
+    func toggleAlbumFlipSentenceFavorite(_ item: AlbumFlipItem, ownerID: String) -> Bool {
+        guard albumFlipOwnerID == ownerID,
+              let sentence = memory(withID: item.memoryID)?.sentences.first(where: { $0.id == item.sentence.id }) else {
+            return false
+        }
+        // Deck items are snapshots; always toggle the live sentence, not the snapshot.
+        toggleFavorite(sentenceID: sentence.id)
+        return true
+    }
+
     func configureAlbumFlipHistorySync() {
         albumFlipHistorySync = AlbumFlipHistorySync(
             defaults: defaults,

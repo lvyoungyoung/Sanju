@@ -1,6 +1,6 @@
 "account.delete.loading" = "正在删除账号，请勿关闭应用";
 "sentence_detail.title" = "句子详情";
-"sentence_detail.analyze" = "AI解析";
+"sentence_detail.analyze" = "点击获取AI解析";
 "sentence_detail.analyzing" = "正在解析…";
 "sentence_detail.loading_saved" = "正在读取解析…";
 "sentence_detail.analysis_failed" = "暂时无法获取解析，请稍后重试。";
@@ -152,7 +152,7 @@
 "common.save" = "保存";
 "common.saving" = "保存中...";
 "favorites.action.unfavorite" = "取消收藏";
-"favorites.empty.subtitle" = "在生成结果里点亮右侧星标，你最常用、最喜欢的句子都会留在这里。";
+"favorites.empty.subtitle" = "在生成结果中收藏想反复学习的句子，它们就会出现在这里。";
 "favorites.empty.title" = "还没有收藏";
 "favorites.hero.count_label" = "已收藏";
 "favorites.hero.eyebrow" = "收藏";
@@ -264,6 +264,8 @@
 "profile.restoring.title" = "正在恢复账号信息";
 "profile.section.about" = "关于";
 "profile.section.account" = "账户";
+"profile.section.learning_settings" = "学习设置";
+"profile.section.more" = "更多";
 "profile.section.learning_reminder" = "学习提醒";
 "profile.section.preferences" = "生成偏好";
 "profile.section.widget" = "桌面小组件";
@@ -496,6 +498,10 @@
 "album_flip.again" = "再看看";
 "album_flip.familiar" = "熟悉了";
 "album_flip.hint" = "左滑再看看，右滑熟悉了";
+"album_flip.favorite_hint" = "双击收藏";
+"album_flip.favorite_feedback_hint" = "双击也可以收藏哦";
+"album_flip.saved" = "已收藏";
+"album_flip.unsaved" = "已取消收藏";
 "album_flip.replay" = "再听一遍";
 "album_flip.playing" = "朗读中";
 "album_flip.mute" = "关闭自动朗读";

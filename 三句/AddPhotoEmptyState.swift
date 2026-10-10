@@ -33,12 +33,12 @@ struct ContentLoadFailureState: View {
 
 struct AddPhotoEmptyState: View {
     enum Destination: CaseIterable {
-        case memories, study
+        case memories, favorites
 
         var title: String {
             switch self {
             case .memories: L10n.string("memories.empty.title", "还没有回忆")
-            case .study: L10n.string("study.empty.photo_title", "从一张照片开始学习")
+            case .favorites: L10n.string("favorites.empty.title", "还没有收藏")
             }
         }
     }

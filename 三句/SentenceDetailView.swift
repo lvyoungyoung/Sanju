@@ -82,16 +82,16 @@ struct SentenceDetailView: View {
                 }
             } label: {
                 HStack(spacing: AppSpacing.small) {
-                    if model.isLoading { ProgressView().tint(AppPalette.onAccent) }
+                    if model.isGenerating { ProgressView().tint(AppTextColor.secondary) }
                     Text(model.isGenerating
                          ? L10n.string("sentence_detail.analyzing", "正在解析…")
-                         : model.isLoading ? L10n.string("sentence_detail.loading_saved", "正在读取解析…")
-                         : L10n.string("sentence_detail.analyze", "AI解析"))
-                        .font(.system(.body, weight: .semibold))
+                         : L10n.string("sentence_detail.analyze", "点击获取AI解析"))
+                        .font(.system(.subheadline, weight: .medium))
                 }
-                .foregroundStyle(AppPalette.onAccent)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(AppPalette.accent, in: Capsule())
+                .foregroundStyle(AppTextColor.secondary)
+                .padding(.horizontal, AppSpacing.xLarge)
+                .frame(minHeight: 44)
+                .background(AppSurfaceColor.card, in: Capsule())
             }
             .buttonStyle(StudioPressStyle())
             .disabled(model.isLoading)

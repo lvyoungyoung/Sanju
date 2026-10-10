@@ -32,17 +32,39 @@ final class StudioAppearanceTests: XCTestCase {
         }
     }
 
-    func testBorderlessProfileCardsRemainDistinctFromPage() {
+    func testSharedPageBackgroundUsesWarmGrayAndKeepsDarkModeIndependent() {
+        for (style, hex) in [(UIUserInterfaceStyle.light, UInt32(0xF3F1EC)), (.dark, 0x191B18)] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            traits.performAsCurrent {
+                let page = UIColor(AppSurfaceColor.page).resolvedColor(with: traits)
+                let profilePage = UIColor(ProfileCardStyle.page).resolvedColor(with: traits)
+                XCTAssertEqual(page.cgColor, profilePage.cgColor)
+                var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+                XCTAssertTrue(page.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+                XCTAssertEqual(red, CGFloat((hex >> 16) & 0xff) / 255, accuracy: 0.001)
+                XCTAssertEqual(green, CGFloat((hex >> 8) & 0xff) / 255, accuracy: 0.001)
+                XCTAssertEqual(blue, CGFloat(hex & 0xff) / 255, accuracy: 0.001)
+                XCTAssertEqual(alpha, 1)
+                if style == .light {
+                    XCTAssertEqual(luminance(UIColor(AppSurfaceColor.card).resolvedColor(with: traits)), 1, accuracy: 0.001)
+                }
+            }
+        }
+    }
+
+    func testBorderlessCardsRemainDistinctFromPage() {
         XCTAssertEqual(ProfileCardStyle.cornerRadius, AppCornerRadius.card)
         XCTAssertEqual(AppCornerRadius.card, 18)
         XCTAssertEqual(AppCornerRadius.cardImage + 7, AppCornerRadius.card)
         for style in [UIUserInterfaceStyle.light, .dark] {
             let traits = UITraitCollection(userInterfaceStyle: style)
             traits.performAsCurrent {
-                let card = luminance(UIColor(ProfileCardStyle.surface).resolvedColor(with: traits))
-                let page = luminance(UIColor(ProfileCardStyle.page).resolvedColor(with: traits))
-                XCTAssertGreaterThan(card, page)
-                XCTAssertGreaterThan((card + 0.05) / (page + 0.05), 1.1)
+                let page = luminance(UIColor(AppSurfaceColor.page).resolvedColor(with: traits))
+                for surface in [AppSurfaceColor.card, ProfileCardStyle.surface] {
+                    let card = luminance(UIColor(surface).resolvedColor(with: traits))
+                    XCTAssertGreaterThan(card, page)
+                    XCTAssertGreaterThan((card + 0.05) / (page + 0.05), 1.1)
+                }
             }
         }
     }

@@ -4,27 +4,31 @@ import UIKit
 
 struct MemoriesView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var memoryPendingDeletion: MemoryEntry?
     @State private var isPerformingInitialLoad = false
     @State private var hasCompletedInitialLoad = false
     @State private var visibleMemoryCount = 20
     @State private var isLoadingMoreMemories = false
     @State private var memorySections: [MemorySection] = []
-    @State private var pageTitleOriginY: CGFloat?
-    @State private var pageTitleMinY: CGFloat = 0
     @State private var albumFlipSession: AlbumFlipPresentation?
     @State private var browseMode: MemoryBrowseMode = .time
+    @State private var browseTabsHeight = MemoryBrowseTabs.regularSize.height
     @State private var photoCollection: MemoryPhotoCollection?
     let topicID: String?
 
-    init(topicID: String? = nil) {
+    init(topicID: String? = nil, browseMode: MemoryBrowseMode = .time) {
         self.topicID = topicID
+        _browseMode = State(initialValue: browseMode)
     }
 
     private let columns = [
-        GridItem(.flexible(), spacing: AppSpacing.medium),
-        GridItem(.flexible(), spacing: AppSpacing.medium)
+        GridItem(.adaptive(minimum: 124, maximum: 200), spacing: AppSpacing.small)
     ]
+    private var topicColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: AppSpacing.section),
+              count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+    }
     private let memoryPageSize = 20
     private let loadMoreFooterThreshold: CGFloat = 120
 
@@ -33,16 +37,6 @@ struct MemoriesView: View {
             VStack(spacing: 0) {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: AppSpacing.large) {
-                    if topicID == nil {
-                        pageHeader
-                        MemoryBrowseTabs(mode: $browseMode)
-                    } else {
-                        Text(MemoryPhotoCollection.photoCountTitle(scopedMemories.count))
-                            .font(.subheadline)
-                            .foregroundStyle(AppTextColor.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
                     if appModel.isSyncingPendingCloudChanges, appModel.pendingCloudSyncTotalCount > 0 {
                         PendingCloudSyncProgressCard(
                             completedCount: appModel.pendingCloudSyncCompletedCount,
@@ -80,7 +74,7 @@ struct MemoriesView: View {
                             }
                         }
                     } else if !isShowingPhotos {
-                        LazyVGrid(columns: columns, spacing: AppSpacing.medium) {
+                        LazyVGrid(columns: topicColumns, spacing: AppSpacing.xxLarge * 0.7) {
                             ForEach(collection.topics) { topic in
                                 NavigationLink(value: MemoryNavigationRoute.photoTopic(topic.id)) {
                                     MemoryPhotoTopicCard(topic: topic)
@@ -88,36 +82,19 @@ struct MemoriesView: View {
                                 .buttonStyle(StudioPressStyle())
                             }
                         }
+                        .padding(.top, AppSpacing.small)
                     } else {
                         LazyVStack(alignment: .leading, spacing: AppSpacing.xxLarge) {
-                            ForEach(memorySections) { section in
-                                VStack(alignment: .leading, spacing: AppSpacing.large) {
-                                    Text(section.title)
-                                        .font(.system(.subheadline, weight: .medium))
-                                        .foregroundStyle(AppTextColor.secondary)
+                            if topicID != nil {
+                                photoGrid(items: memorySections.flatMap(\.items))
+                            } else {
+                                ForEach(memorySections) { section in
+                                    VStack(alignment: .leading, spacing: AppSpacing.large) {
+                                        Text(section.title)
+                                            .font(.system(.subheadline, weight: .medium))
+                                            .foregroundStyle(AppTextColor.secondary)
 
-                                    LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.medium) {
-                                        ForEach(section.items) { item in
-                                            NavigationLink(value: MemoryNavigationRoute.memory(item.memory.id)) {
-                                                MemoryThumbnailTile(
-                                                    memory: item.memory,
-                                                    animationDelay: item.animationDelay
-                                                )
-                                            }
-                                            .buttonStyle(.plain)
-                                            .onAppear {
-                                                Task {
-                                                    await loadMoreMemoriesIfNeeded(currentMemoryID: item.memory.id)
-                                                }
-                                            }
-                                            .contextMenu {
-                                                Button(role: .destructive) {
-                                                    memoryPendingDeletion = item.memory
-                                                } label: {
-                                                    Label(L10n.string("common.delete", "删除"), systemImage: "trash")
-                                                }
-                                            }
-                                        }
+                                        photoGrid(items: section.items)
                                     }
                                 }
                             }
@@ -128,7 +105,7 @@ struct MemoriesView: View {
                     }
                     }
                     .padding(.horizontal, AppSpacing.section)
-                    .padding(.top, AppSpacing.xLarge)
+                    .padding(.top, topicID == nil ? browseTabsHeight + AppSpacing.xLarge + AppSpacing.large : AppSpacing.xLarge)
                     .padding(.bottom, AppSpacing.xxxLarge)
                 }
                 .coordinateSpace(name: MemoryScrollMetrics.coordinateSpaceName)
@@ -165,6 +142,14 @@ struct MemoriesView: View {
                 }
             }
             .background(AppSurfaceColor.page)
+            .overlay(alignment: .top) {
+                if topicID == nil {
+                    MemoryBrowseTabs(mode: $browseMode)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { browseTabsHeight = $0 }
+                        .padding(.horizontal, AppSpacing.section)
+                        .padding(.top, AppSpacing.xLarge - AppSpacing.small)
+                }
+            }
             .fullScreenCover(item: $albumFlipSession) { session in
                 AlbumFlipView(items: session.items, ownerID: session.ownerID)
                     .environmentObject(appModel)
@@ -197,12 +182,6 @@ struct MemoriesView: View {
                     await loadMoreMemoriesIfNeeded()
                 }
             }
-            .onPreferenceChange(MemoryPageTitleMinYPreferenceKey.self) { minY in
-                if pageTitleOriginY == nil {
-                    pageTitleOriginY = minY
-                }
-                pageTitleMinY = minY
-            }
             .alert(L10n.string("memory.delete.alert_title", "删除这条回忆？"), isPresented: memoryDeleteAlertBinding) {
                 Button(L10n.string("common.delete", "删除"), role: .destructive) {
                     if let memoryID = memoryPendingDeletion?.id {
@@ -219,20 +198,25 @@ struct MemoriesView: View {
         }
     }
 
-    private var pageHeader: some View {
-        Text(L10n.string("memories.page_title", "回忆"))
-            .font(AppTypography.pageTitle)
-            .foregroundStyle(AppTextColor.primary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .opacity(pageTitleOpacity)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: MemoryPageTitleMinYPreferenceKey.self,
-                        value: proxy.frame(in: .named(MemoryScrollMetrics.coordinateSpaceName)).minY
-                    )
+    private func photoGrid(items: [MemorySectionItem]) -> some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: AppSpacing.small) {
+            ForEach(items) { item in
+                NavigationLink(value: MemoryNavigationRoute.memory(item.memory.id)) {
+                    MemoryPhotoPrint(memory: item.memory, animationDelay: item.animationDelay)
+                }
+                .buttonStyle(.plain)
+                .onAppear {
+                    Task { await loadMoreMemoriesIfNeeded(currentMemoryID: item.memory.id) }
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        memoryPendingDeletion = item.memory
+                    } label: {
+                        Label(L10n.string("common.delete", "删除"), systemImage: "trash")
+                    }
                 }
             }
+        }
     }
 
     private var hasFlippableSentences: Bool {
@@ -250,12 +234,6 @@ struct MemoriesView: View {
     private var topicTitle: String {
         guard let topicID else { return L10n.string("memories.page_title", "回忆") }
         return MemoryPhotoCategory.category(for: topicID)?.title ?? L10n.string("memories.topic.uncategorized", "未分类")
-    }
-
-    private var pageTitleOpacity: Double {
-        guard let pageTitleOriginY else { return 1 }
-        let fadeDistance: CGFloat = 64
-        return min(1, max(0, Double((pageTitleMinY - pageTitleOriginY + fadeDistance) / fadeDistance)))
     }
 
     private var memoryDeleteAlertBinding: Binding<Bool> {
@@ -430,47 +408,153 @@ struct MemoriesView: View {
 }
 
 struct MemoryBrowseTabs: View {
+    static let regularSize = CGSize(width: 176, height: 50)
+
     @Binding var mode: MemoryBrowseMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var selectionNamespace
 
     var body: some View {
-        PreferenceSegmentedControl(
-            titles: MemoryBrowseMode.allCases.map(\.title),
-            selection: Binding(
-                get: { mode.rawValue },
-                set: { mode = MemoryBrowseMode(rawValue: $0) ?? .time }
-            ),
-            accessibilityTitle: L10n.string("memories.browse.label", "回忆查看方式")
-        )
-        .frame(height: 44)
+        glassTabs
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : Self.regularSize.width)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(L10n.string("memories.browse.label", "浏览回忆"))
+            .accessibilityIdentifier("memories.browse")
+    }
+
+    @ViewBuilder
+    private var glassTabs: some View {
+        if #available(iOS 26.0, *) {
+            tabs.glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            tabs.background(.regularMaterial, in: Capsule())
+        }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 0) {
+            ForEach(MemoryBrowseMode.allCases, id: \.self) { item in
+                Button {
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.24, extraBounce: 0)) {
+                        mode = item
+                    }
+                } label: {
+                    Text(item.title)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .padding(.horizontal, AppSpacing.medium)
+                        .padding(.vertical, AppSpacing.small)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background {
+                            if mode == item {
+                                Capsule()
+                                    .fill(Color(uiColor: .secondarySystemFill))
+                                    .matchedGeometryEffect(id: "selection", in: selectionNamespace)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(mode == item ? .isSelected : [])
+                .accessibilityIdentifier(item == .time ? "memories.browse.time" : "memories.browse.topic")
+            }
+        }
+        .padding(3)
     }
 }
 
-private struct MemoryPhotoTopicCard: View {
+struct MemoryPhotoTopicCard: View {
     let topic: MemoryPhotoTopic
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let cover = topic.cover {
-                MemoryThumbnailTile(memory: cover, animationDelay: 0, cornerRadius: 10)
-                    .accessibilityHidden(true)
-            }
-            VStack(alignment: .leading, spacing: 5) {
-                Text(topic.title)
-                    .font(.system(.headline, weight: .semibold))
-                    .foregroundStyle(AppTextColor.primary)
-                    .lineLimit(2, reservesSpace: true)
-                Text(MemoryPhotoCollection.photoCountTitle(topic.memories.count))
-                    .font(.subheadline)
-                    .foregroundStyle(AppTextColor.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 6)
+        VStack(alignment: .center, spacing: AppSpacing.small * 0.7) {
+            MemoryPhotoTopicStack(topic: topic)
+                .frame(maxWidth: 240)
+                .frame(maxWidth: .infinity)
+                .accessibilityHidden(true)
+
+            Text(topic.title)
+                .font(.system(.headline, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+                .lineLimit(2, reservesSpace: true)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal, AppSpacing.large)
         }
-        .padding(8)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-        .accessibilityElement(children: .combine)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(topic.title)
+        .accessibilityValue(MemoryPhotoCollection.photoCountTitle(topic.memories.count))
+    }
+}
+
+private struct MemoryPhotoTopicStack: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let topic: MemoryPhotoTopic
+
+    private var direction: Double {
+        topic.id.utf8.reduce(0) { $0 + Int($1) }.isMultiple(of: 2) ? 1 : -1
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = max(0, proxy.size.width - AppSpacing.xxLarge)
+            let photos = topic.previewMemories
+
+            ZStack {
+                photoLayer(photos.count > 2 ? photos[2] : nil, side: side)
+                    .scaleEffect(0.94)
+                    .rotationEffect(.degrees(direction * 8))
+                    .offset(x: -direction * 5, y: -4)
+
+                photoLayer(photos.count > 1 ? photos[1] : nil, side: side)
+                    .scaleEffect(0.98)
+                    .rotationEffect(.degrees(-direction * 6))
+                    .offset(x: direction * 5, y: 3)
+
+                photoLayer(topic.cover, side: side)
+                    .overlay(alignment: .bottomTrailing) {
+                        Text(topic.photoCountBadgeTitle)
+                            .font(.system(.caption, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(.black.opacity(0.62), in: Capsule())
+                            .fixedSize()
+                            .padding(14)
+                    }
+                    .rotationEffect(.degrees(direction * 2))
+                    .offset(y: 6)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .allowsHitTesting(false)
+    }
+
+    private func photoLayer(_ memory: MemoryEntry?, side: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
+            .fill(AppSurfaceColor.card)
+            .frame(width: side, height: side)
+            .overlay {
+                if let memory {
+                    MemoryThumbnailTile(memory: memory, animationDelay: 0,
+                                        cornerRadius: AppCornerRadius.card - 6)
+                        .padding(6)
+                        .id(memory.id)
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
+                    .strokeBorder((colorScheme == .dark ? Color.white : .black).opacity(0.08), lineWidth: 0.5)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 6, x: 0, y: 4)
     }
 }
 
@@ -486,14 +570,6 @@ private enum MemoryScrollMetrics {
 
 private struct MemoryFooterMinYPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = .greatestFiniteMagnitude
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
-private struct MemoryPageTitleMinYPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
@@ -561,6 +637,73 @@ private struct MemorySectionItem: Identifiable {
     var id: UUID { memory.id }
 }
 
+struct MemoryPhotoPrintStyle: Equatable {
+    static let sideInset: CGFloat = 6
+    static let bottomInset: CGFloat = 24
+    static let slotAspectRatio: CGFloat = 0.86
+    static let widthFraction: CGFloat = 0.84
+    static let paperCornerRadius: CGFloat = 4
+
+    let rotationDegrees: Double
+    let horizontalBias: CGFloat
+
+    init(memoryID: UUID) {
+        // A stable seed keeps the same photo's arrangement across refreshes and launches.
+        let seed = Array(SHA256.hash(data: Data(memoryID.uuidString.utf8)))
+        let angles: [Double] = [-2.75, -2, -1.25, 1.25, 2, 2.75]
+        rotationDegrees = angles[Int(seed[0]) % angles.count]
+        horizontalBias = CGFloat(Int(seed[2] % 7) - 3)
+    }
+
+    func printSize(in slot: CGSize) -> CGSize {
+        let side = min(max(0, slot.width) * Self.widthFraction, 170)
+        return CGSize(width: side, height: side + Self.bottomInset - Self.sideInset)
+    }
+
+    func rotatedSize(in slot: CGSize) -> CGSize {
+        let size = printSize(in: slot)
+        let radians = rotationDegrees * .pi / 180
+        return CGSize(
+            width: size.width * abs(cos(radians)) + size.height * abs(sin(radians)),
+            height: size.height * abs(cos(radians)) + size.width * abs(sin(radians))
+        )
+    }
+
+    func center(in slot: CGSize) -> CGPoint {
+        let bounds = rotatedSize(in: slot)
+        let horizontalRoom = max(0, (slot.width - bounds.width) / 2 - 3)
+        return CGPoint(
+            x: slot.width / 2 + min(max(horizontalBias, -horizontalRoom), horizontalRoom),
+            y: slot.height / 2
+        )
+    }
+}
+
+struct MemoryPhotoPrint: View {
+    @Environment(\.colorScheme) private var colorScheme
+    let memory: MemoryEntry
+    let animationDelay: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let style = MemoryPhotoPrintStyle(memoryID: memory.id)
+            let size = style.printSize(in: proxy.size)
+            let photoSide = max(0, size.width - MemoryPhotoPrintStyle.sideInset * 2)
+            MemoryThumbnailTile(memory: memory, animationDelay: animationDelay, cornerRadius: 0)
+                .frame(width: photoSide, height: photoSide)
+                .padding([.horizontal, .top], MemoryPhotoPrintStyle.sideInset)
+                .padding(.bottom, MemoryPhotoPrintStyle.bottomInset)
+                .background(.white, in: RoundedRectangle(cornerRadius: MemoryPhotoPrintStyle.paperCornerRadius, style: .continuous))
+                .compositingGroup()
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 8, x: 0, y: 5)
+                .rotationEffect(.degrees(style.rotationDegrees))
+                .position(style.center(in: proxy.size))
+        }
+        .aspectRatio(MemoryPhotoPrintStyle.slotAspectRatio, contentMode: .fit)
+        .contentShape(Rectangle())
+    }
+}
+
 private struct MemoryThumbnailTile: View {
     @EnvironmentObject private var appModel: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -585,7 +728,7 @@ private struct MemoryThumbnailTile: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .clipped()
                 } else {
-                    MemoryThumbnailSkeleton()
+                    MemoryThumbnailSkeleton(cornerRadius: cornerRadius)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
@@ -679,10 +822,11 @@ private enum MemoryImageCache {
 }
 
 private struct MemoryThumbnailSkeleton: View {
+    let cornerRadius: CGFloat
     @State private var phase: CGFloat = -0.35
 
     var body: some View {
-        RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(Color.gray.opacity(0.14))
             .overlay {
                 GeometryReader { proxy in

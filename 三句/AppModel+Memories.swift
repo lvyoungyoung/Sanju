@@ -106,7 +106,6 @@ extension AppModel {
         pendingFavoriteChanges.removeAll { sentenceIDs.contains($0.sentenceID) }
         persistPendingFavoriteChanges()
         memories.removeAll { $0.id == memoryID }
-        invalidateUserStudySceneDetailSentenceCache()
         recordedMemoriesCount = memories.count
         favoriteSentencesCount = max(0, favoriteSentencesCount - removedFavoriteCount)
         if let deletedMemory, deletedMemory.syncedToAccount || isSignedIn {
@@ -741,11 +740,9 @@ extension AppModel {
         guard !Task.isCancelled else { return }
         let refreshID = UUID()
         studyOverviewRefreshID = refreshID
-        studySceneSummariesRefreshID = refreshID
         guard !isRestoringAuthenticatedSession else { return }
         if !isSignedIn, loadStoredSession()?.isAnonymous == false {
             studyOverviewLoadState = .failed
-            studySceneLoadState = .failed
             return
         }
         guard isSignedIn else {
@@ -754,15 +751,12 @@ extension AppModel {
             memorySentenceCount = memories.reduce(0) { $0 + $1.sentences.count }
             masteredSentenceCount = localMasteredSentenceCount()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
-            userStudySceneSummaries = []
             isRepeatingSentenceStudyQueue = false
             studyOverviewLoadState = .loaded
-            studySceneLoadState = .loaded
             return
         }
 
         studyOverviewLoadState = .loading
-        studySceneLoadState = .loading
         let revision = accountRequests.revision
         let requestedUserID = supabaseSession?.userID
         do {
@@ -773,23 +767,7 @@ extension AppModel {
             let snapshot = try await StudyOverviewSnapshot.load(
                 from: supabaseService,
                 session: session,
-                favoriteSentenceIDs: favoriteSentenceIDs,
-                onScenesLoaded: { [weak self] scenes in
-                    guard let self, !Task.isCancelled, accountRequests.revision == revision,
-                          studySceneSummariesRefreshID == refreshID else { return }
-                    if let scenes { userStudySceneSummaries = scenes }
-                    studySceneLoadState = scenes == nil ? .failed : .loaded
-                },
-                onContentLoaded: { [weak self] scenes, count in
-                    guard let self, !Task.isCancelled, accountRequests.revision == revision,
-                          studyOverviewRefreshID == refreshID else { return }
-                    if let count { memorySentenceCount = count }
-                    studyOverviewLoadState = scenes != nil && count != nil ? .loaded : .failed
-                    if studySceneSummariesRefreshID == refreshID {
-                        if let scenes { userStudySceneSummaries = scenes }
-                        studySceneLoadState = scenes == nil ? .failed : .loaded
-                    }
-                }
+                favoriteSentenceIDs: favoriteSentenceIDs
             )
             guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
                   studyOverviewRefreshID == refreshID else { return }
@@ -808,14 +786,12 @@ extension AppModel {
                 }
             }
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
-            if studySceneSummariesRefreshID == refreshID, let scenes = snapshot.scenes {
-                userStudySceneSummaries = scenes
-            }
+            studyOverviewLoadState = snapshot.dueCount != nil && snapshot.todayCount != nil
+                && snapshot.reviewableTodayCount != nil ? .loaded : .failed
         } catch {
             // Network failures and view cancellation must not erase the last successful overview.
             if accountRequests.revision == revision, studyOverviewRefreshID == refreshID {
                 if studyOverviewLoadState == .loading { studyOverviewLoadState = .failed }
-                if studySceneSummariesRefreshID == refreshID, studySceneLoadState == .loading { studySceneLoadState = .failed }
             }
             return
         }
@@ -824,8 +800,7 @@ extension AppModel {
     func loadSentenceStudyTopicSession(
         for topic: SentenceStudyTopic
     ) async throws -> SentenceStudyTopicSession? {
-        // Built-in category queues were removed. Custom scenes use
-        // loadUserStudySceneSession instead of this favorites-only path.
+        // Only saved sentences participate in the favorites study queue.
         guard topic.usesFavoriteQueue else { return nil }
 
         guard isSignedIn else {

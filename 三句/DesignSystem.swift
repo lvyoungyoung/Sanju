@@ -105,7 +105,7 @@ enum AppHeroTextColor {
 }
 
 enum AppSurfaceColor {
-    static let page = AppPalette.adaptive(0xFCFBF8, 0x191B18)
+    static let page = AppPalette.adaptive(0xF3F1EC, 0x191B18)
     static let card = AppPalette.adaptive(0xFFFFFF, 0x242721)
     static let elevated = AppPalette.adaptive(0xF3F3EE, 0x30342C)
     static let input = card

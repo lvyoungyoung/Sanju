@@ -2,88 +2,90 @@ import SwiftUI
 
 struct FavoritesView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .title2) private var compactHeroTitleFontSize: CGFloat = 24
-    @ScaledMetric(relativeTo: .title2) private var regularHeroTitleFontSize: CGFloat = 27
-    @State private var favoriteItems: [FavoriteSentenceListItem] = []
 
-    private var heroTitleFontSize: CGFloat {
-        horizontalSizeClass == .compact ? compactHeroTitleFontSize : regularHeroTitleFontSize
+    private struct RefreshIdentity: Hashable {
+        let accountRevision: UUID
+        let sentenceIDs: Set<UUID>
+    }
+
+    private var favoriteItems: [FavoriteSentenceListItem] {
+        FavoriteSentenceListItem.makeItems(
+            memories: appModel.memories,
+            studyCounts: appModel.favoriteSentenceStudyCounts
+        )
+    }
+
+    private var refreshIdentity: RefreshIdentity {
+        RefreshIdentity(
+            accountRevision: appModel.accountRequests.revision,
+            sentenceIDs: Set(favoriteItems.map(\.id))
+        )
+    }
+
+    private var contentState: PhotoContentState {
+        PhotoContentState.resolve(
+            hasContent: !favoriteItems.isEmpty,
+            isLoading: appModel.isRestoringAuthenticatedSession || appModel.isSyncingRemoteMemories
+                || appModel.memoryLoadState == .loading,
+            hasError: appModel.memoryLoadState == .failed
+        )
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: AppSpacing.large) {
-                favoritesHero
-
-                if !favoriteItems.isEmpty {
-                    floatingStudyBar
-                }
-
-                if favoriteItems.isEmpty {
-                    if appModel.isSyncingRemoteMemories {
-                        SyncLoadingState(
-                            title: L10n.string("favorites.syncing.title", "正在同步收藏..."),
-                            subtitle: L10n.string("favorites.syncing.subtitle", "马上就好，正在更新你的收藏内容")
-                        )
-                        .padding(.top, 80)
-                    } else {
-                        EmptyStateView(
-                            title: L10n.string("favorites.empty.title", "还没有收藏"),
-                            subtitle: L10n.string("favorites.empty.subtitle", "在生成结果里点亮右侧星标，你最常用、最喜欢的句子都会留在这里。"),
-                            systemImage: "star"
-                        )
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 36)
-                    }
-                } else {
-                    LazyVStack(spacing: AppSpacing.medium) {
-                        ForEach(favoriteItems) { item in
-                            FavoriteSentenceCard(item: item)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        appModel.deleteFavorite(sentenceID: item.id)
-                                    } label: {
-                                        Label(L10n.string("favorites.action.unfavorite", "取消收藏"), systemImage: "star.slash")
+        GeometryReader { geometry in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: AppSpacing.section) {
+                    switch contentState {
+                    case .content:
+                        studyOverview
+                        LazyVStack(spacing: AppSpacing.large) {
+                            ForEach(favoriteItems) { item in
+                                FavoriteSentenceCard(item: item)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            appModel.deleteFavorite(sentenceID: item.id)
+                                        } label: {
+                                            Label(L10n.string("favorites.action.unfavorite", "取消收藏"), systemImage: "star.slash")
+                                        }
                                     }
-                                }
+                            }
+                            ContentFooterHint(isLoading: appModel.isSyncingRemoteMemories)
+                                .padding(.top, AppSpacing.small)
                         }
-
-                        ContentFooterHint(isLoading: appModel.isSyncingRemoteMemories)
-                            .padding(.top, 10)
+                        .accessibilityIdentifier("favorites.sentence_list")
+                    case .loading:
+                        ProgressView().controlSize(.large)
+                            .frame(maxWidth: .infinity, minHeight: emptyStateHeight(in: geometry))
+                    case .failed:
+                        ContentLoadFailureState { Task { await refreshContent() } }
+                            .frame(minHeight: emptyStateHeight(in: geometry))
+                    case .empty:
+                        if appModel.memories.isEmpty {
+                            AddPhotoEmptyState(destination: .favorites) {
+                                appModel.selectedTab = .newLearning
+                            }
+                            .frame(minHeight: emptyStateHeight(in: geometry))
+                        } else {
+                            EmptyStateView(
+                                title: L10n.string("favorites.empty.title", "还没有收藏"),
+                                subtitle: L10n.string("favorites.empty.subtitle", "在生成结果中收藏想反复学习的句子，它们就会出现在这里。"),
+                                systemImage: "star"
+                            )
+                            .frame(maxWidth: .infinity, minHeight: emptyStateHeight(in: geometry))
+                        }
                     }
                 }
+                .padding(.horizontal, AppSpacing.xLarge)
+                .padding(.top, AppSpacing.xLarge)
+                .padding(.bottom, AppSpacing.section)
             }
-            .padding(.horizontal, AppSpacing.xLarge)
-            .padding(.top, AppSpacing.xLarge)
-            .padding(.bottom, 120)
-        }
-        .task {
-            rebuildFavoriteItems(using: appModel.memories)
-            await appModel.refreshFavoriteSentenceStudyCounts()
-            await appModel.refreshSentenceStudyDueCount()
-        }
-        .onChange(of: appModel.memories) { _, newMemories in
-            rebuildFavoriteItems(using: newMemories)
-            Task {
-                await appModel.refreshFavoriteSentenceStudyCounts()
-            }
-        }
-        .onChange(of: appModel.favoriteSentenceStudyCounts) { _, _ in
-            rebuildFavoriteItems(using: appModel.memories)
-        }
-        .onChange(of: appModel.favoriteSentencesCount) { _, _ in
-            Task {
-                await appModel.refreshFavoriteSentenceStudyCounts()
-                await appModel.refreshSentenceStudyDueCount()
-            }
-        }
-        .refreshable {
-            guard appModel.isSignedIn else { return }
-            await appModel.refreshRemoteContent()
+            .refreshable { await refreshContent() }
         }
         .background(AppSurfaceColor.page)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle(L10n.string("tab.favorites", "收藏"))
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar(.visible, for: .navigationBar)
+        .task(id: refreshIdentity) { await appModel.refreshSentenceStudyDueCount() }
         .alert(L10n.string("study.alert.title", "学习提醒"), isPresented: sentenceStudyErrorAlertBinding) {
             Button(L10n.string("common.got_it", "知道了"), role: .cancel) {
                 appModel.sentenceStudyErrorMessage = nil
@@ -91,174 +93,29 @@ struct FavoritesView: View {
         } message: {
             Text(appModel.sentenceStudyErrorMessage ?? "")
         }
-        .fullScreenCover(isPresented: $appModel.isShowingSentenceStudySession) {
+        .fullScreenCover(isPresented: $appModel.isShowingSentenceStudySession, onDismiss: {
+            Task { await appModel.refreshSentenceStudyDueCount() }
+        }) {
             SentenceStudySessionView(
                 queue: appModel.sentenceStudyQueue,
                 startsInReviewMode: appModel.isRepeatingSentenceStudyQueue
             )
-                .environmentObject(appModel)
+            .environmentObject(appModel)
         }
     }
 
-    private var sentenceStudyErrorAlertBinding: Binding<Bool> {
-        Binding(
-            get: { appModel.sentenceStudyErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented {
-                    appModel.sentenceStudyErrorMessage = nil
-                }
-            }
-        )
-    }
-
-    private func rebuildFavoriteItems(using memories: [MemoryEntry]) {
-        favoriteItems = memories
-            .sorted { $0.createdAt > $1.createdAt }
-            .flatMap { memory in
-                let createdDateText = FavoriteSentenceCard.formattedDate(for: memory.createdAt)
-                return memory.sentences
-                    .filter(\.isFavorite)
-                    .map { sentence in
-                        FavoriteSentenceListItem(
-                            favorite: FavoriteSentence(memoryID: memory.id, sentence: sentence),
-                            createdDateText: createdDateText,
-                            studyCount: appModel.favoriteSentenceStudyCounts[sentence.id] ?? 0
-                        )
-                    }
-            }
-    }
-
-    private var favoritesHero: some View {
-        ZStack(alignment: .topTrailing) {
-            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 1.00, green: 0.95, blue: 0.92),
-                            Color(red: 0.98, green: 0.93, blue: 0.98)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            VStack(alignment: .leading, spacing: AppSpacing.large) {
-                VStack(alignment: .leading, spacing: AppSpacing.medium) {
-                    Text(L10n.string("favorites.hero.eyebrow", "收藏"))
-                        .font(.system(size: AppFontSize.sectionLabel, weight: .bold))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
-
-                    Text(L10n.string("favorites.hero.title", "把你想反复练习的句子留在一个地方"))
-                        .font(.system(size: heroTitleFontSize, weight: .bold))
-                        .foregroundStyle(AppHeroTextColor.title)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 112)
-            }
-            .padding(AppSpacing.xLarge)
-
-            ZStack {
-                Circle()
-                    .fill(Color.white.opacity(0.74))
-                    .frame(width: 94, height: 94)
-
-                VStack(spacing: AppSpacing.xSmall) {
-                    Text("\(appModel.favoriteSentencesCount)")
-                        .font(.system(size: AppFontSize.heroStat, weight: .bold))
-                        .foregroundStyle(AppHeroTextColor.title)
-
-                    Text(L10n.string("favorites.hero.count_label", "已收藏"))
-                        .font(.system(size: AppFontSize.badge, weight: .medium))
-                        .foregroundStyle(AppHeroTextColor.tertiary)
-                }
-            }
-            .padding(.top, AppSpacing.xLarge)
-            .padding(.trailing, AppSpacing.xLarge)
+    private var studyOverview: some View {
+        StudyOverviewCard(
+            dueCount: appModel.sentenceStudyDueCount,
+            studiedCount: appModel.sentenceStudyTodayCount,
+            buttonTitle: studyButtonTitle,
+            isPreparing: appModel.isLoadingSentenceStudyQueue,
+            canStart: appModel.canStartSentenceStudy,
+            isCompact: true
+        ) {
+            Task { await appModel.startSentenceStudy() }
         }
-        .appHeroShadow()
-    }
-
-    private var floatingStudyBar: some View {
-        HStack(spacing: AppSpacing.medium) {
-            HStack(spacing: AppSpacing.medium) {
-                StudyMetricView(
-                    value: "\(appModel.sentenceStudyDueCount)",
-                    label: L10n.string("study.metric.due_today", "今日待学")
-                )
-
-                Rectangle()
-                    .fill(AppStroke.subtle)
-                    .frame(width: 1, height: 34)
-
-                StudyMetricView(
-                    value: "\(appModel.sentenceStudyTodayCount)",
-                    label: L10n.string("study.metric.studied_today", "今日已学")
-                )
-            }
-            .padding(.leading, 4)
-
-            Spacer()
-
-            Button {
-                Task {
-                    await appModel.startSentenceStudy()
-                }
-            } label: {
-                HStack(spacing: AppSpacing.small) {
-                    if appModel.isLoadingSentenceStudyQueue {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(.white)
-                    }
-
-                    Text(studyButtonTitle)
-                        .font(.system(size: AppFontSize.body, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, AppControlPadding.prominent)
-                .frame(height: AppControlHeight.regular)
-                .background(
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: appModel.canStartSentenceStudy ? [
-                                    Color(red: 0.98, green: 0.67, blue: 0.18),
-                                    Color(red: 0.91, green: 0.52, blue: 0.17)
-                                ] : [
-                                    Color(red: 0.86, green: 0.79, blue: 0.72),
-                                    Color(red: 0.82, green: 0.75, blue: 0.68)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!appModel.canStartSentenceStudy)
-        }
-        .padding(.horizontal, AppSpacing.xLarge)
-        .padding(.vertical, AppSpacing.medium)
-        .background(
-            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AppSurfaceColor.card,
-                            AppSurfaceColor.elevated
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                .stroke(AppStroke.highlight, lineWidth: 1)
-        )
-        .appCardShadow()
+        .accessibilityIdentifier("favorites.study_overview")
     }
 
     private var studyButtonTitle: String {
@@ -273,99 +130,90 @@ struct FavoritesView: View {
         }
         return L10n.string("study.button.done_today", "今天学完了")
     }
-}
 
-private struct StudyMetricView: View {
-    let value: String
-    let label: String
+    private var sentenceStudyErrorAlertBinding: Binding<Bool> {
+        Binding(
+            get: { appModel.sentenceStudyErrorMessage != nil },
+            set: { if !$0 { appModel.sentenceStudyErrorMessage = nil } }
+        )
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xSmall) {
-            Text(value)
-                .font(.system(size: AppFontSize.stat, weight: .bold))
-                .foregroundStyle(AppTextColor.title)
-                .monospacedDigit()
+    private func emptyStateHeight(in geometry: GeometryProxy) -> CGFloat {
+        max(0, geometry.size.height - AppSpacing.xLarge - AppSpacing.section)
+    }
 
-            Text(label)
-                .font(.system(size: AppFontSize.caption, weight: .medium))
-                .foregroundStyle(AppTextColor.tertiary)
+    private func refreshContent() async {
+        if appModel.isSignedIn {
+            await appModel.refreshRemoteContent()
+        } else {
+            await appModel.refreshSentenceStudyDueCount()
         }
-        .frame(minWidth: 54, alignment: .leading)
     }
 }
 
-private struct FavoriteSentenceListItem: Identifiable, Hashable {
+struct FavoriteSentenceListItem: Identifiable, Hashable {
     let favorite: FavoriteSentence
-    let createdDateText: String?
+    let createdAt: Date
     let studyCount: Int
 
     var id: UUID { favorite.id }
-}
 
-private struct FavoriteSentenceCard: View {
-    @EnvironmentObject private var appModel: AppModel
-    let item: FavoriteSentenceListItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.large) {
-            HStack(alignment: .top) {
-                NavigationLink {
-                    SentenceDetailView(memoryID: item.favorite.memoryID, sentenceID: item.id)
-                } label: {
-                    Text(item.favorite.sentence.english)
-                        .font(.system(size: AppFontSize.cardTitle, weight: .semibold))
-                        .foregroundStyle(AppTextColor.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    appModel.speech.speak(item.favorite.sentence.english)
-                } label: {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: AppIconSize.regular, weight: .semibold))
-                        .foregroundStyle(Color(red: 0.98, green: 0.65, blue: 0.00))
-                        .frame(width: AppControlHeight.compact, height: AppControlHeight.compact)
-                        .background(AppSurfaceColor.elevated, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            Text(item.favorite.sentence.chinese)
-                .font(.system(size: AppFontSize.sectionLabel))
-                .foregroundStyle(AppTextColor.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            HStack {
-                if let createdDateText = item.createdDateText {
-                    Label(createdDateText, systemImage: "calendar")
-                        .font(.system(size: AppFontSize.caption, weight: .medium))
-                        .foregroundStyle(AppTextColor.tertiary)
-                }
-
-                Spacer(minLength: AppSpacing.medium)
-
-                Label(
-                    L10n.string("favorites.study_count", "已学 %d 次", item.studyCount),
-                    systemImage: "checkmark.circle"
+    static func makeItems(memories: [MemoryEntry], studyCounts: [UUID: Int]) -> [Self] {
+        memories.sorted { $0.createdAt > $1.createdAt }.flatMap { memory in
+            memory.sentences.filter(\.isFavorite).map { sentence in
+                Self(
+                    favorite: FavoriteSentence(memoryID: memory.id, sentence: sentence),
+                    createdAt: memory.createdAt,
+                    studyCount: studyCounts[sentence.id] ?? 0
                 )
-                .font(.system(size: AppFontSize.caption, weight: .medium))
-                .foregroundStyle(AppTextColor.tertiary)
             }
         }
-        .padding(AppSpacing.xLarge)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-        .appCardShadow()
     }
+}
 
-    static func formattedDate(for date: Date) -> String {
-        dateFormatter.string(from: date)
+struct FavoriteSentenceCard: View {
+    @EnvironmentObject private var appModel: AppModel
+    let item: FavoriteSentenceListItem
+    private let thumbnailSide: CGFloat = 68
+
+    var body: some View {
+        NavigationLink {
+            SentenceDetailView(memoryID: item.favorite.memoryID, sentenceID: item.id)
+                .toolbar(.visible, for: .navigationBar)
+        } label: {
+            HStack(spacing: AppSpacing.xLarge) {
+                FavoriteSentenceThumbnail(memoryID: item.favorite.memoryID)
+                    .frame(width: thumbnailSide, height: thumbnailSide)
+                    .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
+                    .accessibilityHidden(true)
+
+                Text(item.favorite.sentence.english)
+                    .font(AppTypography.sentence)
+                    .foregroundStyle(AppTextColor.primary)
+                    .multilineTextAlignment(.leading)
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(AppSpacing.section)
+            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        }
+        .buttonStyle(FavoriteSentenceCardPressStyle())
+        .accessibilityIdentifier("favorites.sentence.\(item.id.uuidString)")
+        .accessibilityAction(named: L10n.string("favorites.action.unfavorite", "取消收藏")) {
+            appModel.deleteFavorite(sentenceID: item.id)
+        }
     }
+}
 
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale.current
-        formatter.setLocalizedDateFormatFromTemplate("yMMMd")
-        return formatter
-    }()
+private struct FavoriteSentenceCardPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.96 : 1)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
+    }
 }

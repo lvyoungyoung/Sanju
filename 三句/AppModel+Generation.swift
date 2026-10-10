@@ -323,8 +323,6 @@ extension AppModel {
         clearPendingGeneratedMemoryImage()
 
         guard !session.isAnonymous else { return }
-        // A newly generated sentence can match any custom study topic.
-        invalidateUserStudySceneDetailSentenceCache()
         enqueuePendingMemoryImageUploadIfNeeded(
             memoryID: memory.id,
             remoteImagePath: memory.remoteImagePath,

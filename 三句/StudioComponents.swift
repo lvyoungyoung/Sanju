@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Shared presentation only; callers retain their existing queue and completion rules.
 struct StudyOverviewCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let dueCount: Int
     let studiedCount: Int
     let buttonTitle: String
@@ -11,7 +12,69 @@ struct StudyOverviewCard: View {
     let onStart: () -> Void
 
     var body: some View {
-        VStack(spacing: isCompact ? AppSpacing.medium : AppSpacing.section) {
+        if isCompact {
+            compactLayout
+            .padding(AppSpacing.large)
+            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+            .appCardShadow()
+        } else {
+            regularCard
+        }
+    }
+
+    @ViewBuilder
+    private var compactLayout: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            stackedCompactLayout
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AppSpacing.large) {
+                    compactMetrics
+                    compactStartButton
+                }
+                stackedCompactLayout
+            }
+        }
+    }
+
+    private var stackedCompactLayout: some View {
+        VStack(spacing: AppSpacing.large) {
+            compactMetrics
+            compactStartButton
+        }
+    }
+
+    private var compactMetrics: some View {
+        HStack(spacing: AppSpacing.medium) {
+            metric(dueCount, label: L10n.string("study.metric.due_today", "今日待学"))
+            Rectangle().fill(AppStroke.subtle).frame(width: 1, height: 32)
+            metric(studiedCount, label: L10n.string("study.metric.studied_today", "今日已学"))
+        }
+    }
+
+    private var compactStartButton: some View {
+        Button(action: onStart) {
+            ZStack {
+                Text(isPreparing ? L10n.string("study.button.start", "开始学习") : buttonTitle)
+                    .font(.system(.subheadline, weight: .semibold))
+                    .opacity(isPreparing ? 0 : 1)
+                if isPreparing {
+                    ProgressView().tint(AppPalette.onAccent)
+                }
+            }
+            .foregroundStyle(AppPalette.onAccent)
+            .padding(.horizontal, 16)
+            .frame(minHeight: 44)
+            .background(AppPalette.accent.opacity(canStart || isPreparing ? 1 : 0.5), in: Capsule())
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(StudioPressStyle())
+        .disabled(!canStart || isPreparing)
+        .accessibilityLabel(buttonTitle)
+    }
+
+    private var regularCard: some View {
+        VStack(spacing: AppSpacing.section) {
             HStack(alignment: .center, spacing: 24) {
                 metric(dueCount, label: L10n.string("study.metric.due_today", "今日待学"))
                 Rectangle().fill(AppPalette.onAccent.opacity(0.12)).frame(width: 1, height: 40)
@@ -32,24 +95,25 @@ struct StudyOverviewCard: View {
                 }
                 .foregroundStyle(AppHeroTextColor.title)
                 .padding(.horizontal, 18)
-                .frame(minHeight: isCompact ? 44 : 54)
+                .frame(minHeight: 54)
                 .background(.white.opacity(canStart ? 1 : 0.65), in: RoundedRectangle(cornerRadius: 19))
             }
             .buttonStyle(StudioPressStyle())
             .disabled(!canStart || isPreparing)
         }
-        .padding(isCompact ? AppSpacing.large : AppSpacing.section)
+        .padding(AppSpacing.section)
         .background(AppPalette.accent, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
     }
 
     private func metric(_ count: Int, label: String) -> some View {
         VStack(alignment: .leading, spacing: isCompact ? AppSpacing.xSmall : AppSpacing.small) {
-            Text(label).font(.subheadline)
             Text(count, format: .number)
                 .font(isCompact ? .system(.title2, weight: .bold) : AppTypography.pageTitle)
                 .monospacedDigit()
+            Text(label).font(isCompact ? .caption : .subheadline)
+                .fixedSize(horizontal: isCompact && !dynamicTypeSize.isAccessibilitySize, vertical: true)
         }
-        .foregroundStyle(AppPalette.onAccent)
+        .foregroundStyle(isCompact ? AppTextColor.primary : AppPalette.onAccent)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }

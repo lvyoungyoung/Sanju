@@ -2,7 +2,7 @@ import SwiftUI
 
 enum ProfileCardStyle {
     static let cornerRadius = AppCornerRadius.card
-    static let page = AppPalette.adaptive(0xF1F0EB, 0x171915)
+    static let page = AppSurfaceColor.page
     static let surface = AppPalette.adaptive(0xFFFFFF, 0x292D26)
 }
 
