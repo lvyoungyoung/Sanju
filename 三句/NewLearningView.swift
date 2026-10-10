@@ -217,7 +217,7 @@ struct NewLearningView: View {
             // Wait until the album is dismissed before presenting the system photo picker.
             beginPhotoSelection(clearingGeneratedMemory: true)
         }) { session in
-            AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .singlePass) {
+            AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .photoRounds) {
                 shouldChoosePhotoAfterAlbumFlip = true
             }
             .environmentObject(appModel)

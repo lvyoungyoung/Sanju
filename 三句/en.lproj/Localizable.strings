@@ -513,6 +513,9 @@
 "album_flip.complete.title" = "You've flipped through this one. Try another photo.";
 "album_flip.complete.body" = "Pick another photo to keep exploring your English album.";
 "album_flip.complete.choose_another" = "Add another photo";
+"album_flip.round.title" = "Keep flipping. Keep listening.";
+"album_flip.round.body" = "Swipe either way to hear these sentences again.\nOr add a new photo to learn something new.";
+"album_flip.round.continue" = "Keep flipping";
 "photo_category.people_and_portraits" = "People & Portraits";
 "photo_category.food_and_drinks" = "Food & Drinks";
 "photo_category.restaurants_and_cafes" = "Restaurants & Cafés";

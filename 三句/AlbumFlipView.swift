@@ -36,11 +36,17 @@ struct AlbumFlipView: View {
         ))
     }
 
+    init(deck: AlbumFlipDeck, ownerID: String, onChooseAnotherPhoto: (() -> Void)? = nil) {
+        self.ownerID = ownerID
+        self.onChooseAnotherPhoto = onChooseAnotherPhoto
+        _deck = StateObject(wrappedValue: deck)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             VStack(spacing: 0) {
                 header
-                if deck.cards.isEmpty && !deck.hasFinishedSinglePass {
+                if deck.currentPageID == nil {
                     ContentUnavailableView(
                         L10n.string("album_flip.empty", "还没有可以翻看的句子"),
                         systemImage: "photo.on.rectangle"
@@ -48,30 +54,15 @@ struct AlbumFlipView: View {
                 } else {
                     GeometryReader { area in
                         let size = AlbumFlipLayout.cardSize(in: area.size)
-                        Group {
-                            if deck.hasFinishedSinglePass {
-                                AlbumFlipCompletionView(size: size, isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
-                                    guard isVisible, appModel.albumFlipOwnerID == ownerID,
-                                          appModel.isNetworkAvailable else { return }
-                                    onChooseAnotherPhoto?()
-                                    close()
-                                }
-                            } else {
-                                cardStack(size: size, exitWidth: proxy.size.width)
-                            }
-                        }
-                        .frame(width: area.size.width, height: area.size.height, alignment: .top)
+                        cardStack(size: size, exitWidth: proxy.size.width)
+                            .frame(width: area.size.width, height: area.size.height, alignment: .top)
                     }
                     .padding(.top, 18)
 
-                    controls(exitWidth: proxy.size.width)
+                    footer(exitWidth: proxy.size.width)
                         .padding(.horizontal, 24)
                         .padding(.top, 4)
                         .padding(.bottom, 16)
-                        // Reserve the same footer space so the completion frame never grows.
-                        .opacity(deck.hasFinishedSinglePass ? 0 : 1)
-                        .allowsHitTesting(!deck.hasFinishedSinglePass)
-                        .accessibilityHidden(deck.hasFinishedSinglePass)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -86,15 +77,15 @@ struct AlbumFlipView: View {
             appModel.speech.stop()
             speechPrefetchID = appModel.speech.beginAlbumSpeechPrefetch()
         }
-        .task(id: deck.cards.first?.id) {
+        .task(id: deck.currentPageID) {
             favoriteFeedback = nil
-            guard deck.cards.first != nil else {
-                endSpeechLookahead()
+            guard deck.currentItem != nil else {
+                if let speechPrefetchID { appModel.speech.pauseAlbumSpeechPrefetch(id: speechPrefetchID) }
                 appModel.speech.stop()
                 return
             }
             if isVisible, scenePhase == .active, !isMuted,
-               spokenCardID != deck.cards.first?.id, let speechPrefetchID {
+               spokenCardID != deck.currentPageID, let speechPrefetchID {
                 appModel.speech.prioritizeAlbumCurrentSentence(id: speechPrefetchID)
             }
             updateSpeechLookahead()
@@ -171,7 +162,7 @@ struct AlbumFlipView: View {
             .accessibilityLabel(isMuted
                 ? L10n.string("album_flip.unmute", "开启自动朗读")
                 : L10n.string("album_flip.mute", "关闭自动朗读"))
-            .disabled(deck.cards.isEmpty)
+            .disabled(deck.currentPageID == nil)
         }
         .foregroundStyle(AppTextColor.primary)
         .buttonStyle(StudioPressStyle())
@@ -190,32 +181,11 @@ struct AlbumFlipView: View {
                 .offset(y: reduceMotion ? 12 : 24 - 12 * progress)
                 .accessibilityHidden(true)
 
-            ForEach(Array(deck.visibleCards.reversed())) { card in
-                let isFront = card.id == deck.cards.first?.id
-                AlbumFlipSentenceCard(
-                    item: card.item,
-                    size: size,
-                    showsTranslation: isFront && showsTranslation,
-                    onToggleTranslation: {
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-                            showsTranslation.toggle()
-                        }
-                    }
-                ) {
-                    AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
-                }
-                .gesture(TapGesture(count: 2).onEnded {
-                    toggleCurrentCardFavorite(cardID: card.id)
-                })
-                // Keep the button outside the card's double-tap recognizer.
-                .overlay(alignment: .topTrailing) {
-                    AlbumFlipFavoriteButton(isFavorite: isFavorite(card.item)) {
-                        toggleCurrentCardFavorite(cardID: card.id)
-                    }
-                    .padding(12)
-                }
+            ForEach(Array(deck.visiblePages.reversed())) { page in
+                let isFront = page.id == deck.currentPageID
+                pageContent(page, size: size, isFront: isFront, exitWidth: exitWidth)
                 .overlay(alignment: .top) {
-                    if isFront {
+                    if isFront, page.item != nil {
                         swipeBadge
                             .padding(20)
                             .allowsHitTesting(false)
@@ -223,7 +193,7 @@ struct AlbumFlipView: View {
                     }
                 }
                 .overlay {
-                    if isFront, let feedback = favoriteFeedback, feedback.cardID == card.id {
+                    if isFront, let feedback = favoriteFeedback, feedback.cardID == page.id {
                         AlbumFlipFavoriteFeedbackView(isFavorite: feedback.isFavorite)
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
                         .allowsHitTesting(false)
@@ -236,22 +206,58 @@ struct AlbumFlipView: View {
                 .opacity(isFront && reduceMotion && isAdvancing ? 0 : 1)
                 .allowsHitTesting(isFront && !isAdvancing)
                 .accessibilityHidden(!isFront)
-                .simultaneousGesture(swipeGesture(cardID: card.id, cardWidth: size.width, exitWidth: exitWidth))
-                .accessibilityAction(named: isFavorite(card.item)
-                    ? L10n.string("favorites.action.unfavorite", "取消收藏")
-                    : L10n.string("new.result.favorite", "收藏")) {
-                    toggleCurrentCardFavorite(cardID: card.id)
-                }
-                .accessibilityAction(named: L10n.string("album_flip.again", "再看看")) {
-                    advance(.again, exitWidth: exitWidth)
-                }
-                .accessibilityAction(named: L10n.string("album_flip.familiar", "熟悉了")) {
-                    advance(.familiar, exitWidth: exitWidth)
-                }
+                .simultaneousGesture(swipeGesture(cardID: page.id, cardWidth: size.width, exitWidth: exitWidth))
             }
         }
         .frame(width: size.width, height: size.height)
         .sensoryFeedback(.selection, trigger: crossedThreshold)
+    }
+
+    @ViewBuilder
+    private func pageContent(_ page: AlbumFlipPage, size: CGSize, isFront: Bool, exitWidth: CGFloat) -> some View {
+        switch page {
+        case .sentence(let card):
+            AlbumFlipSentenceCard(
+                item: card.item, size: size, showsTranslation: isFront && showsTranslation,
+                onToggleTranslation: {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                        showsTranslation.toggle()
+                    }
+                }
+            ) {
+                AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
+            }
+            .gesture(TapGesture(count: 2).onEnded { toggleCurrentCardFavorite(cardID: card.id) })
+            // Keep the button outside the card's double-tap recognizer.
+            .overlay(alignment: .topTrailing) {
+                AlbumFlipFavoriteButton(isFavorite: isFavorite(card.item)) {
+                    toggleCurrentCardFavorite(cardID: card.id)
+                }
+                .padding(12)
+            }
+            .accessibilityAction(named: isFavorite(card.item)
+                ? L10n.string("favorites.action.unfavorite", "取消收藏")
+                : L10n.string("new.result.favorite", "收藏")) {
+                toggleCurrentCardFavorite(cardID: card.id)
+            }
+            .accessibilityAction(named: L10n.string("album_flip.again", "再看看")) {
+                advance(.again, exitWidth: exitWidth)
+            }
+            .accessibilityAction(named: L10n.string("album_flip.familiar", "熟悉了")) {
+                advance(.familiar, exitWidth: exitWidth)
+            }
+        case .roundBreak:
+            AlbumFlipRoundBreakCard(size: size, isPhotoSelectionEnabled: appModel.isNetworkAvailable) {
+                guard isVisible, !isAdvancing, deck.isShowingRoundBreak,
+                      scenePhase == .active, appModel.albumFlipOwnerID == ownerID,
+                      appModel.isNetworkAvailable else { return }
+                onChooseAnotherPhoto?()
+                close()
+            }
+            .accessibilityAction(named: L10n.string("album_flip.round.continue", "继续翻一翻")) {
+                advance(.familiar, exitWidth: exitWidth)
+            }
+        }
     }
 
     private var swipeBadge: some View {
@@ -272,13 +278,37 @@ struct AlbumFlipView: View {
         .opacity(min(abs(drag.width) / 65, 1))
     }
 
+    private func footer(exitWidth: CGFloat) -> some View {
+        ZStack {
+            controls(exitWidth: exitWidth)
+                .opacity(deck.isShowingRoundBreak ? 0 : 1)
+                .allowsHitTesting(!deck.isShowingRoundBreak)
+                .accessibilityHidden(deck.isShowingRoundBreak)
+            if deck.isShowingRoundBreak {
+                Button {
+                    advance(.familiar, exitWidth: exitWidth)
+                } label: {
+                    Label(L10n.string("album_flip.round.continue", "继续翻一翻"), systemImage: "arrow.right")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTextColor.primary)
+                        .padding(.horizontal, 24)
+                        .frame(minHeight: AppControlHeight.regular)
+                        .background(AppSurfaceColor.elevated, in: Capsule())
+                }
+                .buttonStyle(StudioPressStyle())
+                .disabled(isAdvancing)
+                .accessibilityIdentifier("album_flip.continue_round")
+            }
+        }
+    }
+
     private func controls(exitWidth: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 20) {
             feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
-            AlbumFlipReplayButton(speech: appModel.speech, text: deck.cards.first?.item.sentence.english ?? "") {
+            AlbumFlipReplayButton(speech: appModel.speech, text: deck.currentItem?.sentence.english ?? "") {
                 speakCurrentCard(automatically: false)
             }
-            .disabled(isAdvancing || deck.cards.isEmpty)
+            .disabled(isAdvancing || deck.currentItem == nil)
             feedbackButton(.familiar, icon: "checkmark", width: exitWidth)
         }
         .frame(maxWidth: 460)
@@ -309,7 +339,7 @@ struct AlbumFlipView: View {
     private func swipeGesture(cardID: UUID, cardWidth: CGFloat, exitWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard !isAdvancing, deck.cards.first?.id == cardID else { return }
+                guard !isAdvancing, deck.currentPageID == cardID else { return }
                 if isHorizontalDrag == nil {
                     isHorizontalDrag = abs(value.translation.width) > abs(value.translation.height) * 1.15
                 }
@@ -318,7 +348,7 @@ struct AlbumFlipView: View {
                 crossedThreshold = abs(drag.width) >= cardWidth * 0.25
             }
             .onEnded { value in
-                guard !isAdvancing, deck.cards.first?.id == cardID else { return }
+                guard !isAdvancing, deck.currentPageID == cardID else { return }
                 let wasHorizontal = isHorizontalDrag == true
                 isHorizontalDrag = nil
                 if wasHorizontal, let result = AlbumFlipSwipe.feedback(
@@ -336,7 +366,7 @@ struct AlbumFlipView: View {
     }
 
     private func advance(_ feedback: AlbumFlipFeedback, exitWidth: CGFloat) {
-        guard !isAdvancing, isVisible, let card = deck.cards.first,
+        guard !isAdvancing, isVisible, let pageID = deck.currentPageID,
               appModel.albumFlipOwnerID == ownerID else { return }
         appModel.speech.stop()
         withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.26), completionCriteria: .removed) {
@@ -345,11 +375,11 @@ struct AlbumFlipView: View {
                 drag = CGSize(width: (feedback == .again ? -1 : 1) * (exitWidth + 120), height: drag.height + 25)
             }
         } completion: {
-            guard isVisible, appModel.albumFlipOwnerID == ownerID, deck.cards.first?.id == card.id else { return }
+            guard isVisible, appModel.albumFlipOwnerID == ownerID, deck.currentPageID == pageID else { return }
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                deck.advance(feedback, cardID: card.id)
+                deck.advance(feedback, cardID: pageID)
                 drag = .zero
                 isAdvancing = false
                 isHorizontalDrag = nil
@@ -366,19 +396,20 @@ struct AlbumFlipView: View {
 
     private func toggleCurrentCardFavorite(cardID: UUID) {
         guard isVisible, !isAdvancing, scenePhase == .active,
-              let card = deck.cards.first, card.id == cardID,
-              appModel.toggleAlbumFlipSentenceFavorite(card.item, ownerID: ownerID) else { return }
+              deck.currentPageID == cardID, let item = deck.currentItem,
+              appModel.toggleAlbumFlipSentenceFavorite(item, ownerID: ownerID) else { return }
         withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8)) {
-            favoriteFeedback = FavoriteFeedback(cardID: cardID, isFavorite: isFavorite(card.item))
+            favoriteFeedback = FavoriteFeedback(cardID: cardID, isFavorite: isFavorite(item))
         }
     }
 
     private func speakCurrentCard(automatically: Bool) {
         guard isVisible, !isAdvancing, scenePhase == .active,
-              appModel.albumFlipOwnerID == ownerID, let card = deck.cards.first else { return }
-        guard !automatically || (!isMuted && spokenCardID != card.id) else { return }
-        spokenCardID = card.id
-        appModel.speech.speak(card.item.sentence.english)
+              appModel.albumFlipOwnerID == ownerID, let pageID = deck.currentPageID,
+              let item = deck.currentItem else { return }
+        guard !automatically || (!isMuted && spokenCardID != pageID) else { return }
+        spokenCardID = pageID
+        appModel.speech.speak(item.sentence.english)
     }
 
     private func close() {
@@ -390,9 +421,9 @@ struct AlbumFlipView: View {
 
     private func updateSpeechLookahead() {
         guard isVisible, !isAdvancing, appModel.albumFlipOwnerID == ownerID,
-              let speechPrefetchID, let current = deck.cards.first else { return }
+              let speechPrefetchID, let current = deck.currentItem else { return }
         appModel.speech.updateAlbumSpeechPrefetch(
-            id: speechPrefetchID, current: current.item.sentence.english,
+            id: speechPrefetchID, current: current.sentence.english,
             upcoming: deck.upcomingSpeechTexts,
             enabled: scenePhase == .active && appModel.isNetworkAvailable
         )
@@ -410,7 +441,7 @@ enum AlbumFlipLayout {
     }
 }
 
-struct AlbumFlipCompletionView: View {
+struct AlbumFlipRoundBreakCard: View {
     let size: CGSize
     let isPhotoSelectionEnabled: Bool
     let onChooseAnotherPhoto: () -> Void
@@ -418,8 +449,13 @@ struct AlbumFlipCompletionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Text(L10n.string("album_flip.complete.title", "这张已经翻完了，再来一张吧"))
-                    .font(.body.weight(.medium))
+                VStack(spacing: 12) {
+                    Text(L10n.string("album_flip.round.title", "继续翻，重复听"))
+                        .font(.title3.weight(.medium))
+                    Text(L10n.string("album_flip.round.body", "左右滑动，再听一遍这几句话。\n也可以上传新照片，学点新的。"))
+                        .font(.subheadline)
+                        .lineSpacing(4)
+                }
                 Button(action: onChooseAnotherPhoto) {
                     Text(L10n.string("album_flip.complete.choose_another", "再上传一张"))
                         .font(.body.weight(.semibold))
@@ -447,9 +483,10 @@ struct AlbumFlipCompletionView: View {
         .background {
             AlbumFlipCompletionHatching()
                 .stroke(AppTextColor.secondary.opacity(0.13), lineWidth: 1)
-                .background(AppSurfaceColor.card.opacity(0.5))
+                .background(AppSurfaceColor.card)
         }
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
                 .strokeBorder(AppTextColor.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [7, 6]))

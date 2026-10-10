@@ -513,6 +513,9 @@
 "album_flip.complete.title" = "这张已经翻完了，再来一张吧";
 "album_flip.complete.body" = "换一张照片，继续翻你的英语相册。";
 "album_flip.complete.choose_another" = "再上传一张";
+"album_flip.round.title" = "继续翻，重复听";
+"album_flip.round.body" = "左右滑动，再听一遍这几句话。\n也可以上传新照片，学点新的。";
+"album_flip.round.continue" = "继续翻一翻";
 "photo_category.people_and_portraits" = "人物与合影";
 "photo_category.food_and_drinks" = "美食与饮品";
 "photo_category.restaurants_and_cafes" = "餐厅与咖啡馆";

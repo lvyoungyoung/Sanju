@@ -40,9 +40,26 @@ struct AlbumFlipCard: Identifiable {
     let item: AlbumFlipItem
 }
 
+enum AlbumFlipPage: Identifiable {
+    case sentence(AlbumFlipCard)
+    case roundBreak(UUID)
+
+    var id: UUID {
+        switch self {
+        case .sentence(let card): card.id
+        case .roundBreak(let id): id
+        }
+    }
+
+    var item: AlbumFlipItem? {
+        guard case .sentence(let card) = self else { return nil }
+        return card.item
+    }
+}
+
 enum AlbumFlipMode {
     case continuous
-    case singlePass
+    case photoRounds
 }
 
 @MainActor
@@ -53,12 +70,14 @@ final class AlbumFlipDeck: ObservableObject {
     static let lookaheadCount = 5
     @Published private(set) var cards: [AlbumFlipCard] = []
     @Published private(set) var viewedCount = 0
+    @Published private(set) var isShowingRoundBreak = false
     private(set) var progress: [String: AlbumFlipProgress]
     var feedback: [String: AlbumFlipFeedback] { progress.mapValues(\.lastFeedback) }
     var onFeedback: (() -> Void)?
     private let items: [AlbumFlipItem]
     private let mode: AlbumFlipMode
-    private var remainingSinglePassItems: [AlbumFlipItem]
+    private var remainingRoundItems: [AlbumFlipItem]
+    private var roundBreakID = UUID()
     private let store: AlbumFlipHistoryStore
     private let randomIndex: (Int) -> Int
     private let now: () -> Date
@@ -69,11 +88,20 @@ final class AlbumFlipDeck: ObservableObject {
     private let recentMemoryLimit: Int
 
     var visibleCards: [AlbumFlipCard] { Array(cards.prefix(2)) }
-    var hasFinishedSinglePass: Bool {
-        mode == .singlePass && !items.isEmpty && cards.isEmpty && viewedCount == items.count
+    var currentPageID: UUID? { isShowingRoundBreak ? roundBreakID : cards.first?.id }
+    var currentItem: AlbumFlipItem? { isShowingRoundBreak ? nil : cards.first?.item }
+    var visiblePages: [AlbumFlipPage] {
+        if isShowingRoundBreak {
+            return [.roundBreak(roundBreakID)] + cards.prefix(1).map(AlbumFlipPage.sentence)
+        }
+        let pages = visibleCards.map(AlbumFlipPage.sentence)
+        if mode == .photoRounds, cards.count == 1 {
+            return pages + [.roundBreak(roundBreakID)]
+        }
+        return pages
     }
     var upcomingSpeechTexts: [String] {
-        cards.dropFirst().prefix(Self.lookaheadCount).map { $0.item.sentence.english }
+        cards.dropFirst(isShowingRoundBreak ? 0 : 1).prefix(Self.lookaheadCount).map { $0.item.sentence.english }
     }
 
     init(
@@ -84,10 +112,10 @@ final class AlbumFlipDeck: ObservableObject {
         randomIndex: @escaping (Int) -> Int = { Int.random(in: 0..<$0) }
     ) {
         var seen = Set<String>()
-        let sessionItems = mode == .singlePass ? items.filter { seen.insert($0.id).inserted } : items
+        let sessionItems = mode == .photoRounds ? items.filter { seen.insert($0.id).inserted } : items
         self.items = sessionItems
         self.mode = mode
-        remainingSinglePassItems = mode == .singlePass ? sessionItems : []
+        remainingRoundItems = mode == .photoRounds ? sessionItems : []
         self.store = store
         self.randomIndex = randomIndex
         self.now = now
@@ -98,6 +126,13 @@ final class AlbumFlipDeck: ObservableObject {
     }
 
     func advance(_ result: AlbumFlipFeedback, cardID: UUID) {
+        guard currentPageID == cardID else { return }
+        if isShowingRoundBreak {
+            // The interlude is navigation, not feedback about a sentence.
+            isShowingRoundBreak = false
+            roundBreakID = UUID()
+            return
+        }
         guard let current = cards.first, current.id == cardID else { return }
         let previous = store.read().records[current.item.id]?.lastFeedbackAt ?? .distantPast
         let date = max(now(), previous.addingTimeInterval(0.001))
@@ -115,6 +150,11 @@ final class AlbumFlipDeck: ObservableObject {
         viewedCount += 1
         cards.removeFirst()
         appendCard()
+        if mode == .photoRounds, cards.isEmpty {
+            remainingRoundItems = items
+            for _ in 0...Self.lookaheadCount { appendCard() }
+            isShowingRoundBreak = true
+        }
     }
 
     func reloadHistory() {
@@ -124,10 +164,10 @@ final class AlbumFlipDeck: ObservableObject {
     }
 
     private func appendCard() {
-        if mode == .singlePass {
-            guard !remainingSinglePassItems.isEmpty else { return }
-            let index = randomIndex(remainingSinglePassItems.count)
-            cards.append(AlbumFlipCard(item: remainingSinglePassItems.remove(at: index)))
+        if mode == .photoRounds {
+            guard !remainingRoundItems.isEmpty else { return }
+            let index = randomIndex(remainingRoundItems.count)
+            cards.append(AlbumFlipCard(item: remainingRoundItems.remove(at: index)))
             return
         }
         guard !items.isEmpty else { return }

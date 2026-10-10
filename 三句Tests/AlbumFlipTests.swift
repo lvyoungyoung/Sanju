@@ -214,65 +214,90 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertTrue(makeDeck([]).cards.isEmpty)
     }
 
-    func testSinglePassOnlyVisitsTheGeneratedPhotosSixSentencesOnce() throws {
+    func testPhotoRoundVisitsAllSixSentencesBeforeShowingASwipeableInterlude() throws {
         let currentMemory = makeMemory()
         let otherMemory = makeMemory()
         let items = AlbumFlipItem.makeItems(from: [currentMemory])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass, randomIndex: { $0 - 1 })
-        XCTAssertFalse(deck.hasFinishedSinglePass)
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds, randomIndex: { $0 - 1 })
+        XCTAssertFalse(deck.isShowingRoundBreak)
         XCTAssertEqual(deck.cards.count, 6)
         XCTAssertEqual(deck.upcomingSpeechTexts.count, 5)
         var visited = Set<String>()
         for index in 0..<6 {
             let current = try XCTUnwrap(deck.cards.first)
+            XCTAssertEqual(deck.currentPageID, current.id)
+            XCTAssertEqual(deck.currentItem, current.item)
             XCTAssertEqual(current.item.memoryID, currentMemory.id)
             XCTAssertNotEqual(current.item.memoryID, otherMemory.id)
             XCTAssertTrue(visited.insert(current.item.id).inserted)
             XCTAssertEqual(current.item.id, items[5 - index].id)
             let lookahead = Array(deck.cards.dropFirst())
             XCTAssertEqual(deck.upcomingSpeechTexts, lookahead.map { $0.item.sentence.english })
+            if index == 5 {
+                XCTAssertEqual(deck.visiblePages.count, 2)
+                XCTAssertNil(deck.visiblePages.last?.item, "The interlude must already sit behind the last sentence")
+            }
+            let nextPageID = deck.visiblePages.last?.id
             deck.advance(index.isMultiple(of: 2) ? .again : .familiar, cardID: current.id)
-            XCTAssertEqual(deck.cards.map(\.id), lookahead.map(\.id))
-            XCTAssertEqual(deck.hasFinishedSinglePass, index == 5)
+            XCTAssertEqual(deck.currentPageID, nextPageID)
+            if index < 5 { XCTAssertEqual(deck.cards.map(\.id), lookahead.map(\.id)) }
+            XCTAssertEqual(deck.isShowingRoundBreak, index == 5)
         }
         XCTAssertEqual(visited, Set(items.map(\.id)))
         XCTAssertEqual(deck.viewedCount, 6)
-        XCTAssertTrue(deck.cards.isEmpty)
-        XCTAssertTrue(deck.upcomingSpeechTexts.isEmpty)
+        XCTAssertNil(deck.currentItem, "The interlude must never be treated as a sentence for narration or favorites")
+        XCTAssertEqual(deck.cards.count, 6, "The next round is buffered behind the interlude")
+        XCTAssertEqual(deck.upcomingSpeechTexts, deck.cards.prefix(5).map { $0.item.sentence.english })
+        XCTAssertNil(deck.visiblePages.first?.item)
+        XCTAssertEqual(deck.visiblePages.last?.id, deck.cards.first?.id)
         XCTAssertEqual(store.read().pending.count, 6)
         XCTAssertEqual(store.read().records.count, 6)
         XCTAssertTrue(currentMemory.sentences.allSatisfy { !$0.isFavorite })
     }
 
-    func testSinglePassDeduplicatesAndIgnoresStaleAdvancesAfterCompletion() throws {
+    func testPhotoRoundDeduplicatesAndIgnoresStaleSentenceAndInterludeAdvances() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items + items, store: store, mode: .singlePass)
+        let deck = AlbumFlipDeck(items: items + items, store: store, mode: .photoRounds)
         XCTAssertEqual(deck.cards.count, 1)
         let card = try XCTUnwrap(deck.cards.first)
         deck.advance(.again, cardID: UUID())
         XCTAssertEqual(deck.viewedCount, 0)
         deck.advance(.again, cardID: card.id)
-        XCTAssertTrue(deck.hasFinishedSinglePass)
+        XCTAssertTrue(deck.isShowingRoundBreak)
         deck.advance(.familiar, cardID: card.id)
         deck.reloadHistory()
-        XCTAssertTrue(deck.hasFinishedSinglePass)
+        XCTAssertTrue(deck.isShowingRoundBreak)
         XCTAssertEqual(deck.viewedCount, 1)
         XCTAssertEqual(store.read().pending.count, 1)
         XCTAssertEqual(deck.feedback[items[0].id], .again)
+        let interludeID = try XCTUnwrap(deck.currentPageID)
+        let nextCardID = try XCTUnwrap(deck.cards.first?.id)
+        deck.advance(.familiar, cardID: interludeID)
+        XCTAssertFalse(deck.isShowingRoundBreak)
+        XCTAssertEqual(deck.currentPageID, nextCardID)
+        XCTAssertNotEqual(nextCardID, card.id)
+        deck.advance(.again, cardID: interludeID)
+        deck.advance(.familiar, cardID: card.id)
+        XCTAssertEqual(deck.currentPageID, nextCardID)
+        XCTAssertEqual(deck.viewedCount, 1)
+        XCTAssertEqual(store.read().pending.count, 1)
     }
 
-    func testEmptySinglePassIsNotReportedAsCompleted() {
-        let deck = AlbumFlipDeck(items: [], store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), mode: .singlePass)
+    func testEmptyPhotoRoundDoesNotShowAnInterlude() {
+        let deck = AlbumFlipDeck(items: [], store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), mode: .photoRounds)
         XCTAssertTrue(deck.cards.isEmpty)
-        XCTAssertFalse(deck.hasFinishedSinglePass)
+        XCTAssertTrue(deck.visiblePages.isEmpty)
+        XCTAssertNil(deck.currentPageID)
+        XCTAssertNil(deck.currentItem)
+        XCTAssertFalse(deck.isShowingRoundBreak)
     }
 
-    func testSinglePassRefillsLookaheadWithoutRepeatingAndKeepsBufferedCardsStable() throws {
+    func testPhotoRoundRefillsLookaheadWithoutRepeatingAndKeepsBufferedCardsStable() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 10)])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass, randomIndex: { _ in 0 })
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds, randomIndex: { _ in 0 })
         let initialCards = deck.cards.map(\.id)
         deck.reloadHistory()
         XCTAssertEqual(deck.cards.map(\.id), initialCards)
@@ -283,19 +308,54 @@ final class AlbumFlipTests: XCTestCase {
             XCTAssertTrue(visited.insert(current.item.id).inserted)
             deck.advance(.again, cardID: current.id)
         }
-        XCTAssertTrue(deck.hasFinishedSinglePass)
+        XCTAssertTrue(deck.isShowingRoundBreak)
         XCTAssertEqual(visited.count, items.count)
     }
 
-    func testSinglePassFeedbackIsAvailableToSubsequentContinuousBrowsing() throws {
+    func testPhotoRoundFeedbackIsAvailableToSubsequentContinuousBrowsing() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .singlePass)
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds)
         deck.advance(.familiar, cardID: try XCTUnwrap(deck.cards.first).id)
         let continuous = AlbumFlipDeck(items: items, store: store)
         XCTAssertEqual(continuous.feedback[items[0].id], .familiar)
         XCTAssertEqual(continuous.cards.count, 6)
-        XCTAssertFalse(continuous.hasFinishedSinglePass)
+        XCTAssertFalse(continuous.isShowingRoundBreak)
+    }
+
+    func testPhotoRoundsRepeatOnlyTheSameSentencesAndDoNotRecordFeedbackForInterludes() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds)
+        var appearances = Set<UUID>()
+        var callbacks = 0
+        deck.onFeedback = { callbacks += 1 }
+        for round in 0..<4 {
+            var visited = Set<String>()
+            for _ in items.indices {
+                let pageID = try XCTUnwrap(deck.currentPageID)
+                let item = try XCTUnwrap(deck.currentItem)
+                XCTAssertTrue(appearances.insert(pageID).inserted)
+                XCTAssertTrue(visited.insert(item.id).inserted)
+                deck.advance(.familiar, cardID: pageID)
+            }
+            XCTAssertEqual(visited, Set(items.map(\.id)))
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertNil(deck.currentItem)
+            let interludeID = try XCTUnwrap(deck.currentPageID)
+            XCTAssertTrue(appearances.insert(interludeID).inserted)
+            let buffered = deck.cards.map(\.id)
+            deck.reloadHistory()
+            XCTAssertEqual(deck.currentPageID, interludeID)
+            XCTAssertEqual(deck.cards.map(\.id), buffered)
+            deck.advance(round.isMultiple(of: 2) ? .again : .familiar, cardID: interludeID)
+            XCTAssertFalse(deck.isShowingRoundBreak)
+            XCTAssertEqual(deck.currentPageID, buffered.first)
+            XCTAssertEqual(deck.cards.map(\.id), buffered)
+            XCTAssertEqual(deck.viewedCount, (round + 1) * items.count)
+            XCTAssertEqual(store.read().pending.count, (round + 1) * items.count)
+            XCTAssertEqual(callbacks, (round + 1) * items.count)
+        }
     }
 
     func testOneSentenceCanBeBrowsedIndefinitelyWithFreshPresentationIdentity() throws {
@@ -630,11 +690,11 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertEqual(AlbumFlipLayout.cardSize(in: .zero), .zero)
     }
 
-    func testSinglePassCompletionRendersInBothThemesAndWithoutNetwork() async throws {
+    func testRoundBreakCardRendersInBothThemesAndWithoutNetwork() async throws {
         for scheme in [ColorScheme.light, .dark] {
             for isOnline in [true, false] {
                 let cardSize = AlbumFlipLayout.cardSize(in: CGSize(width: 320, height: 430))
-                let view = AlbumFlipCompletionView(size: cardSize, isPhotoSelectionEnabled: isOnline, onChooseAnotherPhoto: {})
+                let view = AlbumFlipRoundBreakCard(size: cardSize, isPhotoSelectionEnabled: isOnline, onChooseAnotherPhoto: {})
                     .frame(width: 320, height: 568, alignment: .top)
                     .background(AppSurfaceColor.page)
                     .ignoresSafeArea()
@@ -647,17 +707,76 @@ final class AlbumFlipTests: XCTestCase {
                 for x in 50...260 {
                     stripeColors.insert(try pixel(in: image, at: CGPoint(x: CGFloat(x), y: 20)))
                 }
-                XCTAssertGreaterThan(stripeColors.count, 1, "The completion card should have a visible diagonal hatch, not a flat background")
+                XCTAssertGreaterThan(stripeColors.count, 1, "The interlude card should have a visible diagonal hatch, not a flat background")
                 XCTAssertEqual(
                     try pixel(in: image, at: CGPoint(x: 160, y: 410)),
                     try pixel(in: image, at: CGPoint(x: 1, y: 140)),
-                    "Completion content must stay inside the same fixed card area, even with large text"
+                    "The interlude must stay inside the same fixed card area, even with large text"
                 )
                 let attachment = XCTAttachment(image: image)
-                attachment.name = "AlbumFlip-Completion-\(scheme)-\(isOnline ? "online" : "offline")"
+                attachment.name = "AlbumFlip-RoundBreak-\(scheme)-\(isOnline ? "online" : "offline")"
                 attachment.lifetime = .keepAlways
                 add(attachment)
             }
+        }
+    }
+
+    func testPhotoRoundViewStopsSpeechOnInterludeAndRestartsItOnTheNextRound() async throws {
+        let model = AppModel()
+        model.memories = [makeMemory()]
+        model.isNetworkAvailable = false
+        model.albumFlipHistorySync = nil
+        model.speech.ownerProvider = { "round-test-\(self.suite!)" }
+        // Keep playback pending locally; this integration test must never call a cloud service.
+        model.speech.sessionProvider = {
+            try await Task.sleep(for: .seconds(60))
+            throw CancellationError()
+        }
+        defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
+        var narrated: [String] = []
+        let observation = model.speech.$activeText.compactMap { $0 }.sink { narrated.append($0) }
+        defer { observation.cancel() }
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: model.memories), store: store,
+                                 mode: .photoRounds, randomIndex: { _ in 0 })
+        let firstText = try XCTUnwrap(deck.currentItem?.sentence.english)
+        let view = AlbumFlipView(deck: deck, ownerID: "guest")
+            .environmentObject(model)
+            .environment(\.scenePhase, .active)
+        let image = try await renderInWindow(view, size: CGSize(width: 393, height: 852)) {
+            XCTAssertEqual(narrated, [firstText])
+            for _ in 0..<6 { deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID)) }
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertNil(model.speech.activeText)
+            XCTAssertNil(model.speech.loadingText)
+            XCTAssertEqual(narrated.count, 1)
+            let nextText = try XCTUnwrap(deck.cards.first?.item.sentence.english)
+            deck.advance(.again, cardID: try XCTUnwrap(deck.currentPageID))
+            try await Task.sleep(for: .milliseconds(450))
+            XCTAssertEqual(narrated, [firstText, nextText])
+            XCTAssertEqual(deck.viewedCount, 6)
+            XCTAssertEqual(store.read().pending.count, 6)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "AlbumFlip-NextRound"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testRoundBreakCardDoesNotShowTheNextPhotoThroughItsBackground() async throws {
+        let size = CGSize(width: 280, height: 430)
+        for scheme in [ColorScheme.light, .dark] {
+            var pixels: [[UInt8]] = []
+            for background in [Color.red, .blue] {
+                let view = AlbumFlipRoundBreakCard(size: size, isPhotoSelectionEnabled: true, onChooseAnotherPhoto: {})
+                    .background(background)
+                    .environment(\.colorScheme, scheme)
+                    .ignoresSafeArea()
+                let image = try await renderInWindow(view, size: size)
+                pixels.append(try pixel(in: image, at: CGPoint(x: 140, y: 25)))
+            }
+            XCTAssertEqual(pixels[0], pixels[1], "Only the outgoing swipe should reveal the card underneath")
         }
     }
 
