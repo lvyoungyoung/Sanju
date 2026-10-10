@@ -47,22 +47,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "0a03feba151cbf1598caf2b0047592bad6db05fd014d1adea39f91917ddc358b",
+      "b4ef88aa31c02156a8fa967a9a280bd9e6d12783361cde348707716b1f396364",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "4056c95cc502ecbef91898b48124db0a821f6fb6ff80a91dccf2f80ce62df2c4",
+      "a350082a92795ae4170c412e7b7a8046f0b0e55d73d530834c800d81a7b5542e",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "009106ef3fda3d261cdd7aa8e506dc8212a0b880d6906b9ea943ae40a616c24b",
+      "332f52dab2e66e0ca42956c5127dddb2977012360a6f57ee7c4469b505c79959",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "20a9b8db7f8a43c479c757b074823aacaf0c3e6d5c70fb1a4e389f1f05ad35d1",
+      "3fd3568e0b2009f1000fa5d34e9013f7114294238cc39892c7f0668d8fd93909",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -216,7 +216,7 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   const prompt = buildPromptText("中等", "dual_tabs_v1");
   for (
     const text of [
-      "不推测关系、背景和内心感受",
+      "不推测人物关系、背景和内心感受",
       "大胆推测最可能的场景、关系和感受",
       "不编造无依据的具体姓名、地点、时间、经历或事实",
       "不能声称对话已发生",
@@ -227,6 +227,27 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
       "不分析数据或涨跌",
     ]
   ) ok(prompt.includes(text), text);
+});
+
+Deno.test("photo descriptions favor subject, detail and visible relationships without forcing templates", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
+    const subjectIndex = descriptionRules.indexOf("1. 主体：");
+    const detailIndex = descriptionRules.indexOf("2. 细节：");
+    const relationshipIndex = descriptionRules.indexOf("3. 关系：");
+    ok(subjectIndex >= 0 && detailIndex > subjectIndex && relationshipIndex > detailIndex);
+    for (const rule of [
+      "不推测人物关系、背景和内心感受",
+      "主体与环境的位置关系，或画面中可见的互动",
+      "以上是软要求，不是固定模板",
+      "某个角度不适合时，换成其他可见内容",
+      "不硬凑动作、互动或细节",
+      "三句提供不同信息，不换词重复，不固定句式开头",
+      "难度限制优先，不为覆盖角度而增加复杂度",
+    ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
+    ok(!/例如|示例|example/i.test(descriptionRules));
+  }
 });
 
 Deno.test("feeling expressions avoid a fixed first-person template without adding example sentences", () => {
