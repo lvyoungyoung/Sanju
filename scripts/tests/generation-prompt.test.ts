@@ -47,22 +47,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "b4ef88aa31c02156a8fa967a9a280bd9e6d12783361cde348707716b1f396364",
+      "53f1b744569b24e88533b0a80076c3a613bae25d0b44b8efa19986d72fba78e5",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "a350082a92795ae4170c412e7b7a8046f0b0e55d73d530834c800d81a7b5542e",
+      "8b579621d44398a17e88ca2a4278e97bfa0d4008831234210ca83cc048cbbdcd",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "332f52dab2e66e0ca42956c5127dddb2977012360a6f57ee7c4469b505c79959",
+      "1992a32440d9b961bef51a5b82b4f88659a7fa734dab59fe63aa8c11d33bacf6",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "3fd3568e0b2009f1000fa5d34e9013f7114294238cc39892c7f0668d8fd93909",
+      "ac2e097ebac9e6a79c035fb4aa1dd3cbd7c88e00586dae49e54c8a86cf9f4aa5",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -229,22 +229,23 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   ) ok(prompt.includes(text), text);
 });
 
-Deno.test("photo descriptions favor subject, detail and visible relationships without forcing templates", () => {
+Deno.test("photo descriptions keep two flexible statements and one visible-content question", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
     const subjectIndex = descriptionRules.indexOf("1. 主体：");
     const detailIndex = descriptionRules.indexOf("2. 细节：");
-    const relationshipIndex = descriptionRules.indexOf("3. 关系：");
-    ok(subjectIndex >= 0 && detailIndex > subjectIndex && relationshipIndex > detailIndex);
+    const questionIndex = descriptionRules.indexOf("3. 观察问题：");
+    ok(subjectIndex >= 0 && detailIndex > subjectIndex && questionIndex > detailIndex);
     for (const rule of [
       "不推测人物关系、背景和内心感受",
-      "主体与环境的位置关系，或画面中可见的互动",
-      "以上是软要求，不是固定模板",
-      "某个角度不适合时，换成其他可见内容",
+      "问画面中可直接看出答案的动作、细节或空间关系",
+      "不问用户经历、偏好或感受",
+      "前两句角度是软要求",
+      "不适合时换成其他可见内容",
       "不硬凑动作、互动或细节",
-      "三句提供不同信息，不换词重复，不固定句式开头",
-      "难度限制优先，不为覆盖角度而增加复杂度",
+      "三句不重复，问题不只是陈述改问句",
+      "不固定句式，难度优先",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
     ok(!/例如|示例|example/i.test(descriptionRules));
   }
@@ -260,12 +261,41 @@ Deno.test("feeling expressions avoid a fixed first-person template without addin
       "不强制第一人称开头",
       "句式服从难度，不为变化刻意复杂化",
       "第一句按场景自然选择主语和句式",
-      "第三句优先 I/we",
+      "第二句优先 I/we",
     ]) ok(prompt.includes(rule), `${level}: ${rule}`);
     ok(!prompt.includes("第一、三句优先 I/we"));
-    const feelingRule = prompt.slice(prompt.indexOf("1. 我当时的感受："), prompt.indexOf("2. 当时会对别人说什么："));
+    const feelingRule = prompt.slice(prompt.indexOf("1. 我当时的感受："), prompt.indexOf("2. 发生了什么："));
     ok(!/例如|示例|example/i.test(feelingRule), "Do not seed another repeated English opening with an example");
     ok(!buildPromptText(level, "legacy_v1").includes("不机械套用 I feel"));
+  }
+});
+
+Deno.test("each group ends in a question aligned with its own purpose without changing the schema", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
+    for (const rule of [
+      "两组均为前两句陈述、第三句疑问",
+      "以 ? 结尾，中文也用问句",
+      "问题遵守难度，不附答案或新增字段",
+      "问身边的人一句自然的聊天问题，不是看图理解题",
+      "可开放或封闭，不强制类型",
+      "不硬凑物品归属、翻看他人物品或许可问题",
+    ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
+    const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+    for (const group of ["image_descriptions", "scene_and_feelings"]) {
+      example[group][2] = { ...example[group][2], english: group === "image_descriptions"
+        ? "Where is the boat in this picture?" : "Would you like to stay here longer?",
+        chinese: group === "image_descriptions" ? "照片里的船在哪里？" : "你想在这里多待一会儿吗？" };
+    }
+    const parsed = parseGeneratedContent(JSON.stringify(example), "dual_tabs_v1");
+    ok(parsed);
+    strictEqual(parsed.sentences.length, 6);
+    for (const [index, group] of [[2, "image_descriptions"], [5, "scene_and_feelings"]] as const) {
+      strictEqual(parsed.sentences[index].english, example[group][2].english);
+      strictEqual(parsed.sentences[index].chinese, example[group][2].chinese);
+    }
+    ok(!buildPromptText(level, "legacy_v1").includes("第三句疑问"));
   }
 });
 

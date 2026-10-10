@@ -111,27 +111,27 @@ Deno.test("foreground generation requests metadata without changing the sentence
     }
   }
 });
-Deno.test("scene expressions follow feeling, conversation, event order at every difficulty", () => {
+Deno.test("scene expressions follow feeling, event, conversation question order at every difficulty", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"] as const) {
     {
       const prompt = buildPromptText(level, "dual_tabs_v1");
       const feelingIndex = prompt.indexOf("1. 我当时的感受：");
-      const conversationIndex = prompt.indexOf("2. 当时会对别人说什么：");
-      const eventIndex = prompt.indexOf("3. 发生了什么：");
-      ok(feelingIndex >= 0 && conversationIndex > feelingIndex);
-      ok(eventIndex > conversationIndex);
+      const eventIndex = prompt.indexOf("2. 发生了什么：");
+      const conversationIndex = prompt.indexOf("3. 当时会问别人什么：");
+      ok(feelingIndex >= 0 && eventIndex > feelingIndex);
+      ok(conversationIndex > eventIndex);
       ok(prompt.includes("只写用户那一句及直译"));
       ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
       ok(prompt.includes("不能声称对话已发生"));
       ok(prompt.includes("此组允许基于画面的推测和假设口语"));
       ok(prompt.includes("第一句按场景自然选择主语和句式"));
-      ok(prompt.includes("第三句优先 I/we"));
+      ok(prompt.includes("第二句优先 I/we"));
       ok(!prompt.includes("第一、三句优先 I/we"));
-      ok(prompt.includes("第二句可用 you/we、祈使句或问句"));
+      ok(prompt.includes("两组均为前两句陈述、第三句疑问"));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
-      ok(prompt.includes("不总是问句或请求"));
+      ok(prompt.includes("可开放或封闭，不强制类型"));
       ok(prompt.includes("仅画面明确涉及拍照才考虑请人拍照"));
       for (
         const example of [
