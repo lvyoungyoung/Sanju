@@ -110,6 +110,7 @@ enum AppSurfaceColor {
     static let elevated = AppPalette.adaptive(0xF3F3EE, 0x30342C)
     static let input = card
     static let subtleFill = AppPalette.adaptive(0xF0F1EB, 0x34382F)
+    static let segmentedTrack = AppPalette.adaptive(0xE4E1D8, 0x3E4439)
     static let secondaryFill = subtleFill
 }
 

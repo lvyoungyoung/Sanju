@@ -140,15 +140,19 @@ struct SentenceGroupPicker: View {
                 } label: {
                     Text(group.localizedTabTitle)
                         .font(.system(.subheadline, weight: .semibold))
-                        .foregroundStyle(selection == group ? AppPalette.accentText : AppTextColor.secondary)
+                        .foregroundStyle(selection == group ? AppPalette.accentText : AppTextColor.primary)
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(selection == group ? AppSurfaceColor.card : .clear, in: RoundedRectangle(cornerRadius: 15))
+                        .background {
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .fill(selection == group ? AppSurfaceColor.card : .clear)
+                                .shadow(color: .black.opacity(selection == group ? 0.08 : 0), radius: 3, x: 0, y: 1)
+                        }
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(selection == group ? .isSelected : [])
             }
         }
         .padding(4)
-        .background(AppSurfaceColor.subtleFill, in: RoundedRectangle(cornerRadius: 19))
+        .background(AppSurfaceColor.segmentedTrack, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
     }
 }

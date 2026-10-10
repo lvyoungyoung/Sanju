@@ -16,6 +16,8 @@ final class StudioAppearanceTests: XCTestCase {
             (AppTextColor.secondary, ProfileCardStyle.page),
             (AppPalette.accentText, AppSurfaceColor.page),
             (AppPalette.accentText, AppPalette.apricot),
+            (AppPalette.accentText, AppSurfaceColor.card),
+            (AppTextColor.primary, AppSurfaceColor.segmentedTrack),
             (AppTextColor.secondary, AppSurfaceColor.elevated),
             (AppPalette.onAccent, AppPalette.accent),
             (AppHeroTextColor.title, AppPalette.profile)
@@ -92,6 +94,42 @@ final class StudioAppearanceTests: XCTestCase {
                     XCTAssertLessThan(image.size.height, 600)
                     let attachment = XCTAttachment(image: image)
                     attachment.name = "Overview-\(width)-\(scheme)-\(size)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
+    }
+
+    func testSentenceGroupPickerSurfacesRemainDistinctInBothThemes() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            traits.performAsCurrent {
+                let track = luminance(UIColor(AppSurfaceColor.segmentedTrack).resolvedColor(with: traits))
+                for background in [AppSurfaceColor.page, AppSurfaceColor.card] {
+                    let surface = luminance(UIColor(background).resolvedColor(with: traits))
+                    let contrast = (max(track, surface) + 0.05) / (min(track, surface) + 0.05)
+                    XCTAssertGreaterThan(contrast, 1.15, "The tab track must not blend into the page or surrounding card")
+                }
+            }
+        }
+    }
+
+    func testSentenceGroupPickerRendersBothSelectionsWithLargeText() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            for group in SentencePresentationGroup.allCases {
+                for size in [DynamicTypeSize.large, .accessibility1] {
+                    let content = SentenceGroupPicker(selection: .constant(group))
+                        .padding(20)
+                        .frame(width: 320)
+                        .background(AppSurfaceColor.page)
+                        .environment(\.colorScheme, scheme)
+                        .environment(\.dynamicTypeSize, size)
+                    let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+                    XCTAssertEqual(image.size.width, 320, accuracy: 1)
+                    XCTAssertGreaterThanOrEqual(image.size.height, 92)
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "SentenceGroupPicker-\(scheme)-\(group.rawValue)-\(size)"
                     attachment.lifetime = .keepAlways
                     add(attachment)
                 }
