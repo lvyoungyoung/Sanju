@@ -213,20 +213,21 @@ struct ContentFooterHint: View {
 }
 
 struct SentenceSkeletonSection: View {
+    static let shimmerOpacity = 0.22
     @State private var phase: CGFloat = -0.35
 
     var body: some View {
         VStack(spacing: AppSpacing.medium) {
             ForEach(0..<3, id: \.self) { _ in
                 RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous)
-                    .fill(AppSurfaceColor.secondaryFill)
+                    .fill(AppSurfaceColor.skeleton)
                     .frame(height: 66)
                     .overlay {
                         GeometryReader { proxy in
                             LinearGradient(
                                 colors: [
                                     Color.clear,
-                                    Color(.systemBackground).opacity(0.28),
+                                    Color.white.opacity(Self.shimmerOpacity),
                                     Color.clear
                                 ],
                                 startPoint: .leading,

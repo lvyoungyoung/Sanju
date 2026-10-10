@@ -111,6 +111,7 @@ enum AppSurfaceColor {
     static let input = card
     static let subtleFill = AppPalette.adaptive(0xF0F1EB, 0x34382F)
     static let segmentedTrack = AppPalette.adaptive(0xE4E1D8, 0x3E4439)
+    static let skeleton = AppPalette.adaptive(0xDAD6CD, 0x444B3D)
     static let secondaryFill = subtleFill
 }
 

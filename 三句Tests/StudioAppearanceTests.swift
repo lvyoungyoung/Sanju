@@ -137,6 +137,44 @@ final class StudioAppearanceTests: XCTestCase {
         }
     }
 
+    func testSentenceSkeletonRemainsDistinctEvenUnderTheShimmerHighlight() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            traits.performAsCurrent {
+                let fill = UIColor(AppSurfaceColor.skeleton).resolvedColor(with: traits)
+                var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+                XCTAssertTrue(fill.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+                let opacity = CGFloat(SentenceSkeletonSection.shimmerOpacity)
+                let highlight = UIColor(red: red * (1 - opacity) + opacity, green: green * (1 - opacity) + opacity,
+                                        blue: blue * (1 - opacity) + opacity, alpha: 1)
+                for foreground in [fill, highlight] {
+                    let skeleton = luminance(foreground)
+                    for background in [AppSurfaceColor.page, AppSurfaceColor.card] {
+                        let surface = luminance(UIColor(background).resolvedColor(with: traits))
+                        XCTAssertGreaterThan((max(skeleton, surface) + 0.05) / (min(skeleton, surface) + 0.05), 1.15)
+                    }
+                }
+            }
+        }
+    }
+
+    func testSentenceSkeletonKeepsAllThreePlaceholdersInBothThemes() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            let content = SentenceSkeletonSection()
+                .padding(20)
+                .frame(width: 320)
+                .background(AppSurfaceColor.card)
+                .environment(\.colorScheme, scheme)
+            let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+            XCTAssertEqual(image.size.width, 320, accuracy: 1)
+            XCTAssertEqual(image.size.height, 66 * 3 + AppSpacing.medium * 2 + 40, accuracy: 1)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "SentenceSkeleton-\(scheme)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
     private func luminance(_ color: UIColor) -> Double {
         var r: CGFloat = 0
         var g: CGFloat = 0
