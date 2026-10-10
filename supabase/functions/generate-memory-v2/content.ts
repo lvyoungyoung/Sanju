@@ -12,6 +12,18 @@ export interface Sentence {
 
 type SentencePresentationGroup = "what_i_see" | "what_i_say"
 export type GenerationFormat = "legacy_v1" | "dual_tabs_v1"
+type QuestionType = "open" | "closed"
+interface QuestionTypes {
+  imageDescriptions: QuestionType
+  sceneAndFeelings: QuestionType
+}
+
+export function selectQuestionTypes(random: () => number = Math.random): QuestionTypes {
+  return {
+    imageDescriptions: random() < 0.5 ? "open" : "closed",
+    sceneAndFeelings: random() < 0.5 ? "open" : "closed",
+  }
+}
 
 export type FinalizedSentence = Sentence & {
   id: string
@@ -28,7 +40,8 @@ export type ProviderName = "mimo" | "kimi" | "deepseek"
 
 export function buildPromptText(
   englishLevel: "启蒙" | "简单" | "中等" | "高级",
-  generationFormat: GenerationFormat
+  generationFormat: GenerationFormat,
+  questionTypes: QuestionTypes = { imageDescriptions: "open", sceneAndFeelings: "open" }
 ): string {
   const englishLevelPrompt =
     englishLevel === "启蒙"
@@ -48,22 +61,28 @@ export function buildPromptText(
       : "生动活泼自然的日常口语，动词具体、搭配自然、有节奏。可轻微幽默或俏皮，但须来自可见的对比、动作或细节；不用段子、网络梗、夸张笑话或生硬拟人，不虚构动作、对话、情绪或细节。"
 
   if (generationFormat === "dual_tabs_v1") {
+    const imageQuestion = questionTypes.imageDescriptions === "open"
+      ? "本次用开放式问题，邀请描述特点或与周围的联系，允许不同回答，不用是否题。"
+      : "本次用封闭式问题，确认一个可见特点或关系，可用是否题或二选一。"
+    const sceneQuestion = questionTypes.sceneAndFeelings === "open"
+      ? "本次用开放式问题，邀请分享偏好、想法或下一步打算，不用是否题。"
+      : "本次用封闭式问题，确认意愿、需要或选择，可用是否题或二选一。"
     return `
 根据图片生成两组英语学习句子及中文翻译。
 ${englishLevelPrompt}
 ${naturalSpeechPrompt}
 ${difficultyPriorityPrompt}
 
-image_descriptions：两句客观陈述和一个观察问题，只围绕可见的人、物、动作、环境或文字，不推测人物关系、背景和内心感受。依次：
+image_descriptions：两句客观陈述和一个观察问题。陈述只说可见内容，不推测人物关系、背景和内心感受：
 1. 主体：最值得注意的人、物或动作。
 2. 细节：具体的颜色、材质、光线等可见细节。
-3. 观察问题：问画面中可直接看出答案的动作、细节或空间关系，不问用户经历、偏好或感受。
-前两句角度是软要求，不适合时换成其他可见内容，不硬凑动作、互动或细节。三句不重复，问题不只是陈述改问句；不固定句式，难度优先。
+3. 观察问题：围绕画面中的具体细节，自然交流，不做识别或数数测验，不问经历或泛泛感受。${imageQuestion}
+前两句角度可灵活调整，不硬凑动作、互动或细节。三句不重复，问题不只是陈述改问句；不固定句式，难度优先。
 
 scene_and_feelings：两句日常陈述和一个聊天问题。此组允许基于画面的推测和假设口语：大胆推测最可能的场景、关系和感受，无须标注推测；不编造无依据的具体姓名、地点、时间、经历或事实。依次：
 1. 我当时的感受：围绕画面中的具体对象或活动，表达情绪、反应或氛围，也可通过喜欢、期待、想做什么或对眼前事物的评价表达感受。不机械套用 I feel + 形容词，不强制第一人称开头；句式服从难度，不为变化刻意复杂化。
 2. 发生了什么：最可能的日常场景或动作，不复述感受。
-3. 当时会问别人什么：围绕眼前体验、实际需要、偏好或下一步活动，问身边的人一句自然的聊天问题，不是看图理解题。可开放或封闭，不强制类型；不硬凑物品归属、翻看他人物品或许可问题。仅画面明确涉及拍照才考虑请人拍照。不能声称对话已发生；只写用户那一句及直译，不写双方对话、标签、额外引号或 I would say 开头。
+3. 当时会问别人什么：围绕眼前体验、实际需要、偏好或下一步活动，问身边的人一句自然的聊天问题，不是看图理解题。${sceneQuestion}不硬凑物品归属、翻看他人物品或许可问题。仅画面明确涉及拍照才考虑请人拍照。不能声称对话已发生；只写用户那一句及直译，不写双方对话、标签、额外引号或 I would say 开头。
 第一句按场景自然选择主语和句式，第二句优先 I/we。角度不同，像朋友聊天，不重复、不写鸡汤。
 ${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文单词；用地道搭配、准确感受词和自然节奏，不用复杂从句、书面词、文学修辞或刻意难词。' : '两组遵守同一档难度。'}场景表达保持日常口语，不写诗、散文、文艺腔。
 截图、界面、图表、股票、网页、文档等信息图，场景表达只说看到、记录或分享信息，不分析数据或涨跌。

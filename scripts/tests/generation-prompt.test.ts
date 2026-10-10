@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   buildPromptText,
   parseGeneratedContent,
+  selectQuestionTypes,
 } from "../../supabase/functions/generate-memory-v2/content.ts";
 import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
 import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
@@ -47,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "53f1b744569b24e88533b0a80076c3a613bae25d0b44b8efa19986d72fba78e5",
+      "147022ef37b8454bdda8d73767adbabdadb2fe78320e69d696e75e82b43d846d",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "8b579621d44398a17e88ca2a4278e97bfa0d4008831234210ca83cc048cbbdcd",
+      "ba3e3175600677ad5bb4efd80975a90947e3db72c1184e02e374ba22711b132a",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "1992a32440d9b961bef51a5b82b4f88659a7fa734dab59fe63aa8c11d33bacf6",
+      "45890923ea8733e9af2b10a52ef5b8b86a3d2af5677e137c3670919834c1b8e5",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "ac2e097ebac9e6a79c035fb4aa1dd3cbd7c88e00586dae49e54c8a86cf9f4aa5",
+      "ac2482c3f4381d822194bce66169d2e30fd340da8d57522e18aa6e1023156944",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -108,7 +109,7 @@ Deno.test("natural beginner guidance stays compact without shrinking output rule
   const sentenceOnly = sentencePromptBaseline(prompt);
   ok(sentenceOnly.indexOf("你必须严格遵守以下输出规则：") <= (5066 - 861) / 2);
   ok(sentenceOnly.length <= 2900);
-  ok(prompt.length <= 3900, `Prompt grew to ${prompt.length} characters`);
+  ok(prompt.length <= 4000, `Prompt grew to ${prompt.length} characters`);
 });
 
 Deno.test("combined generation preserves sentence groups, categories and purposes", () => {
@@ -229,7 +230,44 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   ) ok(prompt.includes(text), text);
 });
 
-Deno.test("photo descriptions keep two flexible statements and one visible-content question", () => {
+Deno.test("question types are sampled independently with an even open/closed split", () => {
+  for (const imageValue of [0, 0.499999, 0.5, 0.999999]) {
+    for (const sceneValue of [0, 0.499999, 0.5, 0.999999]) {
+      const values = [imageValue, sceneValue];
+      let calls = 0;
+      deepStrictEqual(selectQuestionTypes(() => values[calls++]), {
+        imageDescriptions: imageValue < 0.5 ? "open" : "closed",
+        sceneAndFeelings: sceneValue < 0.5 ? "open" : "closed",
+      });
+      strictEqual(calls, 2);
+    }
+  }
+});
+
+Deno.test("both question types reach their own group at every difficulty", () => {
+  for (const level of levels) {
+    for (const imageValue of [0, 0.5]) {
+      for (const sceneValue of [0, 0.5]) {
+        const values = [imageValue, sceneValue];
+        const types = selectQuestionTypes(() => values.shift()!);
+        const prompt = buildPromptText(level, "dual_tabs_v1", types);
+        const imageRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
+        const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："));
+        for (const [rules, type] of [[imageRules, types.imageDescriptions], [sceneRules, types.sceneAndFeelings]]) {
+          ok(rules.includes(type === "open" ? "本次用开放式问题" : "本次用封闭式问题"));
+          ok(!rules.includes(type === "open" ? "本次用封闭式问题" : "本次用开放式问题"));
+        }
+        const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+        strictEqual(example.image_descriptions.length, 3);
+        strictEqual(example.scene_and_feelings.length, 3);
+        ok(prompt.length <= 4000, `Prompt grew to ${prompt.length} characters`);
+        strictEqual(buildPromptText(level, "legacy_v1", types), buildPromptText(level, "legacy_v1"));
+      }
+    }
+  }
+});
+
+Deno.test("photo descriptions keep two flexible statements and one grounded observation question", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
@@ -239,14 +277,18 @@ Deno.test("photo descriptions keep two flexible statements and one visible-conte
     ok(subjectIndex >= 0 && detailIndex > subjectIndex && questionIndex > detailIndex);
     for (const rule of [
       "不推测人物关系、背景和内心感受",
-      "问画面中可直接看出答案的动作、细节或空间关系",
-      "不问用户经历、偏好或感受",
-      "前两句角度是软要求",
-      "不适合时换成其他可见内容",
+      "两句客观陈述和一个观察问题",
+      "围绕画面中的具体细节",
+      "邀请描述特点或与周围的联系",
+      "允许不同回答",
+      "不做识别或数数测验",
+      "不问经历或泛泛感受",
+      "前两句角度可灵活调整",
       "不硬凑动作、互动或细节",
       "三句不重复，问题不只是陈述改问句",
       "不固定句式，难度优先",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
+    ok(!descriptionRules.includes("可直接看出答案"));
     ok(!/例如|示例|example/i.test(descriptionRules));
   }
 });
@@ -279,14 +321,14 @@ Deno.test("each group ends in a question aligned with its own purpose without ch
       "以 ? 结尾，中文也用问句",
       "问题遵守难度，不附答案或新增字段",
       "问身边的人一句自然的聊天问题，不是看图理解题",
-      "可开放或封闭，不强制类型",
+      "本次用开放式问题",
       "不硬凑物品归属、翻看他人物品或许可问题",
     ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
     const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
     for (const group of ["image_descriptions", "scene_and_feelings"]) {
       example[group][2] = { ...example[group][2], english: group === "image_descriptions"
-        ? "Where is the boat in this picture?" : "Would you like to stay here longer?",
-        chinese: group === "image_descriptions" ? "照片里的船在哪里？" : "你想在这里多待一会儿吗？" };
+        ? "How would you describe the light on the water?" : "Would you like to stay here longer?",
+        chinese: group === "image_descriptions" ? "你会怎样描述水面上的光？" : "你想在这里多待一会儿吗？" };
     }
     const parsed = parseGeneratedContent(JSON.stringify(example), "dual_tabs_v1");
     ok(parsed);

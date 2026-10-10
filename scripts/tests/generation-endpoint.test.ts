@@ -35,6 +35,8 @@ import { fetchWithTimeout as boundedFetch, fetchWithinDeadline as deadlineFetch 
 };
 export let handler: (req: Request) => Promise<Response>;
 export const state: any = { jobs: new Map(), guests: new Map(), memories: new Map(), balance: 10, calls: 0, removed: 0, debits: 0 };
+const Math = Object.create(globalThis.Math);
+Math.random = () => { state.questionRandomCalls = (state.questionRandomCalls ?? 0) + 1; return state.questionRandomValues?.shift() ?? 0.25; };
 type EnrichmentScope = {userID:string,memoryID?:string,guestJobID?:string};
 function scheduleGenerationEnrichment(scope: EnrichmentScope, _requestID?: string) { state.backgroundOwners.push(scope.userID); (state.backgroundScopes??=[]).push(scope); }
 const Deno = {
@@ -160,6 +162,8 @@ function reset(options: Record<string, unknown> = {}) {
     calls: 0,
     modelRequests: [],
     modelHeaders: [],
+    questionRandomValues: [],
+    questionRandomCalls: 0,
     projectURL: undefined,
     localURL: undefined,
     deepseekMissingKey: false,
@@ -253,6 +257,32 @@ Deno.test("style-free and legacy style requests use the same natural prompt for 
       }
     }
   }
+});
+
+Deno.test("endpoint chooses both question types once and preserves them across provider fallback", async () => {
+  for (const anonymous of [false, true]) {
+    for (const imageValue of [0.25, 0.75]) {
+      for (const sceneValue of [0.25, 0.75]) {
+        reset({ anonymous, dual: true, projectURL: "https://api-staging.sanju.cc", deepseekStatus: 503,
+          questionRandomValues: [imageValue, sceneValue], questionRandomCalls: 0 });
+        const response = await handler(request());
+        strictEqual(response.status, 200);
+        strictEqual((await response.json()).memory.sentences.length, 6);
+        strictEqual(state.questionRandomCalls, 2);
+        strictEqual(state.modelRequests.length, 2);
+        const prompts = state.modelRequests.map((body: any) => body.messages[1].content[1].text);
+        strictEqual(prompts[0], prompts[1]);
+        const imageRules = prompts[0].slice(prompts[0].indexOf("image_descriptions："), prompts[0].indexOf("scene_and_feelings："));
+        const sceneRules = prompts[0].slice(prompts[0].indexOf("scene_and_feelings："));
+        strictEqual(imageRules.includes(imageValue < 0.5 ? "本次用开放式问题" : "本次用封闭式问题"), true);
+        strictEqual(sceneRules.includes(sceneValue < 0.5 ? "本次用开放式问题" : "本次用封闭式问题"), true);
+        strictEqual(state.debits, 1);
+      }
+    }
+  }
+  reset({ dual: false });
+  strictEqual((await handler(request("owner", true))).status, 200);
+  strictEqual(state.questionRandomCalls, 0);
 });
 
 Deno.test("overlapping authenticated and guest requests run only one model and debit", async () => {

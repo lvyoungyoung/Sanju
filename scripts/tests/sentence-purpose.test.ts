@@ -131,7 +131,7 @@ Deno.test("scene expressions follow feeling, event, conversation question order 
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
-      ok(prompt.includes("可开放或封闭，不强制类型"));
+      ok(prompt.includes("本次用开放式问题"));
       ok(prompt.includes("仅画面明确涉及拍照才考虑请人拍照"));
       for (
         const example of [
