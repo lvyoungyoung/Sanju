@@ -124,7 +124,9 @@ Deno.test("scene expressions follow feeling, conversation, event order at every 
       ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
       ok(prompt.includes("不能声称对话已发生"));
       ok(prompt.includes("此组允许基于画面的推测和假设口语"));
-      ok(prompt.includes("第一、三句优先 I/we"));
+      ok(prompt.includes("第一句按场景自然选择主语和句式"));
+      ok(prompt.includes("第三句优先 I/we"));
+      ok(!prompt.includes("第一、三句优先 I/we"));
       ok(prompt.includes("第二句可用 you/we、祈使句或问句"));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));

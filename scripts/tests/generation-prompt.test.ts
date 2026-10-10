@@ -22,7 +22,7 @@ function sentencePromptBaseline(prompt: string): string {
     .replace(/,"tags":\[\](?=\}$)/, "");
 }
 
-Deno.test("photo classification leaves the restored sentence prompt unchanged at every difficulty", () => {
+Deno.test("sentence teaching rules match the reviewed baseline at every difficulty", () => {
   const baseline = [
     [
       "legacy_v1",
@@ -47,22 +47,22 @@ Deno.test("photo classification leaves the restored sentence prompt unchanged at
     [
       "dual_tabs_v1",
       "启蒙",
-      "336dd2f943bfb17b89445e3ab7122dfd0110fca9e8ce10a65b947ce023036558",
+      "0a03feba151cbf1598caf2b0047592bad6db05fd014d1adea39f91917ddc358b",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "075213a0ef0c4a499c0ae7839397c582245cc6b952eff4f3deec222ea67b9712",
+      "4056c95cc502ecbef91898b48124db0a821f6fb6ff80a91dccf2f80ce62df2c4",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "7a99ddb2f16ac8957b9c8b6794fb849b45056bed8d3ce06a540777300fe7bb74",
+      "009106ef3fda3d261cdd7aa8e506dc8212a0b880d6906b9ea943ae40a616c24b",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "e28d008c35a4a969877562b9c828546a89d691fcbe4e102f9add006c2c636b44",
+      "20a9b8db7f8a43c479c757b074823aacaf0c3e6d5c70fb1a4e389f1f05ad35d1",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -227,6 +227,25 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
       "不分析数据或涨跌",
     ]
   ) ok(prompt.includes(text), text);
+});
+
+Deno.test("feeling expressions avoid a fixed first-person template without adding example sentences", () => {
+  for (const level of levels) {
+    const prompt = buildPromptText(level, "dual_tabs_v1");
+    for (const rule of [
+      "围绕画面中的具体对象或活动",
+      "通过喜欢、期待、想做什么或对眼前事物的评价表达感受",
+      "不机械套用 I feel + 形容词",
+      "不强制第一人称开头",
+      "句式服从难度，不为变化刻意复杂化",
+      "第一句按场景自然选择主语和句式",
+      "第三句优先 I/we",
+    ]) ok(prompt.includes(rule), `${level}: ${rule}`);
+    ok(!prompt.includes("第一、三句优先 I/we"));
+    const feelingRule = prompt.slice(prompt.indexOf("1. 我当时的感受："), prompt.indexOf("2. 当时会对别人说什么："));
+    ok(!/例如|示例|example/i.test(feelingRule), "Do not seed another repeated English opening with an example");
+    ok(!buildPromptText(level, "legacy_v1").includes("不机械套用 I feel"));
+  }
 });
 
 Deno.test("beginner word limits remain explicit per sentence in both formats", () => {
