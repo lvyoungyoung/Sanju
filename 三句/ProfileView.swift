@@ -608,7 +608,7 @@ struct ProfileView: View {
     }
 
     private func interceptIfPendingCloudSyncInProgress() -> Bool {
-        guard appModel.isSyncingPendingCloudChanges else { return false }
+        guard appModel.shouldPreventSignOutForCloudChanges else { return false }
         showTransientHint(pendingCloudSyncGuardMessage, style: .warning)
         return true
     }

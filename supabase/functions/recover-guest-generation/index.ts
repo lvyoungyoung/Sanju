@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       recovered: true,
       guestJobID: job.id,
       memory: {
-        id: crypto.randomUUID(),
+        id: job.id,
         imagePath: "",
         createdAt: job.created_at,
         tags: Array.isArray(job.tags) ? job.tags : [],

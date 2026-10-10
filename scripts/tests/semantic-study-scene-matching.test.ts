@@ -2171,7 +2171,8 @@ Deno.test("active client and generation paths do not invoke paused AI review", a
   const root = new URL("../../", import.meta.url);
   for (
     const file of [
-      "三句/StudySceneDetailView.swift",
+      "三句/AppModel+Generation.swift",
+      "三句/NewLearningView.swift",
       "supabase/functions/generate-memory-v2/content.ts",
       "supabase/functions/generate-memory-v2/responses.ts",
       "supabase/functions/generate-memory-v2/providers.ts",

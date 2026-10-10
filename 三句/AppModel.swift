@@ -304,13 +304,45 @@ struct PendingGeneratedMemoryImage: Codable, Hashable {
 }
 
 struct PendingFavoriteChange: Codable, Hashable {
+    let id: UUID
     let sentenceID: UUID
     let isFavorite: Bool
+
+    init(id: UUID = UUID(), sentenceID: UUID, isFavorite: Bool) {
+        self.id = id
+        self.sentenceID = sentenceID
+        self.isFavorite = isFavorite
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, sentenceID, isFavorite }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        sentenceID = try values.decode(UUID.self, forKey: .sentenceID)
+        isFavorite = try values.decode(Bool.self, forKey: .isFavorite)
+    }
 }
 
 struct PendingMemoryDeletion: Codable, Hashable {
+    let id: UUID
     let memoryID: UUID
     let remoteImagePath: String?
+
+    init(id: UUID = UUID(), memoryID: UUID, remoteImagePath: String?) {
+        self.id = id
+        self.memoryID = memoryID
+        self.remoteImagePath = remoteImagePath
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, memoryID, remoteImagePath }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        memoryID = try values.decode(UUID.self, forKey: .memoryID)
+        remoteImagePath = try values.decodeIfPresent(String.self, forKey: .remoteImagePath)
+    }
 }
 
 struct PendingGuestCreditMigration: Codable, Hashable {
@@ -496,6 +528,8 @@ final class AppModel: ObservableObject {
     let purchaseConfirmationScope = PurchaseConfirmationScope()
     let supabaseService: SupabaseServicing
     let cloudSyncManager = CloudSyncManager()
+    var memorySyncState = MemorySyncState()
+    let favoriteChangeSync = FavoriteChangeSync()
     let defaults = UserDefaults.standard
     let localRateLimiter = LocalRateLimiter()
     let networkStatusMonitor = NetworkStatusMonitor()
@@ -506,6 +540,8 @@ final class AppModel: ObservableObject {
             if previousSession?.userID != supabaseSession?.userID || previousSession?.isAnonymous != supabaseSession?.isAnonymous {
                 accountRequests.invalidate()
                 sessionRefreshCoordinator.cancel()
+                favoriteChangeSync.cancel()
+                memorySyncState = MemorySyncState()
             }
             let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
             speechPreferenceSync?.activate(userID: speechOwner)

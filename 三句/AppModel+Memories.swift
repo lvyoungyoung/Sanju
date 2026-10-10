@@ -64,51 +64,33 @@ extension AppModel {
     }
 
     func toggleFavorite(sentenceID: UUID) {
-        let revision = accountRequests.revision
         guard let location = locateSentence(sentenceID) else { return }
-        memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite.toggle()
-        let isFavorite = memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite
-        favoriteSentencesCount += isFavorite ? 1 : -1
-        persistMemories()
-        guard isSignedIn else {
-            Task { await refreshSentenceStudyDueCount() }
-            return
-        }
-        Task {
-            guard (try? accountRequests.check(revision)) != nil else { return }
-            let didSync = await syncFavorite(sentenceID: sentenceID, isFavorite: isFavorite)
-            guard (try? accountRequests.check(revision)) != nil else { return }
-            if didSync {
-                clearPendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
-                await refreshSentenceStudyDueCount()
-            } else {
-                queuePendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
-                authErrorMessage = L10n.string("sync.favorite.failed", "收藏状态同步失败，会在下次同步时重试。")
-            }
-        }
+        setFavorite(sentenceID: sentenceID,
+                    isFavorite: !memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite)
     }
 
     func deleteFavorite(sentenceID: UUID) {
+        setFavorite(sentenceID: sentenceID, isFavorite: false)
+    }
+
+    private func setFavorite(sentenceID: UUID, isFavorite: Bool) {
         let revision = accountRequests.revision
         guard let location = locateSentence(sentenceID) else { return }
-        memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite = false
-        favoriteSentencesCount = max(0, favoriteSentencesCount - 1)
-        persistMemories()
-        guard isSignedIn else {
-            Task { await refreshSentenceStudyDueCount() }
-            return
+        guard memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite != isFavorite else { return }
+        memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite = isFavorite
+        favoriteSentencesCount = max(0, favoriteSentencesCount + (isFavorite ? 1 : -1))
+        memorySyncState.favoriteDidChange(sentenceID: sentenceID)
+        if hasAuthenticatedSession {
+            queuePendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
+        } else {
+            upsertPendingGuestMemoryMigrationIfNeeded(memories[location.memoryIndex])
         }
+        persistMemories()
         Task {
             guard (try? accountRequests.check(revision)) != nil else { return }
-            let didSync = await syncFavorite(sentenceID: sentenceID, isFavorite: false)
+            await syncPendingFavoriteChangesIfNeeded()
             guard (try? accountRequests.check(revision)) != nil else { return }
-            if didSync {
-                clearPendingFavoriteChange(sentenceID: sentenceID, isFavorite: false)
-                await refreshSentenceStudyDueCount()
-            } else {
-                queuePendingFavoriteChange(sentenceID: sentenceID, isFavorite: false)
-                authErrorMessage = L10n.string("sync.unfavorite.failed", "取消收藏失败，会在下次同步时重试。")
-            }
+            await refreshSentenceStudyDueCount()
         }
     }
 
@@ -117,14 +99,20 @@ extension AppModel {
         let deletedMemory = memories.first(where: { $0.id == memoryID })
         let imagePath = deletedMemory?.remoteImagePath
         let removedFavoriteCount = deletedMemory?.sentences.filter(\.isFavorite).count ?? 0
+        memorySyncState.memoryWasDeleted(memoryID: memoryID)
         removePendingMemoryImageUpload(memoryID: memoryID)
+        removePendingGuestMemoryMigration(memoryID: memoryID)
+        let sentenceIDs = Set(deletedMemory?.sentences.map(\.id) ?? [])
+        pendingFavoriteChanges.removeAll { sentenceIDs.contains($0.sentenceID) }
+        persistPendingFavoriteChanges()
         memories.removeAll { $0.id == memoryID }
         invalidateUserStudySceneDetailSentenceCache()
         recordedMemoriesCount = memories.count
         favoriteSentencesCount = max(0, favoriteSentencesCount - removedFavoriteCount)
-        if let deletedMemory, deletedMemory.syncedToAccount {
+        if let deletedMemory, deletedMemory.syncedToAccount || isSignedIn {
             queuePendingMemoryDeletion(memoryID: memoryID, remoteImagePath: imagePath)
         }
+        let deletion = pendingMemoryDeletions.first { $0.memoryID == memoryID }
         persistMemories()
         guard isSignedIn else {
             Task { await refreshSentenceStudyDueCount() }
@@ -135,7 +123,7 @@ extension AppModel {
             let didSync = await syncDeleteMemory(memoryID: memoryID, imagePath: imagePath)
             guard (try? accountRequests.check(revision)) != nil else { return }
             if didSync {
-                pendingMemoryDeletions.removeAll { $0.memoryID == memoryID }
+                pendingMemoryDeletions.removeAll { $0.id == deletion?.id }
                 persistPendingMemoryDeletions()
                 await refreshSentenceStudyDueCount()
             } else {
@@ -297,6 +285,7 @@ extension AppModel {
             if accountRequests.revision == revision { isSyncingRemoteMemories = false }
         }
 
+        let refreshSnapshot = memorySyncState.snapshot(memories: memories)
         do {
             let remoteRecords = try await supabaseService.fetchMemories(session: session)
             try accountRequests.check(revision)
@@ -342,40 +331,15 @@ extension AppModel {
             .filter { isMemoryContentComplete($0) }
 
             var loadedMemories = remoteMemories
-            var localMemoriesToKeep = memories.filter { memory in
-                isMemoryContentComplete(memory) && !memory.syncedToAccount
-            }
-
-            if !session.isAnonymous {
-                for queuedMemory in pendingGuestMemoryMigrationQueue
-                    .filter(isMemoryContentComplete)
-                    .sorted(by: { $0.createdAt > $1.createdAt }) {
-                    let alreadyQueuedLocally = localMemoriesToKeep.contains { localMemory in
-                        matchesMemoryIdentity(localMemory, queuedMemory)
-                    }
-
-                    if !alreadyQueuedLocally {
-                        localMemoriesToKeep.append(queuedMemory)
-                    }
-                }
-            }
-
-            for localMemory in localMemoriesToKeep {
-                let alreadyLoadedRemotely = remoteMemories.contains { remoteMemory in
-                    matchesMemoryIdentity(remoteMemory, localMemory)
-                }
-
-                if !alreadyLoadedRemotely {
-                    loadedMemories.append(localMemory)
-                }
-            }
-
-            loadedMemories = loadedMemories
-                .deduplicatedByMemoryID()
-                .sorted { $0.createdAt > $1.createdAt }
             await reconcilePendingGeneratedMemoryImage(with: &loadedMemories, session: session)
             try accountRequests.check(revision)
             guard isSessionStillCurrent(session) else { return }
+            loadedMemories = memorySyncState.merge(
+                remote: loadedMemories, current: memories,
+                queuedGuests: pendingGuestMemoryMigrationQueue.filter(isMemoryContentComplete),
+                pendingFavorites: pendingFavoriteChanges, pendingDeletions: pendingMemoryDeletions,
+                snapshot: refreshSnapshot
+            )
             memories = loadedMemories
             memoryLoadState = .loaded
             if refreshCounts {
@@ -390,17 +354,6 @@ extension AppModel {
             guard downloadsImages else {
                 remoteMemoryImageHydrationTargetCount = 0
                 guard isSessionStillCurrent(session) else { return }
-                memories = loadedMemories
-                if session.isAnonymous {
-                    replacePendingGuestMemoryMigrationQueue(with: loadedMemories.filter(isMemoryContentComplete))
-                }
-
-                if refreshCounts {
-                    recordedMemoriesCount = loadedMemories.count
-                    favoriteSentencesCount = loadedMemories.reduce(into: 0) { partialResult, memory in
-                        partialResult += memory.sentences.filter(\.isFavorite).count
-                    }
-                }
                 await refreshFavoriteSentenceStudyCounts()
                 try accountRequests.check(revision)
                 persistMemories()
@@ -488,7 +441,7 @@ extension AppModel {
     ) async -> [MemoryEntry] {
         var hydratedMemories = sourceMemories
         let cappedVisibleCount = min(visibleCount, hydratedMemories.count)
-        guard cappedVisibleCount > 0 else { return hydratedMemories }
+        guard cappedVisibleCount > 0 else { return memories }
         var downloadedImageCount = 0
 
         for index in hydratedMemories.indices {
@@ -591,17 +544,6 @@ extension AppModel {
         MemoryIdentity.matches(lhs, rhs)
     }
 
-    func syncFavorite(sentenceID: UUID, isFavorite: Bool) async -> Bool {
-        guard let session = try? await ensureValidSession() else { return false }
-
-        do {
-            try await supabaseService.updateSentenceFavorite(session: session, sentenceID: sentenceID, isFavorite: isFavorite)
-            return true
-        } catch {
-            return false
-        }
-    }
-
     func syncDeleteMemory(memoryID: UUID, imagePath: String?) async -> Bool {
         guard let session = try? await ensureValidSession() else { return false }
         do {
@@ -662,6 +604,7 @@ extension AppModel {
         session: SupabaseSession
     ) async {
         guard let remoteImagePath, !imageData.isEmpty else { return }
+        let revision = accountRequests.revision
 
         do {
             try await supabaseService.uploadMemoryImage(
@@ -669,8 +612,12 @@ extension AppModel {
                 path: remoteImagePath,
                 data: imageData
             )
+            try accountRequests.check(revision)
             removePendingMemoryImageUpload(memoryID: memoryID)
         } catch {
+            guard (try? accountRequests.check(revision)) != nil,
+                  !memorySyncState.deletedMemoryIDs.contains(memoryID),
+                  memories.contains(where: { $0.id == memoryID }) else { return }
             queuePendingMemoryImageUpload(memoryID: memoryID, remoteImagePath: remoteImagePath)
         }
     }
@@ -779,17 +726,6 @@ extension AppModel {
         pendingFavoriteChanges.append(
             PendingFavoriteChange(sentenceID: sentenceID, isFavorite: isFavorite)
         )
-        persistPendingFavoriteChanges()
-    }
-
-    func clearPendingFavoriteChange(sentenceID: UUID, isFavorite: Bool? = nil) {
-        let originalCount = pendingFavoriteChanges.count
-        pendingFavoriteChanges.removeAll { change in
-            guard change.sentenceID == sentenceID else { return false }
-            guard let isFavorite else { return true }
-            return change.isFavorite == isFavorite
-        }
-        guard pendingFavoriteChanges.count != originalCount else { return }
         persistPendingFavoriteChanges()
     }
 

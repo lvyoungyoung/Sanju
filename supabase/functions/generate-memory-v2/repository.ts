@@ -259,7 +259,7 @@ export async function loadCompletedGuestGenerationResponseIfNeeded(
 
   return jsonResponse({
     memory: {
-      id: crypto.randomUUID(),
+      id: completedJob.id,
       imagePath: "",
       createdAt: completedJob?.created_at ?? args.fallbackCreatedAt,
       provider: completedJob?.provider ?? null,

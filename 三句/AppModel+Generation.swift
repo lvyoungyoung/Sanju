@@ -281,7 +281,7 @@ extension AppModel {
                 )
             }
             return MemoryEntry(
-                id: UUID(),
+                id: generationResult.memory.id,
                 createdAt: generationResult.memory.createdAt,
                 imageData: memoryImageData,
                 remoteImagePath: nil,
@@ -582,12 +582,15 @@ extension AppModel {
             }
             guard !Task.isCancelled else { return nil }
 
+            let recoveredMemory: MemoryEntry
             if let existingIndex = memories.firstIndex(where: {
-                !previousMemoryIDs.contains($0.id) && matchesMemoryIdentity($0, recovered.memory)
+                matchesMemoryIdentity($0, recovered.memory)
             }) {
-                memories[existingIndex] = recovered.memory
+                // Replaying a completed job must not reset favorites changed after its first delivery.
+                recoveredMemory = memories[existingIndex]
             } else {
                 memories.insert(recovered.memory, at: 0)
+                recoveredMemory = recovered.memory
             }
 
             recordedMemoriesCount = memories.count
@@ -595,10 +598,10 @@ extension AppModel {
                 partialResult += memory.sentences.filter(\.isFavorite).count
             }
             remainingCredits = recovered.remainingCredits
-            upsertPendingGuestMemoryMigrationIfNeeded(recovered.memory)
+            upsertPendingGuestMemoryMigrationIfNeeded(recoveredMemory)
             persistMemories()
             persistCredits()
-            return recovered.memory
+            return recoveredMemory
         }
 
         return nil

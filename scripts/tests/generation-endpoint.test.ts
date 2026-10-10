@@ -313,7 +313,10 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     }
     const replay = await handler(request());
     strictEqual(replay.status, 200);
-    strictEqual((await replay.json()).memory.sentences[0].id, delivered[0].id);
+    const replayed = await replay.json();
+    strictEqual(replayed.memory.sentences[0].id, delivered[0].id);
+    strictEqual(replayed.memory.id, result.memory.id);
+    if (anonymous) strictEqual(replayed.memory.id, id);
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
     strictEqual(state.balance, 9);

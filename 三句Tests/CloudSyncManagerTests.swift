@@ -123,7 +123,7 @@ final class CloudSyncManagerTests: XCTestCase {
             queuedLocalStudyProgress: []
         )
 
-        XCTAssertEqual(plan.favoriteDifferenceCount, 0)
+        XCTAssertEqual(plan.queuedFavoriteChangesCount, 1)
         XCTAssertEqual(plan.totalCount, 1)
     }
 

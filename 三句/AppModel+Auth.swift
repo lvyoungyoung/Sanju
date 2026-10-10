@@ -400,7 +400,10 @@ extension AppModel {
             credentialWarningMessage = L10n.string("profile.guard.generation_in_progress", "正在为您生成描述，请稍后操作。")
             return
         }
-        guard !isSyncingPendingCloudChanges else { return }
+        guard !shouldPreventSignOutForCloudChanges else {
+            credentialWarningMessage = L10n.string("profile.guard.pending_cloud_sync", "正在同步数据到云端，请勿退出登录。")
+            return
+        }
         beginPendingLocalSignOutTransaction()
         completeLocalSignOutTransaction()
     }
@@ -427,6 +430,8 @@ extension AppModel {
     func resetLocalAccountState(resetCredits: Bool) {
         authenticationAttemptID = UUID()
         accountRequests.invalidate()
+        favoriteChangeSync.cancel()
+        memorySyncState = MemorySyncState()
         sessionRefreshCoordinator.cancel()
         sessionRestoreTask?.cancel()
         sessionRestoreTask = nil
@@ -1133,8 +1138,8 @@ extension AppModel {
         let guestMemoriesForMigration = memories.filter { memory in
             isMemoryContentComplete(memory) && !memory.syncedToAccount
         }
+        replacePendingGuestMemoryMigrationQueue(with: guestMemoriesForMigration)
         if !guestMemoriesForMigration.isEmpty {
-            replacePendingGuestMemoryMigrationQueue(with: guestMemoriesForMigration)
             persistMemories(for: AppStorageKey.guestMemoriesUserID)
         }
     }
@@ -1367,45 +1372,65 @@ extension AppModel {
         guard !queuedMemories.isEmpty else { return }
         guard let session = supabaseSession, !session.isAnonymous else { return }
 
-        var migratedMemories = memories
+        let revision = accountRequests.revision
 
         for guestMemory in queuedMemories {
             defer { advancePendingCloudSyncProgress() }
+            guard (try? accountRequests.check(revision)) != nil else { return }
+            guard !memorySyncState.deletedMemoryIDs.contains(guestMemory.id) else { continue }
 
             if let remoteMatch = remoteMemories.first(where: { matchesMemoryIdentity($0, guestMemory) }) {
                 transferGuestAlbumFeedback(from: guestMemory, to: remoteMatch, owner: session.userID)
-                if let existingIndex = migratedMemories.firstIndex(where: { $0.id == guestMemory.id }) {
-                    migratedMemories[existingIndex] = remoteMatch
-                }
+                applyMigratedGuestMemory(remoteMatch)
                 removePendingGuestMemoryMigration(memoryID: guestMemory.id)
                 continue
             }
 
-            guard !guestMemory.imageData.isEmpty else { continue }
+            let currentGuestMemory = memories.first { $0.id == guestMemory.id } ?? guestMemory
+            guard !currentGuestMemory.imageData.isEmpty else { continue }
 
             do {
-                let migratedMemory = try await supabaseService.createMemoryCopy(session: session, memory: guestMemory)
-                transferGuestAlbumFeedback(from: guestMemory, to: migratedMemory, owner: session.userID)
-                if let existingIndex = migratedMemories.firstIndex(where: { $0.id == guestMemory.id }) {
-                    migratedMemories[existingIndex] = migratedMemory
-                } else {
-                    migratedMemories.insert(migratedMemory, at: 0)
+                let migratedMemory = try await supabaseService.createMemoryCopy(session: session, memory: currentGuestMemory)
+                try accountRequests.check(revision)
+                // Deletion may have happened while the copy was being uploaded.
+                if memorySyncState.deletedMemoryIDs.contains(guestMemory.id) {
+                    queuePendingMemoryDeletion(memoryID: migratedMemory.id, remoteImagePath: migratedMemory.remoteImagePath)
+                    removePendingGuestMemoryMigration(memoryID: guestMemory.id)
+                    continue
                 }
+                transferGuestAlbumFeedback(from: guestMemory, to: migratedMemory, owner: session.userID)
+                applyMigratedGuestMemory(migratedMemory)
                 removePendingGuestMemoryMigration(memoryID: guestMemory.id)
             } catch {
+                guard (try? accountRequests.check(revision)) != nil else { return }
                 pendingCloudSyncDebugLog("guest memory migration failed: \(error.localizedDescription)")
                 authErrorMessage = L10n.string("sync.local_memories.failed", "本地回忆同步失败：%@", error.localizedDescription)
                 continue
             }
         }
 
-        migratedMemories.sort { $0.createdAt > $1.createdAt }
-        memories = migratedMemories
-        recordedMemoriesCount = migratedMemories.count
-        favoriteSentencesCount = migratedMemories.reduce(into: 0) { partialResult, memory in
+        memories.sort { $0.createdAt > $1.createdAt }
+        recordedMemoriesCount = memories.count
+        favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
             partialResult += memory.sentences.filter(\.isFavorite).count
         }
         persistMemories()
+    }
+
+    private func applyMigratedGuestMemory(_ migratedMemory: MemoryEntry) {
+        if let index = memories.firstIndex(where: { $0.id == migratedMemory.id }) {
+            let pendingFavorites = Dictionary(pendingFavoriteChanges.map { ($0.sentenceID, $0.isFavorite) },
+                                              uniquingKeysWith: { _, latest in latest })
+            var merged = migratedMemory
+            merged.sentences = migratedMemory.sentences.map { sentence in
+                var result = sentence
+                result.isFavorite = pendingFavorites[sentence.id] ?? sentence.isFavorite
+                return result
+            }
+            memories[index] = merged
+        } else {
+            memories.insert(migratedMemory, at: 0)
+        }
     }
 
     private func pendingGuestMemoriesToMigrate() -> [MemoryEntry] {
@@ -1422,94 +1447,52 @@ extension AppModel {
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    private func syncFavoriteDifferencesIfNeeded(using remoteMemories: [MemoryEntry]) async {
-        guard let session = supabaseSession, !session.isAnonymous else { return }
-
-        let queuedSentenceIDs = Set(pendingFavoriteChanges.map(\.sentenceID))
-        let remoteMemoryByID = remoteMemories.memoryDictionaryByID()
-
-        for localMemory in memories where localMemory.syncedToAccount {
-            guard let remoteMemory = remoteMemoryByID[localMemory.id] else { continue }
-
-            let remoteSentenceByID = remoteMemory.sentences.sentenceDictionaryByID()
-            for localSentence in localMemory.sentences {
-                guard !queuedSentenceIDs.contains(localSentence.id),
-                      let remoteSentence = remoteSentenceByID[localSentence.id],
-                      remoteSentence.isFavorite != localSentence.isFavorite else {
-                    continue
+    func syncPendingFavoriteChangesIfNeeded() async {
+        guard !pendingFavoriteChanges.isEmpty, isSignedIn else { return }
+        let revision = accountRequests.revision
+        await favoriteChangeSync.sync(
+            revision: revision,
+            next: { [weak self] attempted in
+                guard let self, (try? accountRequests.check(revision)) != nil else { return nil }
+                return pendingFavoriteChanges.first { change in
+                    guard !attempted.contains(change.id) else { return false }
+                    guard let location = self.locateSentence(change.sentenceID) else { return true }
+                    return self.memories[location.memoryIndex].syncedToAccount
                 }
-
-                defer { advancePendingCloudSyncProgress() }
-
-                do {
-                    try await supabaseService.updateSentenceFavorite(
-                        session: session,
-                        sentenceID: localSentence.id,
-                        isFavorite: localSentence.isFavorite
-                    )
-                } catch {
-                    queuePendingFavoriteChange(
-                        sentenceID: localSentence.id,
-                        isFavorite: localSentence.isFavorite
-                    )
-                    continue
-                }
-            }
-        }
-    }
-
-    private func syncPendingFavoriteChangesIfNeeded() async {
-        guard !pendingFavoriteChanges.isEmpty else { return }
-        guard let session = supabaseSession, !session.isAnonymous else { return }
-
-        let queuedChanges = pendingFavoriteChanges
-        let queuedChangeSet = Set(queuedChanges)
-        var remainingChanges: [PendingFavoriteChange] = []
-        var didUpdateLocalFavorite = false
-
-        for change in queuedChanges {
-            defer { advancePendingCloudSyncProgress() }
-
-            guard locateSentence(change.sentenceID) != nil else {
-                continue
-            }
-
-            do {
+            },
+            upload: { [weak self] change in
+                guard let self else { throw CancellationError() }
+                try accountRequests.check(revision)
+                guard locateSentence(change.sentenceID) != nil else { return }
+                let session = try await ensureValidSession()
+                try accountRequests.check(revision)
                 try await supabaseService.updateSentenceFavorite(
-                    session: session,
-                    sentenceID: change.sentenceID,
-                    isFavorite: change.isFavorite
+                    session: session, sentenceID: change.sentenceID, isFavorite: change.isFavorite
                 )
-                if let location = locateSentence(change.sentenceID) {
-                    memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite = change.isFavorite
-                    didUpdateLocalFavorite = true
-                }
-            } catch {
-                remainingChanges.append(change)
+                try accountRequests.check(revision)
+            },
+            acknowledge: { [weak self] change in
+                guard let self, (try? accountRequests.check(revision)) != nil else { return }
+                // Acknowledgement removes only this operation, never a newer tap or live state.
+                pendingFavoriteChanges.removeAll { $0.id == change.id }
+                persistPendingFavoriteChanges()
+                advancePendingCloudSyncProgress()
+            },
+            failed: { [weak self] _ in
+                guard let self, (try? accountRequests.check(revision)) != nil else { return }
+                authErrorMessage = L10n.string("sync.favorite.failed", "收藏状态同步失败，会在下次同步时重试。")
             }
-        }
-
-        let remainingChangeSet = Set(remainingChanges)
-        pendingFavoriteChanges = pendingFavoriteChanges.filter { change in
-            guard queuedChangeSet.contains(change) else { return true }
-            return remainingChangeSet.contains(change)
-        }
-        persistPendingFavoriteChanges()
-        if didUpdateLocalFavorite {
-            favoriteSentencesCount = memories.reduce(into: 0) { partialResult, memory in
-                partialResult += memory.sentences.filter(\.isFavorite).count
-            }
-            persistMemories()
-        }
+        )
     }
 
     func syncPendingMemoryDeletionsIfNeeded() async {
         guard !pendingMemoryDeletions.isEmpty else { return }
         guard let session = supabaseSession, !session.isAnonymous else { return }
 
-        var remainingDeletions: [PendingMemoryDeletion] = []
+        let revision = accountRequests.revision
+        let queuedDeletions = pendingMemoryDeletions
 
-        for deletion in pendingMemoryDeletions {
+        for deletion in queuedDeletions {
             defer { advancePendingCloudSyncProgress() }
 
             do {
@@ -1518,16 +1501,16 @@ extension AppModel {
                     memoryID: deletion.memoryID,
                     imagePath: deletion.remoteImagePath
                 )
+                try accountRequests.check(revision)
+                pendingMemoryDeletions.removeAll { $0 == deletion }
+                persistPendingMemoryDeletions()
             } catch {
-                remainingDeletions.append(deletion)
+                guard (try? accountRequests.check(revision)) != nil else { return }
             }
         }
-
-        pendingMemoryDeletions = remainingDeletions
-        persistPendingMemoryDeletions()
     }
 
-    private func localSentenceStudyProgressToMerge() -> [LocalSentenceStudyProgress] {
+    func localSentenceStudyProgressToMerge() -> [LocalSentenceStudyProgress] {
         localSentenceStudyProgress.values.filter { progress in
             guard let location = locateSentence(progress.sentenceID) else { return false }
             let sentence = memories[location.memoryIndex].sentences[location.sentenceIndex]
@@ -1635,8 +1618,6 @@ extension AppModel {
         await syncPendingMemoryDeletionsIfNeeded()
         guard (try? accountRequests.check(revision)) != nil else { return }
         await syncPendingFavoriteChangesIfNeeded()
-        guard (try? accountRequests.check(revision)) != nil else { return }
-        await syncFavoriteDifferencesIfNeeded(using: remoteMemories)
         guard (try? accountRequests.check(revision)) != nil else { return }
         await syncLocalSentenceStudyProgressIfNeeded()
         guard (try? accountRequests.check(revision)) != nil else { return }

@@ -11,14 +11,12 @@ struct CloudSyncPlan: Equatable {
     let queuedGuestMemoriesCount: Int
     let queuedMemoryDeletionsCount: Int
     let queuedFavoriteChangesCount: Int
-    let favoriteDifferenceCount: Int
     let localStudyProgressCount: Int
 
     var totalCount: Int {
         queuedGuestMemoriesCount
             + queuedMemoryDeletionsCount
             + queuedFavoriteChangesCount
-            + favoriteDifferenceCount
             + localStudyProgressCount
     }
 
@@ -26,7 +24,7 @@ struct CloudSyncPlan: Equatable {
         """
         session=\(sessionID) local=\(localMemoryCount) remote=\(remoteMemoryCount) \
         queuedGuestMemories=\(queuedGuestMemoriesCount) deletions=\(queuedMemoryDeletionsCount) \
-        queuedFavoriteChanges=\(queuedFavoriteChangesCount) favoriteDiffs=\(favoriteDifferenceCount) \
+        queuedFavoriteChanges=\(queuedFavoriteChangesCount) \
         localStudyProgress=\(localStudyProgressCount)
         """
     }
@@ -87,22 +85,11 @@ struct CloudSyncManager {
         queuedFavoriteChanges: [PendingFavoriteChange],
         queuedLocalStudyProgress: [LocalSentenceStudyProgress]
     ) -> CloudSyncPlan {
-        let queuedFavoriteSentenceIDs = Set(queuedFavoriteChanges.map(\.sentenceID))
-        let remoteMemoryByID = remoteMemories.memoryDictionaryByID()
-        let favoriteDifferenceCount = localMemories.reduce(into: 0) { partialResult, localMemory in
-            guard localMemory.syncedToAccount, let remoteMemory = remoteMemoryByID[localMemory.id] else { return }
-            let remoteSentenceByID = remoteMemory.sentences.sentenceDictionaryByID()
-            partialResult += localMemory.sentences.filter { localSentence in
-                !queuedFavoriteSentenceIDs.contains(localSentence.id)
-                    && remoteSentenceByID[localSentence.id]?.isFavorite != localSentence.isFavorite
-            }.count
-        }
-
+        // A cached difference is not an edit; only explicit outbox entries may be uploaded.
         return CloudSyncPlan(
             queuedGuestMemoriesCount: queuedGuestMemories.count,
             queuedMemoryDeletionsCount: queuedMemoryDeletions.count,
             queuedFavoriteChangesCount: queuedFavoriteChanges.count,
-            favoriteDifferenceCount: favoriteDifferenceCount,
             localStudyProgressCount: queuedLocalStudyProgress.count
         )
     }
