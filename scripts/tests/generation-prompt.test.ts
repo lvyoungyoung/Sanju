@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "23533a4d9f6946130fe2908dcd0df777a63a6bf80bded29159af8a4c2b888609",
+      "7c6cf1d1cb00d373d9db4aa18f3264a0c004f637879d9c8eb8e96943c0841db6",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "9facd8263b59ddf509f6caaf65775f18ec4fd98f385e6ca6625bc4a58fa8636a",
+      "f7b090f7fba73325c99a5fb425440227a4d7b57903d3eb9763ca20dc4b0d9f4c",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "6b40fe21241b072a291205603622a23ebfdb7db82747829665165151706709d2",
+      "279185ac83a926bd196d8f47765386d667dcef629f083fd23ca94210a62b1d7f",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "eea7b14766abe9f3997a71b2fee8c34bc48c1517a856c9e237c398cbd7714505",
+      "bab13092d1e26885b9f8b199e84d4139c440dcc7e2ce49d35368975da0374871",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -228,8 +228,6 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
       "提供合理的可能说法",
       "不替用户断定唯一的情绪或意图",
       "不编造无依据的具体姓名、地点、时间、经历或事实",
-      "不能声称对话已发生",
-      "仅画面明确涉及拍照才考虑请人拍照",
       "两组遵守同一档难度",
       "难度限制适用于所有 english 字段，优先于风格、幽默和细节",
       "不写诗、散文、文艺腔",
@@ -390,8 +388,11 @@ Deno.test("only scene expressions require a final question while photo expressio
       "问题均遵守难度，不附答案或新增字段",
       "问身边的人一句自然的聊天问题，不是看图理解题",
       "本次用开放式问题",
-      "不硬凑归属或许可问题，不问翻看私人物品",
+      "不硬凑归属或许可问题",
     ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
+    for (const removed of ["不问翻看私人物品", "仅画面明确涉及拍照才考虑请人拍照", "不能声称对话已发生"]) {
+      ok(!sceneRules.includes(removed), `${level}: removed question restriction ${removed}`);
+    }
     for (const photoExpression of [
       { english: "The evening light turns the clouds above the station pink.", chinese: "傍晚的光把车站上方的云映成了粉色。" },
       { english: "Are those clouds above the station turning pink in the sunset?", chinese: "车站上方的云是不是被夕阳映成了粉色？" },

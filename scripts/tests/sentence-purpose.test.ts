@@ -121,7 +121,6 @@ Deno.test("scene expressions keep natural atmosphere-led statements followed by 
       ok(statementsIndex >= 0 && conversationIndex > statementsIndex);
       ok(prompt.includes("只写用户那一句及直译"));
       ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
-      ok(prompt.includes("不能声称对话已发生"));
       ok(prompt.includes("此组允许基于画面的推测和假设口语"));
       ok(prompt.includes("贴合照片的氛围，内容有所区别"));
       ok(prompt.includes("不强制第一人称开头"));
@@ -132,7 +131,6 @@ Deno.test("scene expressions keep natural atmosphere-led statements followed by 
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));
       ok(prompt.includes("本次用开放式问题"));
-      ok(prompt.includes("仅画面明确涉及拍照才考虑请人拍照"));
       for (
         const example of [
           "I had such a lovely time with my friends.",
