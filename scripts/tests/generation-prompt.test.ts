@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "298b7d079d7769fd2fcd8d1b69b894d45702079b2f672bd9aa50b7fcebb783cc",
+      "23533a4d9f6946130fe2908dcd0df777a63a6bf80bded29159af8a4c2b888609",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "5f84949ed72134fb1e021279b8c34c78ec5eccc410356c0c15200ff12714f8ad",
+      "9facd8263b59ddf509f6caaf65775f18ec4fd98f385e6ca6625bc4a58fa8636a",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "2c1efa46ab785603bde353f157d19822444b795499b8ebed84a12ba8afd144ab",
+      "6b40fe21241b072a291205603622a23ebfdb7db82747829665165151706709d2",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "726ed9abbce7d53fbd8e33de8886dc1fcec2938338efebc5d2ed2b1c61ab8138",
+      "eea7b14766abe9f3997a71b2fee8c34bc48c1517a856c9e237c398cbd7714505",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -321,12 +321,11 @@ Deno.test("photo descriptions select useful observations instead of a fixed deta
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
     for (const rule of [
       "不推测人物关系、背景和内心感受",
-      "两句客观陈述和一句自然的交流表达",
+      "前两句是客观陈述，第三句也是客观陈述，或针对客观内容的自然提问",
       "选择两个值得向别人指出或分享的观察",
       "不固定为主体和细节",
       "不为覆盖颜色、材质、光线而罗列细节",
       "增加能表达的意思，不只堆形容词",
-      "现场自然会说、有交流价值的话",
       "不做识别或数数测验",
       "前两句不重复",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
@@ -335,21 +334,22 @@ Deno.test("photo descriptions select useful observations instead of a fixed deta
   }
 });
 
-Deno.test("photo expressions choose natural speech without forced questions or answer pairing", () => {
+Deno.test("all photo expressions stay objective without forced questions or answer pairing", () => {
   for (const level of levels) {
     for (const type of ["open", "closed"] as const) {
       const prompt = buildPromptText(level, "dual_tabs_v1", type);
       const rules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
       for (const rule of [
-        "前两句不重复，只说可见内容",
-        "贴合照片场景和前两句的话题",
-        "可以是回应、感叹、补充观察或问题",
+        "三句均以照片中可见的客观内容为依据",
+        "第三句围绕照片中的客观内容补充观察或自然提问",
+        "不表达主观感受、意愿或建议",
         "只有确实有询问需要时才提问",
         "不强制问句、问题类型或问答配对",
       ]) ok(rules.includes(rule), `${level}/${type}: ${rule}`);
       ok(!rules.includes("特点、变化或关系"));
       ok(!rules.includes("确认一个可见特点或关系"));
-      ok(!rules.slice(rules.indexOf("第三句")).includes("只说可见内容"));
+      ok(!rules.includes("回应、感叹"));
+      ok(!rules.includes("自然的交流表达"));
       ok(!prompt.includes("恰好能作为这个问题的自然回答"));
       ok(!prompt.includes("两组均为前两句陈述、第三句疑问"));
     }
@@ -393,8 +393,8 @@ Deno.test("only scene expressions require a final question while photo expressio
       "不硬凑归属或许可问题，不问翻看私人物品",
     ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
     for (const photoExpression of [
-      { english: "We still have time to enjoy the sunset.", chinese: "我们还有时间欣赏日落。" },
-      { english: "Would you like to watch the sunset with me?", chinese: "你想和我一起看日落吗？" },
+      { english: "The evening light turns the clouds above the station pink.", chinese: "傍晚的光把车站上方的云映成了粉色。" },
+      { english: "Are those clouds above the station turning pink in the sunset?", chinese: "车站上方的云是不是被夕阳映成了粉色？" },
     ]) {
       const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
       for (const group of ["image_descriptions", "scene_and_feelings"]) {
