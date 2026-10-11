@@ -33,7 +33,7 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "legacy_v1",
       "简单",
-      "c3323bd27520d0be0e0c1ad62e82d618247714eeb48271a46bd0ec43f70c3fc1",
+      "a24596caf877ce936e24e2dca440598b4facfe701f59d09fc7959ab5c943dacc",
     ],
     [
       "legacy_v1",
@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "0d1b38e286c3448355628b2d9a24741d10c62a5919bd98f63a76e8dc3bbce32b",
+      "ceb7f97a17dc3223ea253c24537b22295931fff3c4ca562bcc6a187313aaa80a",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "e05abcb1867c57b9ee0f49b7cea35ca84116861e60264fa1ce22e3e87d320c12",
+      "6207c6efbd8711dfdf6232b32dc5a6ca3817d4304934c596d354937db86d60b7",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "2de6e9c8fc3df8a8fa9c993cda46d38d1ebbbb81d65258c230a611e321a0c7f9",
+      "1c822bb6d1aec445e278636880ce852bcca15e236801da84d29c46433f9362ff",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "034baed15be238d63abcea808a3f24ea97f484dc64645f87a8af5d4892d4a022",
+      "9549e8ed4efbf800deb277f53f1ce0a9a7a5e74ee3bbe2cc6e3f29f0b490d049",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -294,7 +294,7 @@ Deno.test("both groups prioritize useful expressions over photo captions at ever
   }
 });
 
-Deno.test("adaptive style applies only to scene expressions and never overrides difficulty or intent", () => {
+Deno.test("adaptive style applies only to scene expressions and preserves difficulty without restricting intent", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const styleStart = prompt.indexOf("场景表达风格自适应：");
@@ -307,8 +307,11 @@ Deno.test("adaptive style applies only to scene expressions and never overrides 
       "吐槽/丧萌", "温暖/治愈", "诗意/探索", "标准/轻快",
       "不凭咖啡或阴天单独决定", "不猜测周一、深夜或疲惫",
       "无明确风格线索时用此项", "不写抽象哲理、比喻或文学独白",
-      "不改变表达意图、难度、词数或问题类型", "不强加情绪", "不写修辞问句",
+      "风格须遵守难度、词数和问题类型", "不写修辞问句",
     ]) ok(style.includes(rule), `${level}: ${rule}`);
+    for (const removed of ["风格只调整语气", "不改变表达意图", "不强加情绪", "不只写氛围旁白"]) {
+      ok(!prompt.includes(removed), `${level}: removed restriction ${removed}`);
+    }
     strictEqual(style.includes("启蒙仅用温暖或轻快的儿童口语"), level === "启蒙");
     ok(!prompt.slice(0, sceneStart).includes("风格自适应"));
     ok(!buildPromptText(level, "legacy_v1").includes("风格自适应"));
@@ -395,7 +398,7 @@ Deno.test("beginner word limits remain explicit per sentence in both formats", (
     const prompt = buildPromptText("简单", format);
     for (
       const rule of [
-        "每句必须 6 到 10 个英文单词，逐句限制、不是平均，最多 10 个",
+        "每句必须 8 到 12 个英文单词，逐句限制、不是平均，最多 12 个",
         "难度限制适用于所有 english 字段",
         "优先于风格、幽默和细节",
         "输出前按空格逐句检查",
@@ -405,9 +408,10 @@ Deno.test("beginner word limits remain explicit per sentence in both formats", (
         "不用从句、完成时、被动语态、分词修饰、抽象书面词、生僻习语、比喻或拟人",
       ]
     ) ok(prompt.includes(rule), `${format}: ${rule}`);
-    ok(!prompt.includes("尽量控制在 6 到 10"));
+    ok(!prompt.includes("6 到 10 个英文单词"));
+    ok(!prompt.includes("最多 10 个"));
     for (const level of ["启蒙", "中等", "高级"] as const) {
-      ok(!buildPromptText(level, format).includes("最多 10 个"));
+      ok(!buildPromptText(level, format).includes("最多 12 个"));
     }
   }
 });
@@ -420,7 +424,7 @@ Deno.test("active difficulty tiers keep their length, information and grammar ru
       "极常见的具体词、简单感受词",
       "不用从句、抽象词、习语",
     ]],
-    ["简单", "6 到 10 个英文单词", [
+    ["简单", "8 到 12 个英文单词", [
       "一个意思及一个具体细节",
       "一个简单分句",
       "常见动词的一般过去时",

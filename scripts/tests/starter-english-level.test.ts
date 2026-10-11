@@ -28,7 +28,7 @@ Deno.test("starter keeps natural child-safe speech in both generation formats", 
 
 Deno.test("non-starter levels keep natural speech within their difficulty", () => {
   for (
-    const [level, length] of [["简单", "6 到 10 个英文单词"], [
+    const [level, length] of [["简单", "8 到 12 个英文单词"], [
       "中等",
       "10 到 16 个英文单词",
     ], [
