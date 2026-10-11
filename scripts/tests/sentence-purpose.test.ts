@@ -127,7 +127,7 @@ Deno.test("scene expressions choose useful intentions followed by a conversation
       ok(prompt.includes("不强制第一人称开头"));
       ok(!prompt.includes("第二句优先 I/we"));
       ok(!prompt.includes("第一、三句优先 I/we"));
-      ok(prompt.includes("两组均为前两句陈述、第三句疑问"));
+      ok(prompt.includes("仅 scene_and_feelings 必须前两句陈述、第三句疑问"));
       ok(!prompt.includes("第三句不受前面“不要虚构对话”的限制"));
       ok(!prompt.includes("前两句优先使用 I 或 we"));
       ok(!prompt.includes("3. 我想记住的话："));

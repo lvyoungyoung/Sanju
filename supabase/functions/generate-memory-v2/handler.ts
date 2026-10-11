@@ -2,7 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
 import { scheduleGenerationEnrichment, type EnrichmentScope } from "../_shared/generation-enrichment.ts"
 import type { GenerationTiming } from "../_shared/generation-timing.ts"
-import { type GenerationFormat, buildPromptText, selectQuestionTypes } from "./content.ts"
+import { type GenerationFormat, buildPromptText, selectSceneQuestionType } from "./content.ts"
 import { serializeGenerationError, decodeBase64, jsonResponse, normalizeOptionalUUID, isTimeoutError, generationPendingResponse } from "./responses.ts"
 import { requestWithFallback, usesDeepSeekGeneration } from "./providers.ts"
 import { loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGuestGenerationResponseIfNeeded, markAuthenticatedGenerationJobFailed, tryAcquireGenerationSlot, releaseGenerationSlot, removeStoragePathQuietly, markGuestGenerationJobFailed } from "./repository.ts"
@@ -356,9 +356,9 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     }
 
     timing.start("prompt")
-    // Choose once so model retries and provider fallback keep the same question types.
-    const questionTypes = generationFormat === "dual_tabs_v1" ? selectQuestionTypes() : undefined
-    const promptText = buildPromptText(englishLevel, generationFormat, questionTypes)
+    // Choose once so retries and provider fallback keep the same scene question type.
+    const sceneQuestionType = generationFormat === "dual_tabs_v1" ? selectSceneQuestionType() : undefined
+    const promptText = buildPromptText(englishLevel, generationFormat, sceneQuestionType)
 
     const completionResult = await requestWithFallback({
       imageBase64,

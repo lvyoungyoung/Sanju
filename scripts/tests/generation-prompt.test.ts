@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import {
   buildPromptText,
   parseGeneratedContent,
-  selectQuestionTypes,
+  selectSceneQuestionType,
 } from "../../supabase/functions/generate-memory-v2/content.ts";
 import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
 import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "50572a7caafff293efc09fea15401695beb00fb67e3622f41f2ffc7c3b3ebc73",
+      "c4499980498ab97c9042f3544e04173ad84c22a0450a580e0ab25cbe1891f2ec",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "e2ed5efebce501f17571ae31d1973c1074e8d98960efa439af731bb09056e3aa",
+      "cd9ee0f5d131221ee07ca3f34a56fcd52e583e45aa8aff27dff262403dd0fcb9",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "cce59fc21683d330fd5411d4e383f3ed330d6f0ddc5e3d1a93671ff8a7ebab15",
+      "7a61f9f01dbe89204a679dfe4cdbbd8a37252e392f7694771eb22067474f1908",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "e9f12530991b79b635b4ec6ab3acb5752bd81a09dd61883b5198bc3bd2645576",
+      "13600b1c8ae83f40fc702bd25793a495edc707587c1d77634cc409c4648e1126",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -238,39 +238,32 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
   ) ok(prompt.includes(text), text);
 });
 
-Deno.test("question types are sampled independently with an even open/closed split", () => {
-  for (const imageValue of [0, 0.499999, 0.5, 0.999999]) {
-    for (const sceneValue of [0, 0.499999, 0.5, 0.999999]) {
-      const values = [imageValue, sceneValue];
-      let calls = 0;
-      deepStrictEqual(selectQuestionTypes(() => values[calls++]), {
-        imageDescriptions: imageValue < 0.5 ? "open" : "closed",
-        sceneAndFeelings: sceneValue < 0.5 ? "open" : "closed",
-      });
-      strictEqual(calls, 2);
-    }
+Deno.test("only scene question type is sampled with an even open/closed split", () => {
+  for (const value of [0, 0.499999, 0.5, 0.999999]) {
+    let calls = 0;
+    strictEqual(selectSceneQuestionType(() => { calls++; return value; }), value < 0.5 ? "open" : "closed");
+    strictEqual(calls, 1);
   }
 });
 
-Deno.test("both question types reach their own group at every difficulty", () => {
+Deno.test("question types affect only scene expressions at every difficulty", () => {
   for (const level of levels) {
-    for (const imageValue of [0, 0.5]) {
-      for (const sceneValue of [0, 0.5]) {
-        const values = [imageValue, sceneValue];
-        const types = selectQuestionTypes(() => values.shift()!);
-        const prompt = buildPromptText(level, "dual_tabs_v1", types);
-        const imageRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
-        const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："));
-        for (const [rules, type] of [[imageRules, types.imageDescriptions], [sceneRules, types.sceneAndFeelings]]) {
-          ok(rules.includes(type === "open" ? "本次用开放式问题" : "本次用封闭式问题"));
-          ok(!rules.includes(type === "open" ? "本次用封闭式问题" : "本次用开放式问题"));
-        }
-        const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-        strictEqual(example.image_descriptions.length, 3);
-        strictEqual(example.scene_and_feelings.length, 3);
-        ok(prompt.length <= 4500, `Prompt grew to ${prompt.length} characters`);
-        strictEqual(buildPromptText(level, "legacy_v1", types), buildPromptText(level, "legacy_v1"));
-      }
+    let expectedImageRules: string | undefined;
+    for (const type of ["open", "closed"] as const) {
+      const prompt = buildPromptText(level, "dual_tabs_v1", type);
+      const imageRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
+      const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："));
+      expectedImageRules ??= imageRules;
+      strictEqual(imageRules, expectedImageRules);
+      ok(!imageRules.includes("本次用开放式问题"));
+      ok(!imageRules.includes("本次用封闭式问题"));
+      ok(sceneRules.includes(type === "open" ? "本次用开放式问题" : "本次用封闭式问题"));
+      ok(!sceneRules.includes(type === "open" ? "本次用封闭式问题" : "本次用开放式问题"));
+      const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+      strictEqual(example.image_descriptions.length, 3);
+      strictEqual(example.scene_and_feelings.length, 3);
+      ok(prompt.length <= 4500, `Prompt grew to ${prompt.length} characters`);
+      strictEqual(buildPromptText(level, "legacy_v1", type), buildPromptText(level, "legacy_v1"));
     }
   }
 });
@@ -325,13 +318,12 @@ Deno.test("photo descriptions select useful observations instead of a fixed deta
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
     for (const rule of [
       "不推测人物关系、背景和内心感受",
-      "两句客观陈述和一个自然的聊天问题",
+      "两句客观陈述和一句自然的交流表达",
       "选择两个值得向别人指出或分享的观察",
       "不固定为主体和细节",
       "不为覆盖颜色、材质、光线而罗列细节",
       "增加能表达的意思，不只堆形容词",
-      "现场会自然问身边人的话",
-      "不要求对方描述照片",
+      "现场自然会说、有交流价值的话",
       "不做识别或数数测验",
       "前两句不重复",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
@@ -340,24 +332,23 @@ Deno.test("photo descriptions select useful observations instead of a fixed deta
   }
 });
 
-Deno.test("photo questions connect to observations without being limited to visible facts", () => {
+Deno.test("photo expressions choose natural speech without forced questions or answer pairing", () => {
   for (const level of levels) {
-    for (const imageDescriptions of ["open", "closed"] as const) {
-      const prompt = buildPromptText(level, "dual_tabs_v1", {
-        imageDescriptions, sceneAndFeelings: "open",
-      });
+    for (const type of ["open", "closed"] as const) {
+      const prompt = buildPromptText(level, "dual_tabs_v1", type);
       const rules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
       for (const rule of [
         "前两句不重复，只说可见内容",
-        "贴合前两句的话题",
-        "不限于询问可见事实",
-        "优先让前两句中的一句恰好能作为这个问题的自然回答",
-        "不为凑问答硬造问题",
-      ]) ok(rules.includes(rule), `${level}/${imageDescriptions}: ${rule}`);
+        "贴合照片场景和前两句的话题",
+        "可以是回应、感叹、补充观察或问题",
+        "只有确实有询问需要时才提问",
+        "不强制问句、问题类型或问答配对",
+      ]) ok(rules.includes(rule), `${level}/${type}: ${rule}`);
       ok(!rules.includes("特点、变化或关系"));
       ok(!rules.includes("确认一个可见特点或关系"));
       ok(!rules.slice(rules.indexOf("第三句")).includes("只说可见内容"));
-      ok(prompt.includes("问答可围绕同一信息，其他句子不复述"));
+      ok(!prompt.includes("恰好能作为这个问题的自然回答"));
+      ok(!prompt.includes("两组均为前两句陈述、第三句疑问"));
     }
   }
 });
@@ -384,30 +375,35 @@ Deno.test("scene expressions select communication needs without fixing feelings 
   }
 });
 
-Deno.test("each group ends in a question aligned with its own purpose without changing the schema", () => {
+Deno.test("only scene expressions require a final question while photo expressions accept either form", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
     for (const rule of [
-      "两组均为前两句陈述、第三句疑问",
+      "仅 scene_and_feelings 必须前两句陈述、第三句疑问",
       "以 ? 结尾，中文也用问句",
-      "问题遵守难度，不附答案或新增字段",
+      "问题均遵守难度，不附答案或新增字段",
       "问身边的人一句自然的聊天问题，不是看图理解题",
       "本次用开放式问题",
       "不硬凑归属或许可问题，不问翻看私人物品",
     ]) ok(sceneRules.includes(rule), `${level}: ${rule}`);
-    const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
-    for (const group of ["image_descriptions", "scene_and_feelings"]) {
-      example[group][2] = { ...example[group][2], english: group === "image_descriptions"
-        ? "What is making the water look so bright?" : "Would you like to stay here longer?",
-        chinese: group === "image_descriptions" ? "是什么让水面看起来这么亮？" : "你想在这里多待一会儿吗？" };
-    }
-    const parsed = parseGeneratedContent(JSON.stringify(example), "dual_tabs_v1");
-    ok(parsed);
-    strictEqual(parsed.sentences.length, 6);
-    for (const [index, group] of [[2, "image_descriptions"], [5, "scene_and_feelings"]] as const) {
-      strictEqual(parsed.sentences[index].english, example[group][2].english);
-      strictEqual(parsed.sentences[index].chinese, example[group][2].chinese);
+    for (const photoExpression of [
+      { english: "We still have time to enjoy the sunset.", chinese: "我们还有时间欣赏日落。" },
+      { english: "Would you like to watch the sunset with me?", chinese: "你想和我一起看日落吗？" },
+    ]) {
+      const example = JSON.parse(prompt.slice(prompt.lastIndexOf("\n{") + 1));
+      for (const group of ["image_descriptions", "scene_and_feelings"]) {
+        example[group][2] = { ...example[group][2], english: group === "image_descriptions"
+          ? photoExpression.english : "Would you like to stay here longer?",
+          chinese: group === "image_descriptions" ? photoExpression.chinese : "你想在这里多待一会儿吗？" };
+      }
+      const parsed = parseGeneratedContent(JSON.stringify(example), "dual_tabs_v1");
+      ok(parsed);
+      strictEqual(parsed.sentences.length, 6);
+      for (const [index, group] of [[2, "image_descriptions"], [5, "scene_and_feelings"]] as const) {
+        strictEqual(parsed.sentences[index].english, example[group][2].english);
+        strictEqual(parsed.sentences[index].chinese, example[group][2].chinese);
+      }
     }
     ok(!buildPromptText(level, "legacy_v1").includes("第三句疑问"));
   }

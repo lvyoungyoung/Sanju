@@ -13,16 +13,8 @@ export interface Sentence {
 type SentencePresentationGroup = "what_i_see" | "what_i_say"
 export type GenerationFormat = "legacy_v1" | "dual_tabs_v1"
 type QuestionType = "open" | "closed"
-interface QuestionTypes {
-  imageDescriptions: QuestionType
-  sceneAndFeelings: QuestionType
-}
-
-export function selectQuestionTypes(random: () => number = Math.random): QuestionTypes {
-  return {
-    imageDescriptions: random() < 0.5 ? "open" : "closed",
-    sceneAndFeelings: random() < 0.5 ? "open" : "closed",
-  }
+export function selectSceneQuestionType(random: () => number = Math.random): QuestionType {
+  return random() < 0.5 ? "open" : "closed"
 }
 
 export type FinalizedSentence = Sentence & {
@@ -41,7 +33,7 @@ export type ProviderName = "mimo" | "kimi" | "deepseek"
 export function buildPromptText(
   englishLevel: "启蒙" | "简单" | "中等" | "高级",
   generationFormat: GenerationFormat,
-  questionTypes: QuestionTypes = { imageDescriptions: "open", sceneAndFeelings: "open" }
+  sceneQuestionType: QuestionType = "open"
 ): string {
   const englishLevelPrompt =
     englishLevel === "启蒙"
@@ -63,10 +55,7 @@ export function buildPromptText(
       : "生动活泼自然的日常口语，动词具体、搭配自然、有节奏。可轻微幽默或俏皮，但须来自可见的对比、动作或细节；不用段子、网络梗、夸张笑话或生硬拟人，不虚构动作、对话、情绪或细节。"
 
   if (generationFormat === "dual_tabs_v1") {
-    const imageQuestion = questionTypes.imageDescriptions === "open"
-      ? "本次用开放式问题，不用是否题，不要求对方描述照片。"
-      : "本次用封闭式问题，可用是否题或二选一。"
-    const sceneQuestion = questionTypes.sceneAndFeelings === "open"
+    const sceneQuestion = sceneQuestionType === "open"
       ? "本次用开放式问题，邀请分享偏好、想法或下一步打算，不用是否题。"
       : "本次用封闭式问题，确认意愿、需要或选择，可用是否题或二选一。"
     return `
@@ -77,9 +66,9 @@ ${englishLevelPrompt}
 ${naturalSpeechPrompt}
 ${difficultyPriorityPrompt}
 
-image_descriptions：两句客观陈述和一个自然的聊天问题。
+image_descriptions：两句客观陈述和一句自然的交流表达。
 前两句不重复，只说可见内容，不推测人物关系、背景和内心感受。选择两个值得向别人指出或分享的观察，不固定为主体和细节，不为覆盖颜色、材质、光线而罗列细节。启蒙说清事物和动作；难度提高时增加能表达的意思，不只堆形容词。
-第三句是现场会自然问身边人的话，贴合前两句的话题，不限于询问可见事实。优先让前两句中的一句恰好能作为这个问题的自然回答，不为凑问答硬造问题，不做识别或数数测验。${imageQuestion}
+第三句贴合照片场景和前两句的话题，可以是回应、感叹、补充观察或问题，优先选现场自然会说、有交流价值的话。只有确实有询问需要时才提问，不强制问句、问题类型或问答配对，不做识别或数数测验。
 
 scene_and_feelings：两句日常陈述和一个聊天问题，表达想法、需要或与人交流，不复述画面描述。
 场景表达风格自适应：仅作用于本组。综合照片的场景、色调与氛围，选一种最契合的语气，不凭咖啡或阴天单独决定：
@@ -91,10 +80,10 @@ scene_and_feelings：两句日常陈述和一个聊天问题，表达想法、�
 前两句按场景选择最有用的两种表达意图：表达需要、偏好或感受，分享经历，提出建议或邀请。不固定为感受加经历，不必覆盖所有意图；不要把所有照片都变成点餐、问路。贴合具体对象或活动。
 此组允许基于画面的推测和假设口语，提供合理的可能说法，不替用户断定唯一的情绪或意图。不编造无依据的具体姓名、地点、时间、经历或事实，不加推测标签。不机械套用 I feel + 形容词，不强制第一人称开头；句式服从难度。
 第三句问身边的人一句自然的聊天问题，不是看图理解题。${sceneQuestion}不硬凑归属或许可问题，不问翻看私人物品。仅画面明确涉及拍照才考虑请人拍照。不能声称对话已发生；只写用户那一句及直译，不写双方对话、标签、额外引号或 I would say 开头。
-六句提供不同的表达选择，不虚构细节；问答可围绕同一信息，其他句子不复述。
+六句提供不同的表达选择，不虚构细节、不重复堆砌同一意思。
 ${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文单词；用地道搭配、准确感受词和自然节奏，不用复杂从句、书面词、文学修辞或刻意难词。' : '两组遵守同一档难度。'}场景表达保持日常口语，不写诗、散文、文艺腔。
 截图、界面、图表、股票、网页、文档等信息图，场景表达只说看到、记录或分享信息，不分析数据或涨跌。
-两组均为前两句陈述、第三句疑问，以 ? 结尾，中文也用问句。问题遵守难度，不附答案或新增字段。
+仅 scene_and_feelings 必须前两句陈述、第三句疑问，以 ? 结尾，中文也用问句。两组的问题均遵守难度，不附答案或新增字段。
 
 ${buildSentenceMetadataRules()}
 

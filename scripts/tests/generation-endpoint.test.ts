@@ -259,25 +259,25 @@ Deno.test("style-free and legacy style requests use the same natural prompt for 
   }
 });
 
-Deno.test("endpoint chooses both question types once and preserves them across provider fallback", async () => {
+Deno.test("endpoint chooses only the scene question type once and preserves it across fallback", async () => {
   for (const anonymous of [false, true]) {
-    for (const imageValue of [0.25, 0.75]) {
-      for (const sceneValue of [0.25, 0.75]) {
-        reset({ anonymous, dual: true, projectURL: "https://api-staging.sanju.cc", deepseekStatus: 503,
-          questionRandomValues: [imageValue, sceneValue], questionRandomCalls: 0 });
-        const response = await handler(request());
-        strictEqual(response.status, 200);
-        strictEqual((await response.json()).memory.sentences.length, 6);
-        strictEqual(state.questionRandomCalls, 2);
-        strictEqual(state.modelRequests.length, 2);
-        const prompts = state.modelRequests.map((body: any) => body.messages[1].content[1].text);
-        strictEqual(prompts[0], prompts[1]);
-        const imageRules = prompts[0].slice(prompts[0].indexOf("image_descriptions："), prompts[0].indexOf("scene_and_feelings："));
-        const sceneRules = prompts[0].slice(prompts[0].indexOf("scene_and_feelings："));
-        strictEqual(imageRules.includes(imageValue < 0.5 ? "本次用开放式问题" : "本次用封闭式问题"), true);
-        strictEqual(sceneRules.includes(sceneValue < 0.5 ? "本次用开放式问题" : "本次用封闭式问题"), true);
-        strictEqual(state.debits, 1);
-      }
+    for (const sceneValue of [0.25, 0.75]) {
+      reset({ anonymous, dual: true, projectURL: "https://api-staging.sanju.cc", deepseekStatus: 503,
+        questionRandomValues: [sceneValue], questionRandomCalls: 0 });
+      const response = await handler(request());
+      strictEqual(response.status, 200);
+      strictEqual((await response.json()).memory.sentences.length, 6);
+      strictEqual(state.questionRandomCalls, 1);
+      strictEqual(state.modelRequests.length, 2);
+      const prompts = state.modelRequests.map((body: any) => body.messages[1].content[1].text);
+      strictEqual(prompts[0], prompts[1]);
+      const imageRules = prompts[0].slice(prompts[0].indexOf("image_descriptions："), prompts[0].indexOf("scene_and_feelings："));
+      const sceneRules = prompts[0].slice(prompts[0].indexOf("scene_and_feelings："));
+      strictEqual(imageRules.includes("本次用开放式问题"), false);
+      strictEqual(imageRules.includes("本次用封闭式问题"), false);
+      strictEqual(imageRules.includes("不强制问句、问题类型或问答配对"), true);
+      strictEqual(sceneRules.includes(sceneValue < 0.5 ? "本次用开放式问题" : "本次用封闭式问题"), true);
+      strictEqual(state.debits, 1);
     }
   }
   reset({ dual: false });
