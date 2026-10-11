@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "048957ab7e50180835fc58b7db0beafe70909cdd348eb7b19de13445a4e132b9",
+      "298b7d079d7769fd2fcd8d1b69b894d45702079b2f672bd9aa50b7fcebb783cc",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "165da9983d6b3049a93d8732355c98fe4b1f803cd4d8bceac03f8929c0109b82",
+      "5f84949ed72134fb1e021279b8c34c78ec5eccc410356c0c15200ff12714f8ad",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "b1359e8980c8f4483f2a845fb0f8a84f952191f1995d51f822673dfcb7d0b31d",
+      "2c1efa46ab785603bde353f157d19822444b795499b8ebed84a12ba8afd144ab",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "6d8f5148887346a61a32a246f2d70d71c96245960d9254625d2d0b6f0d1be701",
+      "726ed9abbce7d53fbd8e33de8886dc1fcec2938338efebc5d2ed2b1c61ab8138",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -107,7 +107,7 @@ Deno.test("photo classification preserves all existing sentence output requireme
 Deno.test("natural beginner guidance stays compact without shrinking output rules", () => {
   const prompt = buildPromptText("简单", "dual_tabs_v1");
   const styleStart = prompt.indexOf("场景表达风格自适应：");
-  const styleEnd = prompt.indexOf("前两句按场景选择最有用的两种表达意图");
+  const styleEnd = prompt.indexOf("前两句生成用户在这个场景下自然会说的话");
   ok(styleStart >= 0 && styleEnd > styleStart);
   const styleRules = prompt.slice(styleStart, styleEnd);
   ok(styleRules.length <= 500, `Style rules grew to ${styleRules.length} characters`);
@@ -278,8 +278,7 @@ Deno.test("both groups prioritize useful expressions over photo captions at ever
       "用户在这里会对谁说、想表达什么",
       "下次遇到类似场景还能用吗",
       "表达价值优先于细节覆盖、修辞和句式变化",
-      "不必覆盖所有意图",
-      "不要把所有照片都变成点餐、问路",
+      "前两句生成用户在这个场景下自然会说的话",
       "六句提供不同的表达选择",
     ]) ok(prompt.includes(rule), `${level}: ${rule}`);
     ok(!prompt.includes("1. 我当时的感受："));
@@ -292,7 +291,7 @@ Deno.test("adaptive style applies only to scene expressions and preserves diffic
     const prompt = buildPromptText(level, "dual_tabs_v1");
     const styleStart = prompt.indexOf("场景表达风格自适应：");
     const sceneStart = prompt.indexOf("scene_and_feelings：");
-    const styleEnd = prompt.indexOf("前两句按场景选择最有用的两种表达意图");
+    const styleEnd = prompt.indexOf("前两句生成用户在这个场景下自然会说的话");
     ok(styleStart > sceneStart && styleEnd > styleStart);
     const style = prompt.slice(styleStart, styleEnd);
     for (const rule of [
@@ -357,20 +356,22 @@ Deno.test("photo expressions choose natural speech without forced questions or a
   }
 });
 
-Deno.test("scene expressions select communication needs without fixing feelings or events", () => {
+Deno.test("scene expressions follow atmosphere without prescribing distinct communication intentions", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
     for (const rule of [
-      "贴合具体对象或活动",
-      "按场景选择最有用的两种表达意图",
-      "表达需要、偏好或感受，分享经历，提出建议或邀请",
-      "不固定为感受加经历",
+      "前两句生成用户在这个场景下自然会说的话，贴合照片的氛围，内容有所区别。",
       "不复述画面描述",
       "不替用户断定唯一的情绪或意图",
       "不机械套用 I feel + 形容词",
       "不强制第一人称开头",
       "句式服从难度",
     ]) ok(prompt.includes(rule), `${level}: ${rule}`);
+    for (const removed of [
+      "选择最有用的两种表达意图",
+      "表达需要、偏好或感受，分享经历，提出建议或邀请",
+      "不固定为感受加经历", "不必覆盖所有意图", "不要把所有照片都变成点餐、问路",
+    ]) ok(!prompt.includes(removed), `${level}: removed intention checklist ${removed}`);
     ok(!prompt.includes("第一、三句优先 I/we"));
     const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
     ok(!/例如|示例|example/i.test(sceneRules), "Do not seed another repeated English opening with an example");

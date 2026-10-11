@@ -111,19 +111,19 @@ Deno.test("foreground generation requests metadata without changing the sentence
     }
   }
 });
-Deno.test("scene expressions choose useful intentions followed by a conversation question at every difficulty", () => {
+Deno.test("scene expressions keep natural atmosphere-led statements followed by a conversation question", () => {
   for (const level of ["启蒙", "简单", "中等", "高级"] as const) {
     {
       const prompt = buildPromptText(level, "dual_tabs_v1");
       const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："));
-      const intentionsIndex = sceneRules.indexOf("前两句按场景选择最有用的两种表达意图");
+      const statementsIndex = sceneRules.indexOf("前两句生成用户在这个场景下自然会说的话");
       const conversationIndex = sceneRules.indexOf("第三句问身边的人");
-      ok(intentionsIndex >= 0 && conversationIndex > intentionsIndex);
+      ok(statementsIndex >= 0 && conversationIndex > statementsIndex);
       ok(prompt.includes("只写用户那一句及直译"));
       ok(prompt.includes("不写双方对话、标签、额外引号或 I would say 开头"));
       ok(prompt.includes("不能声称对话已发生"));
       ok(prompt.includes("此组允许基于画面的推测和假设口语"));
-      ok(prompt.includes("不固定为感受加经历"));
+      ok(prompt.includes("贴合照片的氛围，内容有所区别"));
       ok(prompt.includes("不强制第一人称开头"));
       ok(!prompt.includes("第二句优先 I/we"));
       ok(!prompt.includes("第一、三句优先 I/we"));
