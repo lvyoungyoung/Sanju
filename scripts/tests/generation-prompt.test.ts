@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "c4499980498ab97c9042f3544e04173ad84c22a0450a580e0ab25cbe1891f2ec",
+      "048957ab7e50180835fc58b7db0beafe70909cdd348eb7b19de13445a4e132b9",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "cd9ee0f5d131221ee07ca3f34a56fcd52e583e45aa8aff27dff262403dd0fcb9",
+      "165da9983d6b3049a93d8732355c98fe4b1f803cd4d8bceac03f8929c0109b82",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "7a61f9f01dbe89204a679dfe4cdbbd8a37252e392f7694771eb22067474f1908",
+      "b1359e8980c8f4483f2a845fb0f8a84f952191f1995d51f822673dfcb7d0b31d",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "13600b1c8ae83f40fc702bd25793a495edc707587c1d77634cc409c4648e1126",
+      "6d8f5148887346a61a32a246f2d70d71c96245960d9254625d2d0b6f0d1be701",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -298,11 +298,15 @@ Deno.test("adaptive style applies only to scene expressions and preserves diffic
     for (const rule of [
       "仅作用于本组", "场景、色调与氛围", "选一种最契合的语气",
       "吐槽/丧萌", "温暖/治愈", "诗意/探索", "标准/轻快",
-      "不凭咖啡或阴天单独决定", "不猜测周一、深夜或疲惫",
-      "无明确风格线索时用此项", "不写抽象哲理、比喻或文学独白",
+      "不凭咖啡或阴天单独决定",
+      "无明确风格线索时用此项",
       "风格须遵守难度、词数和问题类型", "不写修辞问句",
     ]) ok(style.includes(rule), `${level}: ${rule}`);
-    for (const removed of ["风格只调整语气", "不改变表达意图", "不强加情绪", "不只写氛围旁白"]) {
+    for (const removed of [
+      "风格只调整语气", "不改变表达意图", "不强加情绪", "不只写氛围旁白",
+      "不强行卖惨", "不猜测周一、深夜或疲惫", "不写社交配文",
+      "通过具体感受表达", "不写抽象哲理、比喻或文学独白",
+    ]) {
       ok(!prompt.includes(removed), `${level}: removed restriction ${removed}`);
     }
     strictEqual(style.includes("启蒙仅用温暖或轻快的儿童口语"), level === "启蒙");
