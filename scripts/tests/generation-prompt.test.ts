@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "ceb7f97a17dc3223ea253c24537b22295931fff3c4ca562bcc6a187313aaa80a",
+      "50572a7caafff293efc09fea15401695beb00fb67e3622f41f2ffc7c3b3ebc73",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "6207c6efbd8711dfdf6232b32dc5a6ca3817d4304934c596d354937db86d60b7",
+      "e2ed5efebce501f17571ae31d1973c1074e8d98960efa439af731bb09056e3aa",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "1c822bb6d1aec445e278636880ce852bcca15e236801da84d29c46433f9362ff",
+      "cce59fc21683d330fd5411d4e383f3ed330d6f0ddc5e3d1a93671ff8a7ebab15",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "9549e8ed4efbf800deb277f53f1ce0a9a7a5e74ee3bbe2cc6e3f29f0b490d049",
+      "e9f12530991b79b635b4ec6ab3acb5752bd81a09dd61883b5198bc3bd2645576",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -325,20 +325,40 @@ Deno.test("photo descriptions select useful observations instead of a fixed deta
     const descriptionRules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
     for (const rule of [
       "不推测人物关系、背景和内心感受",
-      "两句客观陈述和一个观察问题",
-      "把眼前值得注意的东西说清楚",
+      "两句客观陈述和一个自然的聊天问题",
       "选择两个值得向别人指出或分享的观察",
       "不固定为主体和细节",
       "不为覆盖颜色、材质、光线而罗列细节",
       "增加能表达的意思，不只堆形容词",
-      "让现场的人有理由交流",
+      "现场会自然问身边人的话",
       "不要求对方描述照片",
       "不做识别或数数测验",
-      "不问经历或泛泛感受",
-      "三句不重复，问题不只是陈述改问句",
+      "前两句不重复",
     ]) ok(descriptionRules.includes(rule), `${level}: ${rule}`);
     ok(!descriptionRules.includes("可直接看出答案"));
     ok(!/例如|示例|example/i.test(descriptionRules));
+  }
+});
+
+Deno.test("photo questions connect to observations without being limited to visible facts", () => {
+  for (const level of levels) {
+    for (const imageDescriptions of ["open", "closed"] as const) {
+      const prompt = buildPromptText(level, "dual_tabs_v1", {
+        imageDescriptions, sceneAndFeelings: "open",
+      });
+      const rules = prompt.slice(prompt.indexOf("image_descriptions："), prompt.indexOf("scene_and_feelings："));
+      for (const rule of [
+        "前两句不重复，只说可见内容",
+        "贴合前两句的话题",
+        "不限于询问可见事实",
+        "优先让前两句中的一句恰好能作为这个问题的自然回答",
+        "不为凑问答硬造问题",
+      ]) ok(rules.includes(rule), `${level}/${imageDescriptions}: ${rule}`);
+      ok(!rules.includes("特点、变化或关系"));
+      ok(!rules.includes("确认一个可见特点或关系"));
+      ok(!rules.slice(rules.indexOf("第三句")).includes("只说可见内容"));
+      ok(prompt.includes("问答可围绕同一信息，其他句子不复述"));
+    }
   }
 });
 
