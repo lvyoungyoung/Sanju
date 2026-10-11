@@ -48,22 +48,22 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "dual_tabs_v1",
       "启蒙",
-      "7c6cf1d1cb00d373d9db4aa18f3264a0c004f637879d9c8eb8e96943c0841db6",
+      "6289eb03301195084593348d4417c8edfea7c071a8ea1d9bd5fe2ef041bf4613",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "f7b090f7fba73325c99a5fb425440227a4d7b57903d3eb9763ca20dc4b0d9f4c",
+      "e0eaf248be04517224e19ca72f223b6e2df3303a8624d143a31ab81aa2205d19",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "279185ac83a926bd196d8f47765386d667dcef629f083fd23ca94210a62b1d7f",
+      "8d3387be81b0ffb4d64935adcf88c62765c48425be8122f0e692ed5f1a192f53",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "bab13092d1e26885b9f8b199e84d4139c440dcc7e2ce49d35368975da0374871",
+      "e7ac533693b45102ad0e3bc9d7873fceec6bb110be938775a570f2888d7a5c1f",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -230,7 +230,7 @@ Deno.test("scene expressions retain everyday speech and grounded hypothetical di
       "不编造无依据的具体姓名、地点、时间、经历或事实",
       "两组遵守同一档难度",
       "难度限制适用于所有 english 字段，优先于风格、幽默和细节",
-      "不写诗、散文、文艺腔",
+      "场景表达保持日常口语",
       "不分析数据或涨跌",
     ]
   ) ok(prompt.includes(text), text);
@@ -303,6 +303,7 @@ Deno.test("adaptive style applies only to scene expressions and preserves diffic
       "风格只调整语气", "不改变表达意图", "不强加情绪", "不只写氛围旁白",
       "不强行卖惨", "不猜测周一、深夜或疲惫", "不写社交配文",
       "通过具体感受表达", "不写抽象哲理、比喻或文学独白",
+      "不写诗、散文、文艺腔",
     ]) {
       ok(!prompt.includes(removed), `${level}: removed restriction ${removed}`);
     }
