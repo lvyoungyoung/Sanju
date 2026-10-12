@@ -28,42 +28,42 @@ Deno.test("sentence teaching rules match the reviewed baseline at every difficul
     [
       "legacy_v1",
       "启蒙",
-      "4c3ec5c06d6f306bdd4d0fa180829e7fd78e758ab8ed7d88f85ac7dbffd95563",
+      "bc945962307cdbaecbdec543baf7a055db37db81de458a166931d7d1150fec24",
     ],
     [
       "legacy_v1",
       "简单",
-      "a24596caf877ce936e24e2dca440598b4facfe701f59d09fc7959ab5c943dacc",
+      "ac3ef8a6c53f0967a44994cc32f3a1319aaae4621a8774a8b411c903d28497fb",
     ],
     [
       "legacy_v1",
       "中等",
-      "74a8fbb7e26a280f0cdca8a1193065768fe0de53cb886c68cf8349c07f65d84a",
+      "e52a98d0eee0e969054c0446f4e3be26aa13e2efbdad4d7e819cdf6e7f92b9ba",
     ],
     [
       "legacy_v1",
       "高级",
-      "647e45bb7969e2a9a9fa02445e2c49d7adae77724a26f19e399280d19ec08c8f",
+      "74c379fbc4c267bb014de4eb8c1d6512315707330e144246ddaa8057ba39d6bf",
     ],
     [
       "dual_tabs_v1",
       "启蒙",
-      "6289eb03301195084593348d4417c8edfea7c071a8ea1d9bd5fe2ef041bf4613",
+      "423570a05313f1e72a361f72358dbe49a95e32c9d57aac0266451847d3091ade",
     ],
     [
       "dual_tabs_v1",
       "简单",
-      "e0eaf248be04517224e19ca72f223b6e2df3303a8624d143a31ab81aa2205d19",
+      "35cc1b58fdfc36123efb819684bf656e1ffacbf9dfe556e17ba427d36c077ac0",
     ],
     [
       "dual_tabs_v1",
       "中等",
-      "8d3387be81b0ffb4d64935adcf88c62765c48425be8122f0e692ed5f1a192f53",
+      "5e490ee354e91d86af6e0ec4e7d075d193b0b0d26f1705f1c2db6d6bb05633fa",
     ],
     [
       "dual_tabs_v1",
       "高级",
-      "e7ac533693b45102ad0e3bc9d7873fceec6bb110be938775a570f2888d7a5c1f",
+      "9354e76dfe80f7daf1f990e22c14d2ae43ab1e6dc5055c98d4bf2ca3f9ac9110",
     ],
   ] as const;
   for (const [format, level, hash] of baseline) {
@@ -215,6 +215,23 @@ Deno.test("one natural conversational style keeps grounded humor and child-safe 
         ) {
           ok(prompt.includes(text), `${level}: ${text}`);
         }
+      }
+    }
+  }
+});
+
+Deno.test("all difficulties and formats prefer common native expressions without artificial complexity", () => {
+  for (const format of formats) {
+    for (const level of levels) {
+      const prompt = buildPromptText(level, format);
+      for (const rule of [
+        "英语母语者在日常生活中常用的表达和自然搭配",
+        "像真人会说的话，而不是中文直译或教科书式造句",
+        "地道不等于生僻，不为显得地道堆砌俚语、习语或难词",
+      ]) ok(prompt.includes(rule), `${format}/${level}: ${rule}`);
+      if (level !== "高级") ok(prompt.includes("难度限制适用于所有 english 字段"));
+      if (format === "dual_tabs_v1") {
+        ok(prompt.indexOf("英语母语者") < prompt.indexOf("image_descriptions："));
       }
     }
   }
