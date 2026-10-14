@@ -1,6 +1,6 @@
 import { deepStrictEqual, strictEqual, throws, rejects, ok } from "node:assert";
 import { createSpeechHandler, type SpeechDependencies } from "../../supabase/functions/synthesize-speech/handler.ts";
-import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, SPEECH_VOICES } from "../../supabase/functions/synthesize-speech/speech.ts";
+import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, SPEECH_VOICES } from "../../supabase/functions/_shared/synthesize-speech/speech.ts";
 
 const encoder = new TextEncoder();
 const audioEvent = (data = "AAABAA==") => `data: ${JSON.stringify({ choices: [{ delta: { audio: { data } } }] })}\n\n`;

@@ -11,6 +11,16 @@
 
 ## Edge Function 发布
 
+### 2026-10-14 多语言函数打包修复
+
+阿里云 functions-cli 只上传当前函数目录和 `_shared`，不会上传兄弟函数目录。
+共用的生成、解析和朗读模块已迁入 `_shared`；业务逻辑、接口与提示词不变。
+`check-edge-functions.sh` 新增所有函数的本地依赖边界检查，覆盖 type import 和共享模块。
+此前在 `explain-sentence-v2` 因 `Module not found` 中断的部署，应从修复后的 main
+重新运行 `Backend Functions`，选择 `staging` / `all`，补齐后续未部署函数。
+这次修复无需新增数据库迁移、环境变量或代理配置；既有多语言数据库迁移仍需先完成。
+本地检查不等于实际部署成功，以新的 GitHub 部署结果和 staging 验证为准。
+
 默认使用 GitHub Actions 发布，避免浏览器编辑器里残留旧代码导致线上和 GitHub 漂移。
 
 如果同一次发布既包含 SQL migration 又包含 Edge Function，先执行 `Backend Database` 的 migration，再部署 Edge Function。这样函数不会先运行在缺少表结构或 RPC 的数据库上。

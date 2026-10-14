@@ -1,4 +1,4 @@
-import { SCENE_CATEGORIES, normalizeSceneCategoryIDs } from "../_shared/scene-categories.ts"
+import { SCENE_CATEGORIES, normalizeSceneCategoryIDs } from "../scene-categories.ts"
 
 export const PHOTO_CATEGORIES = SCENE_CATEGORIES.map(([id, title]) => [id, title] as const)
 

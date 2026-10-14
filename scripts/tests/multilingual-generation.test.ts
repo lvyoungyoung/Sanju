@@ -2,8 +2,8 @@ import { deepStrictEqual, notStrictEqual, ok, rejects, strictEqual, throws } fro
 import { generationFingerprint, validateGenerationSpec, type GenerationSpec } from "../../supabase/functions/_shared/generation/spec.ts"
 import { sha256, validateLearningMaterial } from "../../supabase/functions/_shared/content-contracts/memory.ts"
 import { buildMultilingualPrompt, parseMultilingualContent } from "../../supabase/functions/_shared/generation/content.ts"
-import { requestWithFallback } from "../../supabase/functions/generate-memory-v2/providers.ts"
-import { isDefiniteGenerationRollback } from "../../supabase/functions/generate-memory-v2/repository.ts"
+import { requestWithFallback } from "../../supabase/functions/_shared/generate-memory-v2/providers.ts"
+import { isDefiniteGenerationRollback } from "../../supabase/functions/_shared/generate-memory-v2/repository.ts"
 
 const spec: GenerationSpec = { schemaVersion: 1, catalogVersion: 1, targetLanguage: "en", translationLanguage: "zh-Hans",
   teachingLocale: "en-US", level: "starter", generationFormat: "dual_tabs_v1" }

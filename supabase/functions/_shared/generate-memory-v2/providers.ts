@@ -1,5 +1,5 @@
-import { fetchWithTimeout } from "../_shared/fetch-with-timeout.ts"
-import type { GenerationTiming } from "../_shared/generation-timing.ts"
+import { fetchWithTimeout } from "../fetch-with-timeout.ts"
+import type { GenerationTiming } from "../generation-timing.ts"
 import { type Sentence, type GenerationFormat, type ProviderName, parseGeneratedContent } from "./content.ts"
 import { serializeGenerationError, summarizeProviderFailure, appendDiagnosticSnippet } from "./responses.ts"
 

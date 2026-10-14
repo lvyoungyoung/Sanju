@@ -1,5 +1,5 @@
-import type { EnrichmentScope } from "../_shared/generation-enrichment.ts"
-import type { GenerationTiming } from "../_shared/generation-timing.ts"
+import type { EnrichmentScope } from "../generation-enrichment.ts"
+import type { GenerationTiming } from "../generation-timing.ts"
 import { type Sentence, type GenerationFormat, type FinalizedSentence, toClientSentences } from "./content.ts"
 import { serializeGenerationError, jsonResponse, generationPendingResponse } from "./responses.ts"
 import type { requestWithFallback } from "./providers.ts"

@@ -1,7 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout } from "../fetch-with-timeout.ts"
 import { ContractError, record } from "../content-contracts/memory.ts"
-import { jsonResponse } from "../../generate-memory-v2/responses.ts"
+import { jsonResponse } from "../generate-memory-v2/responses.ts"
 import { readAssistanceJSON } from "../assistance-input.ts"
 
 export async function authenticatedContentRequest(req: Request, operation: (args: { body: Record<string, any>; user: any; client: any; authClient: any }) => Promise<Response>): Promise<Response> {

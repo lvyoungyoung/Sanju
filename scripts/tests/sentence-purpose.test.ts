@@ -1,9 +1,9 @@
 import { deepStrictEqual, ok, rejects, strictEqual } from "node:assert";
-import { buildPromptText } from "../../supabase/functions/generate-memory-v2/content.ts";
+import { buildPromptText } from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
 
 const source = (await Deno.readTextFile(
   new URL(
-    "../../supabase/functions/generate-memory-v2/content.ts",
+    "../../supabase/functions/_shared/generate-memory-v2/content.ts",
     import.meta.url,
   ),
 )).replace(/^export /gm, "");

@@ -1,7 +1,7 @@
 import { authenticatedContentRequest } from "../_shared/generation/http.ts"
 import { recoverGeneration, recoveryResponse } from "../_shared/generation/adapter.ts"
 import { uuid } from "../_shared/content-contracts/memory.ts"
-import { jsonResponse } from "../generate-memory-v2/responses.ts"
+import { jsonResponse } from "../_shared/generate-memory-v2/responses.ts"
 
 Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client}) => {
   const anonymous = user.is_anonymous === true

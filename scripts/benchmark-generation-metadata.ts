@@ -8,11 +8,11 @@ import {
   parseSentenceMetadata,
 } from "../supabase/functions/_shared/sentence-metadata.ts";
 
-import * as generation from "../supabase/functions/generate-memory-v2/content.ts";
-import { buildPhotoCategoryRules } from "../supabase/functions/generate-memory-v2/photo-categories.ts";
+import * as generation from "../supabase/functions/_shared/generate-memory-v2/content.ts";
+import { buildPhotoCategoryRules } from "../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
 
 const root = new URL("../", import.meta.url);
-const generationSource = await Deno.readTextFile(new URL("supabase/functions/generate-memory-v2/content.ts", root));
+const generationSource = await Deno.readTextFile(new URL("supabase/functions/_shared/generate-memory-v2/content.ts", root));
 
 export function buildBenchmarkPrompts(level = "简单") {
   const combined: string = generation.buildPromptText(level as Parameters<typeof generation.buildPromptText>[0], "dual_tabs_v1");

@@ -6,7 +6,7 @@ import {
   validateGeneration,
 } from "../benchmark-generation-metadata.ts";
 import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
-import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
+import { buildPhotoCategoryRules } from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
 
 Deno.test("benchmark preserves generation rules and shares full metadata semantics", () => {
   for (const level of ["启蒙", "简单", "中等"]) {

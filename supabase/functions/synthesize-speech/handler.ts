@@ -1,4 +1,4 @@
-import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, type SpeechVoice } from "./speech.ts";
+import { readMiMoAudio, speechRequest, validateSpeechText, validateSpeechVoice, type SpeechVoice } from "../_shared/synthesize-speech/speech.ts";
 
 export interface SpeechDependencies {
   url: string;

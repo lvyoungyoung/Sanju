@@ -3,11 +3,11 @@ import {
   buildPhotoCategoryRules,
   normalizePhotoCategories,
   PHOTO_CATEGORIES,
-} from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
+} from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
 import {
   buildPromptText,
   parseGeneratedContent,
-} from "../../supabase/functions/generate-memory-v2/content.ts";
+} from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
 import { readFunctionSource } from "./helpers/function-source.ts";
 
 const root = new URL("../../", import.meta.url);

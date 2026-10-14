@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "../_shared/fetch-with-timeout.ts"
+import { fetchWithTimeout } from "../fetch-with-timeout.ts"
 import { serializeGenerationError, isTimeoutError } from "./responses.ts"
 
 const GENERATION_VIOLATION_WINDOW_SECONDS = 24 * 60 * 60

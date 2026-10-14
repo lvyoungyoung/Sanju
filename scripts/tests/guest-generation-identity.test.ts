@@ -1,6 +1,6 @@
 import { deepStrictEqual, strictEqual } from "node:assert";
 import { readFunctionSource } from "./helpers/function-source.ts";
-import { loadCompletedGuestGenerationResponseIfNeeded } from "../../supabase/functions/generate-memory-v2/repository.ts";
+import { loadCompletedGuestGenerationResponseIfNeeded } from "../../supabase/functions/_shared/generate-memory-v2/repository.ts";
 
 const source = await readFunctionSource(new URL(
   "../../supabase/functions/recover-guest-generation/index.ts", import.meta.url,

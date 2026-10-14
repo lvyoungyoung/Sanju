@@ -4,8 +4,8 @@ import {
   buildPromptText,
   parseGeneratedContent,
   selectSceneQuestionType,
-} from "../../supabase/functions/generate-memory-v2/content.ts";
-import { buildPhotoCategoryRules } from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
+} from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
+import { buildPhotoCategoryRules } from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
 import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 const levels = ["启蒙", "简单", "中等", "高级"] as const;

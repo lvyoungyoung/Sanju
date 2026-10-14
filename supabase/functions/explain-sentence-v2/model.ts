@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from "../_shared/fetch-with-timeout.ts"
-import type { ExplanationProvider } from "../explain-sentence/model.ts"
+import type { ExplanationProvider } from "../_shared/explain-sentence/model.ts"
 import { explanationPrompt, validateExplanation, type ExplanationInput } from "./content.ts"
 
 export async function generateExplanation(input: ExplanationInput, providers: ExplanationProvider[], fetcher: typeof fetch = fetch) {

@@ -1,8 +1,8 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { createExplanationV2Handler } from "./handler.ts"
 import type { ExplanationSource } from "./content.ts"
-import type { ExplanationClaim } from "../explain-sentence/handler.ts"
-import type { ExplanationProvider } from "../explain-sentence/model.ts"
+import type { ExplanationClaim } from "../_shared/explain-sentence/handler.ts"
+import type { ExplanationProvider } from "../_shared/explain-sentence/model.ts"
 import { generateExplanation } from "./model.ts"
 
 Deno.serve(async req => {

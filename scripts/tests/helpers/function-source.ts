@@ -3,6 +3,7 @@
 // the small Deno.serve entry point. Shared services remain explicit test doubles.
 export async function readFunctionSource(entry: URL): Promise<string> {
   const directory = new URL("./", entry).href
+  const sharedStages = new URL("../_shared/generate-memory-v2/", entry).href
   const visited = new Set<string>()
   async function visit(url: URL): Promise<string> {
     if (visited.has(url.href)) return ""
@@ -11,10 +12,11 @@ export async function readFunctionSource(entry: URL): Promise<string> {
     let dependencies = ""
     for (const match of source.matchAll(/^import .* from ["']([^"']+)["'].*$/gm)) {
       const specifier = match[1]
-      const isSharedCatalog = specifier === "../_shared/scene-categories.ts"
-      if (!specifier.startsWith("./") && !isSharedCatalog) continue
       const dependency = new URL(specifier, url)
-      if (!isSharedCatalog && !dependency.href.startsWith(directory)) throw new Error("Unexpected function import")
+      const isSharedCatalog = dependency.pathname.endsWith("/_shared/scene-categories.ts")
+      const isStage = dependency.href.startsWith(sharedStages)
+      if (!specifier.startsWith("./") && !isSharedCatalog && !isStage) continue
+      if (!isSharedCatalog && !isStage && !dependency.href.startsWith(directory)) throw new Error("Unexpected function import")
       dependencies += await visit(dependency)
     }
     return dependencies + "\n" + source.replace(/^import .*\n/gm, "").replace(/^export /gm, "")

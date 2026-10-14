@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "../_shared/fetch-with-timeout.ts"
+import { fetchWithTimeout } from "../fetch-with-timeout.ts"
 import { explanationPrompt, validateExplanation } from "./content.ts"
 import type { ExplanationInput } from "./handler.ts"
 

@@ -2,7 +2,7 @@ import { authenticatedContentRequest } from "../_shared/generation/http.ts"
 import { ContractError, record, uuid, validateSentence, type MemoryContent } from "../_shared/content-contracts/memory.ts"
 import { validateGenerationSpec, contentContext } from "../_shared/generation/spec.ts"
 import { SCENE_CATEGORY_IDS } from "../_shared/scene-categories.ts"
-import { jsonResponse } from "../generate-memory-v2/responses.ts"
+import { jsonResponse } from "../_shared/generate-memory-v2/responses.ts"
 
 Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client, authClient}) => {
   if (user.is_anonymous === true) throw new ContractError("account_required", 403)

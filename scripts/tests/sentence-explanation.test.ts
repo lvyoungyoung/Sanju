@@ -1,7 +1,7 @@
 import { deepStrictEqual, strictEqual, throws, ok } from "node:assert"
-import { createExplanationHandler, type ExplanationDependencies, type ExplanationInput } from "../../supabase/functions/explain-sentence/handler.ts"
-import { EXPLANATION_VERSION, type SentenceExplanation, validateExplanation, explanationPrompt } from "../../supabase/functions/explain-sentence/content.ts"
-import { generateExplanation } from "../../supabase/functions/explain-sentence/model.ts"
+import { createExplanationHandler, type ExplanationDependencies, type ExplanationInput } from "../../supabase/functions/_shared/explain-sentence/handler.ts"
+import { EXPLANATION_VERSION, type SentenceExplanation, validateExplanation, explanationPrompt } from "../../supabase/functions/_shared/explain-sentence/content.ts"
+import { generateExplanation } from "../../supabase/functions/_shared/explain-sentence/model.ts"
 
 const content: SentenceExplanation = {
   version: 2,

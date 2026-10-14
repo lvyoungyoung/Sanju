@@ -1,6 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { createExplanationHandler, type ExplanationClaim } from "./handler.ts"
-import { generateExplanation, type ExplanationProvider } from "./model.ts"
+import { createExplanationHandler, type ExplanationClaim } from "../_shared/explain-sentence/handler.ts"
+import { generateExplanation, type ExplanationProvider } from "../_shared/explain-sentence/model.ts"
 
 const url = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")

@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FUNCTION_LIST="${ROOT_DIR}/scripts/edge-functions.txt"
 
+deno test --no-lock --allow-read "${ROOT_DIR}/scripts/tests/edge-deployment-boundaries.test.ts"
+
 while IFS= read -r function_name; do
   [[ -z "${function_name}" || "${function_name}" == \#* ]] && continue
 

@@ -1,6 +1,6 @@
 import { ContractError, type MemoryContent } from "../content-contracts/memory.ts"
-import { jsonResponse, generationPendingResponse } from "../../generate-memory-v2/responses.ts"
-import { isDefiniteGenerationRollback, markAuthenticatedGenerationJobFailed, markGuestGenerationJobFailed, removeStoragePathQuietly } from "../../generate-memory-v2/repository.ts"
+import { jsonResponse, generationPendingResponse } from "../generate-memory-v2/responses.ts"
+import { isDefiniteGenerationRollback, markAuthenticatedGenerationJobFailed, markGuestGenerationJobFailed, removeStoragePathQuietly } from "../generate-memory-v2/repository.ts"
 import type { GeneratedSentence } from "./content.ts"
 import { contentContext, type PreparedGeneration } from "./spec.ts"
 

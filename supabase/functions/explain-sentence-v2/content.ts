@@ -1,5 +1,5 @@
 import { languageNames, supportsExplanation, teachingLocales, type LearningLanguage, type SupportLanguage, type TeachingLocale } from "../_shared/assistance-input.ts"
-import { validateExplanation as validateLegacy } from "../explain-sentence/content.ts"
+import { validateExplanation as validateLegacy } from "../_shared/explain-sentence/content.ts"
 import { supportsGeneration } from "../_shared/languages/main.ts"
 
 export const EXPLANATION_VERSION = 3

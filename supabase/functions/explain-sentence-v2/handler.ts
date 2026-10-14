@@ -1,5 +1,5 @@
 import { readAssistanceJSON } from "../_shared/assistance-input.ts"
-import type { ExplanationClaim } from "../explain-sentence/handler.ts"
+import type { ExplanationClaim } from "../_shared/explain-sentence/handler.ts"
 import { adaptLegacy, fingerprint, legacyFingerprint, supportLanguage, validateExplanation, validateInput, validateSource,
   type ExplanationInput, type ExplanationSource, type SentenceExplanation } from "./content.ts"
 

@@ -3,7 +3,7 @@ import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => Deno.readTextFile(new URL(path, root));
-import { buildPromptText } from "../../supabase/functions/generate-memory-v2/content.ts";
+import { buildPromptText } from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
 
 Deno.test("starter keeps natural child-safe speech in both generation formats", () => {
   for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {

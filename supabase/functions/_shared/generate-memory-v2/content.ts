@@ -1,5 +1,5 @@
-import { buildSentenceMetadataRules } from "../_shared/sentence-metadata.ts"
-import { normalizeSceneCategoryIDs } from "../_shared/scene-categories.ts"
+import { buildSentenceMetadataRules } from "../sentence-metadata.ts"
+import { normalizeSceneCategoryIDs } from "../scene-categories.ts"
 import { buildPhotoCategoryRules, normalizePhotoCategories } from "./photo-categories.ts"
 
 export interface Sentence {

@@ -1,5 +1,5 @@
 import { teachingLocales, type LearningLanguage, type TeachingLocale } from "../_shared/assistance-input.ts"
-import { MAX_AUDIO_BYTES, readMiMoAudio, speechRequest, SPEECH_VOICES, type SpeechVoice } from "../synthesize-speech/speech.ts"
+import { MAX_AUDIO_BYTES, readMiMoAudio, speechRequest, SPEECH_VOICES, type SpeechVoice } from "../_shared/synthesize-speech/speech.ts"
 
 export interface SpeechDescriptor {
   profileID: string

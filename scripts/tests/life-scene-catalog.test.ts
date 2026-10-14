@@ -11,12 +11,12 @@ import {
 import {
   buildPhotoCategoryRules,
   PHOTO_CATEGORIES,
-} from "../../supabase/functions/generate-memory-v2/photo-categories.ts";
+} from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
 import {
   buildPromptText,
   parseGeneratedContent,
   toClientSentences,
-} from "../../supabase/functions/generate-memory-v2/content.ts";
+} from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
 import {
   CATEGORY_CATALOG_VERSION,
   CATEGORY_DESCRIPTIONS,
