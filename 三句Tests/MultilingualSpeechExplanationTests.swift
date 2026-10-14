@@ -108,12 +108,40 @@ final class MultilingualSpeechExplanationTests: XCTestCase {
         let speechRequest = speech.request(sentence: sentence, context: context)
         XCTAssertEqual(speechRequest.language, .japanese)
         XCTAssertEqual(speechRequest.teachingLocale, .standardJapanese)
-        XCTAssertEqual(speechRequest.descriptor.voice, "coral")
+        XCTAssertEqual(speechRequest.descriptor.voice, "Ono Anna")
+        XCTAssertEqual(speechRequest.descriptor.provider, "qwen")
         XCTAssertEqual(speechRequest.accountRevision, 5)
         XCTAssertTrue(speechRequest.isValid)
         XCTAssertNil(speechRequest.preferredSystemLocale(available: ["en-US", "fr-FR"]))
         XCTAssertEqual(speechRequest.preferredSystemLocale(available: ["en-US", "ja-JP"]), "ja-JP")
         XCTAssertEqual(speech.request(sentence: sentence, context: .legacyEnglish).descriptor.legacyVoice, .dean)
+    }
+
+    func testDomesticSpeechProfilesMatchServerCatalogAndSeparateOldCache() {
+        for (language, voice, profile, locale) in [
+            (LearningLanguage.spanish, "Sonrisa", "es-qwen-sonrisa", "es-419"),
+            (.japanese, "Ono Anna", "ja-qwen-ono-anna", "ja-JP"),
+            (.french, "Emilien", "fr-qwen-emilien", "fr-FR")
+        ] {
+            let request = SpeechRequest(text: "Example", language: language,
+                                        teachingLocale: language.teachingLocale, owner: "owner")
+            XCTAssertTrue(request.isValid)
+            XCTAssertEqual(request.descriptor.profileID, profile)
+            XCTAssertEqual(request.descriptor.profileRevision, 1)
+            XCTAssertEqual(request.descriptor.voice, voice)
+            XCTAssertEqual(request.descriptor.locale, locale)
+            XCTAssertEqual(request.descriptor.model, "qwen3-tts-flash")
+            XCTAssertTrue(request.descriptor.supportsPCMPlayback)
+            let old = SpeechDescriptor(profileID: "\(language.rawValue)-coral-candidate", profileRevision: 1,
+                language: language, teachingLocale: language.teachingLocale, locale: locale, provider: "openai",
+                model: "gpt-4o-mini-tts", voice: "coral", audioFormat: "pcm16le", sampleRate: 24_000,
+                channels: 1, promptVersion: 1)
+            let oldRequest = SpeechRequest(text: request.text, language: language,
+                teachingLocale: language.teachingLocale, owner: "owner", descriptor: old)
+            XCTAssertFalse(oldRequest.isValid)
+            XCTAssertNotEqual(SpeechAudioCache.key(request: request, environment: "test"),
+                              SpeechAudioCache.key(request: oldRequest, environment: "test"))
+        }
     }
 
     func testUnknownDescriptorCannotReadCachedAudio() async throws {

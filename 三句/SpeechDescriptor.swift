@@ -23,10 +23,12 @@ nonisolated struct SpeechDescriptor: Codable, Equatable {
 
     // Candidates are not validated voices. The server requires an explicit, revision-specific release gate.
     static func candidate(language: LearningLanguage, teachingLocale: TeachingLocale) -> Self {
-        let locale = ["es": "es-MX", "ja": "ja-JP", "fr": "fr-FR"][language.rawValue] ?? ""
-        return Self(profileID: "\(language.rawValue)-coral-candidate", profileRevision: 1,
+        let locale = ["es": "es-419", "ja": "ja-JP", "fr": "fr-FR"][language.rawValue] ?? ""
+        let voice = ["es": "Sonrisa", "ja": "Ono Anna", "fr": "Emilien"][language.rawValue] ?? ""
+        let voiceID = voice.lowercased().replacingOccurrences(of: " ", with: "-")
+        return Self(profileID: "\(language.rawValue)-qwen-\(voiceID)", profileRevision: 1,
                     language: language, teachingLocale: teachingLocale, locale: locale,
-                    provider: "openai", model: "gpt-4o-mini-tts", voice: "coral",
+                    provider: "qwen", model: "qwen3-tts-flash", voice: voice,
                     audioFormat: "pcm16le", sampleRate: 24_000, channels: 1, promptVersion: 1)
     }
 

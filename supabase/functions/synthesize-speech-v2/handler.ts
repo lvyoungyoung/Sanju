@@ -2,7 +2,7 @@ import { readAssistanceJSON } from "../_shared/assistance-input.ts"
 import { providerRequest, readProviderAudio, validateSpeechInput, type SpeechProviderConfig } from "./speech.ts"
 
 export interface SpeechDependencies {
-  providers: Partial<Record<"mimo" | "openai", SpeechProviderConfig>>
+  providers: Partial<Record<"mimo" | "qwen", SpeechProviderConfig>>
   // Empty by default. Release only exact profile@revision IDs after human voice/locale QA.
   validatedProfiles?: ReadonlySet<string>
   authenticate(token: string): Promise<string | null>
@@ -42,11 +42,11 @@ export function createSpeechV2Handler(deps: SpeechDependencies) {
       const upstream = await (deps.fetcher ?? fetch)(config.url, {
         method: "POST", signal: controller.signal,
         headers: { "Content-Type": "application/json", ...(descriptor.provider === "mimo"
-          ? { "api-key": config.apiKey } : { Authorization: `Bearer ${config.apiKey}` }) },
+          ? { "api-key": config.apiKey } : { Authorization: `Bearer ${config.apiKey}`, "X-DashScope-SSE": "enable" }) },
         body: JSON.stringify(providerRequest(text, descriptor)),
       })
       const contentType = upstream.headers.get("Content-Type")?.split(";")[0].trim()
-      if (!upstream.ok || !upstream.body || (descriptor.provider === "openai" && !["audio/pcm", "application/octet-stream"].includes(contentType ?? ""))) {
+      if (!upstream.ok || !upstream.body || (descriptor.provider === "qwen" && contentType !== "text/event-stream")) {
         await upstream.body?.cancel()
         return reply("speech_provider_rejected", 502)
       }

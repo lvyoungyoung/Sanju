@@ -65,8 +65,9 @@
 
 - 无新增代理/Nginx 配置；保留现有 Supabase、DeepSeek、MiMo、Kimi、向量及审核配置。
 - 基础迁移初始仅开放中文学英语；`20261014000000_enable_multilingual_generation.sql` 随后将目录 v1 的全部 10 个组合设为 `can_generate=true`。不改历史内容、账号偏好或权限，也不自动开放未来新增组合。已有内容读取、恢复及支持的解析不依赖生成开关。
-- `SPEECH_V2_VALIDATED_PROFILES` 默认留空。西语、日语、法语的 OpenAI 候选音色尚未做真人听音验收，不能宣称已支持高质量云端朗读。
-- 后续验证候选音色时配置 `OPENAI_TTS_URL`（完整语音接口地址）、`OPENAI_TTS_API_KEY`；验收通过后才将相应 `es-coral-candidate@1`、`ja-coral-candidate@1`、`fr-coral-candidate@1` 加入上面的白名单。密钥只放服务端。
+- 非英语朗读于 2026-10-15 改为国内百炼 `qwen3-tts-flash`，英语仍使用 MiMo。西语 Sonrisa、日语 Ono Anna、法语 Emilien；供应商支持语言不等于已经完成真人听音验收。
+- 配置北京地域的 `QWEN_TTS_API_KEY`；`QWEN_TTS_URL` 可不填，默认百炼北京 HTTP 多模态生成接口。无需 OpenAI TTS 配置，密钥只放服务端。
+- `SPEECH_V2_VALIDATED_PROFILES` 默认留空。staging 试听时按需加入 `es-qwen-sonrisa@1,ja-qwen-ono-anna@1,fr-qwen-emilien@1`。确认发音、口音、语速及文本一致性后才在 production 开放。西语选择拉美音色，不承诺特定国家口音。
 - 核对已有维护任务是否用 service-role 鉴权定期 POST `cleanup-guest-generation-jobs`。本次只实现其消费能力，没有创建或修改线上调度。
 
 ## 尚未完成的上线验收

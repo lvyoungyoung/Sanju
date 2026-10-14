@@ -10,8 +10,10 @@ Deno.serve(async req => {
   return createSpeechV2Handler({
     providers: {
       mimo: { url: Deno.env.get("MIMO_BASE_URL") ?? "", apiKey: Deno.env.get("MIMO_API_KEY") ?? "" },
-      // Full /v1/audio/speech endpoint. No assumption that the existing MiMo proxy handles this route.
-      openai: { url: Deno.env.get("OPENAI_TTS_URL") ?? "", apiKey: Deno.env.get("OPENAI_TTS_API_KEY") ?? "" },
+      qwen: {
+        url: Deno.env.get("QWEN_TTS_URL") || "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+        apiKey: Deno.env.get("QWEN_TTS_API_KEY") ?? "",
+      },
     },
     validatedProfiles: new Set((Deno.env.get("SPEECH_V2_VALIDATED_PROFILES") ?? "").split(",").map(s => s.trim()).filter(Boolean)),
     async authenticate(token) {

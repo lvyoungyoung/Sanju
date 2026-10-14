@@ -11,6 +11,27 @@
 
 ## Edge Function 发布
 
+### 2026-10-15 国内多语言朗读
+
+英语继续使用 MiMo，日语、法语、西语改为百炼 `qwen3-tts-flash` 的 HTTP SSE 朗读。
+本次只需部署 `synthesize-speech-v2`，并更新客户端；无需新增数据库迁移，
+无需更改既有 MiMo 代理。若已有代理允许 `/functions/v1/*`，也无需新增代理路径。
+
+在对应环境的 Edge Function 服务端配置（不是客户端配置）中设置：
+
+- `QWEN_TTS_API_KEY`：北京地域、具有 Qwen-TTS 权限的百炼密钥。
+- `QWEN_TTS_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation`。
+- `SPEECH_V2_VALIDATED_PROFILES`：staging 试听时设为 `es-qwen-sonrisa@1,ja-qwen-ono-anna@1,fr-qwen-emilien@1`。production 须先试听验收再开放；留空会回退系统声音。
+
+先配置并部署 staging，再用新客户端检查三种语言的点击播放、翻一翻预取、离线缓存，
+以及取消播放/切换语言/缺少配置时的兜底。确认英语四种 MiMo 音色未受影响。
+此次新增的音色 ID 会隔离旧候选服务的音频缓存，不清理现有英语缓存。
+只转发流式 PCM，不下载供应商返回的临时 WAV 地址。
+本地协议测试不等于线上可用性或发音质量验证。
+
+接口依据：[Qwen-TTS API](https://help.aliyun.com/zh/model-studio/qwen-tts-api)、
+[系统音色列表](https://help.aliyun.com/zh/model-studio/qwen-tts-voice-list)。
+
 ### 2026-10-14 多语言函数打包修复
 
 阿里云 functions-cli 只上传当前函数目录和 `_shared`，不会上传兄弟函数目录。
