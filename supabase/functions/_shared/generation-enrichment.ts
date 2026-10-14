@@ -2,6 +2,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithinDeadline, fetchWithTimeout } from "./fetch-with-timeout.ts"
 import { generateSentenceMetadata, parseSentenceMetadata, readEmbeddedSentenceMetadata } from "./sentence-metadata.ts"
 import { type EnrichmentStage, EnrichmentTiming } from "./generation-enrichment-timing.ts"
+import { hasTeachingLocale, supportsGeneration } from "./languages/main.ts"
 
 export interface IndexableSentence {
   id: string
@@ -9,6 +10,9 @@ export interface IndexableSentence {
   chinese: string
   expression_purpose?: string
   learning_topic_ids?: string[]
+  targetText?: string
+  translationText?: string
+  context?: { targetLanguage: string; translationLanguage: string; teachingLocale: string }
 }
 
 export type EnrichmentScope =
@@ -74,6 +78,29 @@ export async function processGenerationEnrichment(
       const jobTiming = timing.forJob(job.id, job.attempts)
       let jobOutcome: "completed" | "failed" | "lease_lost" = "failed"
       try {
+        if (job.content_schema_version != null && ![1, 2].includes(job.content_schema_version)) throw new Error("Unsupported enrichment content version")
+        if (job.content_schema_version === 2) {
+          const context = job.content_context
+          if (!context || context.schemaVersion !== 2 || !hasTeachingLocale(context.targetLanguage, context.teachingLocale) ||
+              !supportsGeneration(context.targetLanguage, context.translationLanguage)) throw new Error("Invalid enrichment language context")
+          const sentences = job.sentences.map((s: any) => {
+            if (typeof s.targetText !== "string" || typeof s.translationText !== "string" || typeof s.expressionPurpose !== "string") throw new Error("Invalid multilingual enrichment input")
+            return { id: s.id, targetText: s.targetText, translationText: s.translationText, context,
+              english: "", chinese: "", expression_purpose: s.expressionPurpose, learning_topic_ids: s.learningTopicIDs }
+          })
+          const rows = await buildSentenceEmbeddingRows(sentences, fetcher, jobTiming)
+          if (rows.some(row => !row.embedding || !row.purpose_embedding)) throw new Error("Incomplete sentence embeddings")
+          const result = await client.rpc("complete_multilingual_generation_enrichment_v1", {
+            p_job_id: job.id, p_lease_token: job.lease_token, p_rows: rows,
+          })
+          if (result.error) throw new Error(`Index completion failed: ${result.error.message}`)
+          if (result.data === true) completed++
+          jobOutcome = result.data === true ? "completed" : "lease_lost"
+          continue
+        }
+        if (job.content_context && (job.content_context.targetLanguage !== "en" || job.content_context.translationLanguage !== "zh-Hans" || job.content_context.teachingLocale !== "en-US")) {
+          throw new Error("Legacy enrichment cannot process nonlegacy content")
+        }
         const existingMetadata = job.metadata ?? readEmbeddedSentenceMetadata(job.sentences)
         const metadata = await jobTiming.measure(
           existingMetadata != null ? "metadata_reuse" : "metadata_generate",
@@ -170,7 +197,9 @@ export async function buildSentenceEmbeddingRows(sentences: IndexableSentence[],
   const [original, purpose] = await Promise.allSettled([
     measure(
       "sentence_embedding",
-      () => fetchSentenceEmbeddings(sentences.map((sentence) => `English: ${sentence.english}\nChinese: ${sentence.chinese}`), fetcher),
+      () => fetchSentenceEmbeddings(sentences.map((sentence) => sentence.context
+        ? `Language: ${sentence.context.targetLanguage}\nTeaching locale: ${sentence.context.teachingLocale}\nTarget: ${sentence.targetText}\nTranslation language: ${sentence.context.translationLanguage}\nTranslation: ${sentence.translationText}`
+        : `English: ${sentence.english}\nChinese: ${sentence.chinese}`), fetcher),
     ),
     purposes.length
       ? measure("purpose_embedding", () => fetchSentenceEmbeddings(purposes.map((item) => item.text), fetcher))
@@ -190,7 +219,7 @@ export async function buildSentenceEmbeddingRows(sentences: IndexableSentence[],
     embedding: original.status === "fulfilled" ? original.value[index] : null,
     expression_purpose: normalizeExpressionPurpose(sentence.expression_purpose) ?? null,
     purpose_embedding: purposeVectors.get(index) ?? null,
-    model: "qwen3.7-text-embedding",
+    model: sentence.context ? "qwen3.7-text-embedding:multilingual-v1" : "qwen3.7-text-embedding",
     updated_at: new Date().toISOString(),
   }))
 }

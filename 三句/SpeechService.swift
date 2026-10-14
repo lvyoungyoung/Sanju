@@ -12,6 +12,9 @@ final class SpeechService: NSObject, ObservableObject {
     @Published private(set) var isUsingSystemVoice = false
     var sessionProvider: (() async throws -> SupabaseSession)?
     var ownerProvider: (() -> String)?
+    var accountRevisionProvider: (() -> Int)?
+    @Published private(set) var playbackError: CloudSpeechError?
+    @Published private(set) var playbackErrorRequest: SpeechRequest?
 
     private let synthesizer = AVSpeechSynthesizer()
     private let audioSession = SpeechAudioSession()
@@ -20,19 +23,31 @@ final class SpeechService: NSObject, ObservableObject {
     private let albumFetchOverride: AlbumSpeechPrefetcher.Fetch?
     private var albumPrefetchID: UUID?
     private var albumPrefetchWindow: (current: String, upcoming: [String], enabled: Bool)?
+    private var requestPrefetchWindow: (current: SpeechRequest?, upcoming: [SpeechRequest], enabled: Bool)?
     private lazy var albumPrefetcher = AlbumSpeechPrefetcher(cache: cache, namespace: cloud.cacheNamespace) { [weak self] request, onAudio in
         guard let self else { throw CancellationError() }
-        if let albumFetchOverride { return try await albumFetchOverride(request, onAudio) }
-        guard ownerProvider?() == request.owner, let sessionProvider else { throw CloudSpeechError.noSession }
+        guard isCurrent(request.speech) else { throw CancellationError() }
+        if let albumFetchOverride {
+            let audio = try await albumFetchOverride(request) { chunk in
+                guard self.isCurrent(request.speech) else { return }
+                onAudio(chunk)
+            }
+            guard isCurrent(request.speech) else { throw CancellationError() }
+            return audio
+        }
+        guard isCurrent(request.speech), let sessionProvider else { throw CloudSpeechError.noSession }
         let auth = try await sessionProvider()
         try Task.checkCancellation()
-        guard auth.userID == request.owner, ownerProvider?() == request.owner else { throw CancellationError() }
-        let audio = try await cloud.stream(text: request.text, voice: request.voice, auth: auth) { chunk in
+        guard auth.userID == request.owner, isCurrent(request.speech) else { throw CancellationError() }
+        let receiveAudio: (Data) async throws -> Void = { chunk in
             try Task.checkCancellation()
-            guard self.ownerProvider?() == request.owner else { throw CancellationError() }
+            guard self.isCurrent(request.speech) else { throw CancellationError() }
             onAudio(chunk)
         }
-        guard ownerProvider?() == request.owner else { throw CancellationError() }
+        let audio = try await request.usesLegacyAPI
+            ? cloud.stream(text: request.text, voice: request.voice, auth: auth, onAudio: receiveAudio)
+            : cloud.stream(request: request.speech, auth: auth, onAudio: receiveAudio)
+        guard isCurrent(request.speech) else { throw CancellationError() }
         return audio
     }
     private let engine = AVAudioEngine()
@@ -45,6 +60,7 @@ final class SpeechService: NSObject, ObservableObject {
     private var requestID = UUID()
     @Published private(set) var activeText: String?
     private var activeVoice: SpeechVoice?
+    @Published private(set) var activeRequest: SpeechRequest?
     private var pendingBytes = Data()
     private var scheduledBuffers = 0
     private var sourceCompleted = false
@@ -74,8 +90,30 @@ final class SpeechService: NSObject, ObservableObject {
 
     func updateAlbumSpeechPrefetch(id: UUID, current: String, upcoming: [String], enabled: Bool) {
         guard albumPrefetchID == id else { return }
+        requestPrefetchWindow = nil
         albumPrefetchWindow = (current, upcoming, enabled)
         refreshAlbumSpeechPrefetch()
+    }
+
+    func updateAlbumSpeechPrefetch(id: UUID, current: SpeechRequest?, upcoming: [SpeechRequest], enabled: Bool) {
+        guard albumPrefetchID == id else { return }
+        albumPrefetchWindow = nil
+        requestPrefetchWindow = (current, upcoming, enabled)
+        refreshAlbumSpeechPrefetch()
+    }
+
+    func accountDidChange() {
+        stop()
+        playbackError = nil
+        playbackErrorRequest = nil
+        cancelAlbumSpeechPrefetch()
+    }
+
+    func dismissPlaybackError() { playbackError = nil; playbackErrorRequest = nil }
+
+    private func isCurrent(_ request: SpeechRequest) -> Bool {
+        (ownerProvider?() ?? "local") == request.owner &&
+            (accountRevisionProvider?() ?? 0) == request.accountRevision
     }
 
     func prioritizeAlbumCurrentSentence(id: UUID) {
@@ -86,6 +124,7 @@ final class SpeechService: NSObject, ObservableObject {
     func pauseAlbumSpeechPrefetch(id: UUID) {
         guard albumPrefetchID == id else { return }
         albumPrefetchWindow?.enabled = false
+        requestPrefetchWindow?.enabled = false
         albumPrefetcher.setEnabled(false)
     }
 
@@ -97,13 +136,20 @@ final class SpeechService: NSObject, ObservableObject {
     func cancelAlbumSpeechPrefetch() {
         albumPrefetchID = nil
         albumPrefetchWindow = nil
+        requestPrefetchWindow = nil
         albumPrefetcher.cancelAll()
     }
 
     private func refreshAlbumSpeechPrefetch() {
+        if albumPrefetchID != nil, let window = requestPrefetchWindow {
+            albumPrefetcher.updateWindow(current: window.current.flatMap { isCurrent($0) ? $0 : nil },
+                upcoming: window.upcoming.filter { isCurrent($0) }, enabled: window.enabled)
+            return
+        }
         guard albumPrefetchID != nil, let window = albumPrefetchWindow, let owner = ownerProvider?() else { return }
         albumPrefetcher.updateWindow(currentText: window.current, upcoming: window.upcoming,
-                                    voice: selectedVoice, owner: owner, enabled: window.enabled)
+                                    voice: selectedVoice, owner: owner, enabled: window.enabled,
+                                    accountRevision: accountRevisionProvider?() ?? 0)
     }
 
     func setVoice(_ voice: SpeechVoice) {
@@ -121,6 +167,13 @@ final class SpeechService: NSObject, ObservableObject {
         albumPrefetcher.cancelAll()
         stop()
         selectedVoice = voice
+        if let window = requestPrefetchWindow {
+            func updated(_ request: SpeechRequest) -> SpeechRequest {
+                guard request.language == .english else { return request }
+                return .english(request.text, voice: voice, owner: request.owner, accountRevision: request.accountRevision)
+            }
+            requestPrefetchWindow = (window.current.map(updated), window.upcoming.map(updated), window.enabled)
+        }
         refreshAlbumSpeechPrefetch()
     }
 
@@ -161,11 +214,34 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     func speak(_ text: String, voice overrideVoice: SpeechVoice? = nil) {
-        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let voice = overrideVoice ?? selectedVoice
-        guard !text.isEmpty else { return }
-        if activeText == text, activeVoice == voice, requestTask != nil { return }
+        speak(.english(text, voice: overrideVoice ?? selectedVoice, owner: ownerProvider?() ?? "local",
+                       accountRevision: accountRevisionProvider?() ?? 0), usesLegacyAPI: true)
+    }
+
+    func speak(_ request: SpeechRequest) { speak(request, usesLegacyAPI: false) }
+
+    func request(sentence: SentenceRecord, context: MemoryContentContext) -> SpeechRequest {
+        request(text: sentence.targetText, context: context)
+    }
+
+    func request(text: String, context: MemoryContentContext) -> SpeechRequest {
+        SpeechRequest(text: text, language: context.targetLanguage, teachingLocale: context.teachingLocale,
+                      owner: ownerProvider?() ?? "local", accountRevision: accountRevisionProvider?() ?? 0,
+                      descriptor: context.targetLanguage == .english ? .english(selectedVoice) : nil)
+    }
+
+    private func speak(_ request: SpeechRequest, usesLegacyAPI: Bool) {
+        guard request.isValid else {
+            stop(); playbackErrorRequest = request; playbackError = .descriptorMismatch; return
+        }
+        guard isCurrent(request) else { accountDidChange(); return }
+        let text = request.text
+        let voice = request.descriptor.legacyVoice
+        if activeRequest == request, requestTask != nil { return }
         stopPlayback()
+        activeRequest = request
+        playbackError = nil
+        playbackErrorRequest = nil
         albumPrefetcher.setForegroundBusy(true)
         activeText = text
         activeVoice = voice
@@ -173,9 +249,8 @@ final class SpeechService: NSObject, ObservableObject {
         loadingVoice = voice
         isUsingSystemVoice = false
         let id = requestID
-        let owner = ownerProvider?() ?? "local"
-        let key = cacheKey(text: text, owner: owner, voice: voice)
-        let prefetchedStream = albumPrefetcher.takeOver(text: text, voice: voice, owner: owner)
+        let key = SpeechAudioCache.key(request: request, environment: cloud.cacheNamespace)
+        let prefetchedStream = albumPrefetcher.takeOver(request: request)
         let startedAt = Date()
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -190,9 +265,9 @@ final class SpeechService: NSObject, ObservableObject {
                 }
             }
             do {
-                if let audio = await cache.load(key) {
+                if let audio = await cache.load(request: request, environment: cloud.cacheNamespace) {
                     try Task.checkCancellation()
-                    guard requestID == id else { return }
+                    guard requestID == id, isCurrent(request) else { return }
                     try await play(audio, id: id)
                     finishSource()
 #if DEBUG
@@ -203,13 +278,13 @@ final class SpeechService: NSObject, ObservableObject {
                 if let prefetchedStream {
                     for try await chunk in prefetchedStream {
                         try Task.checkCancellation()
-                        guard requestID == id else { return }
+                        guard requestID == id, isCurrent(request) else { return }
                         try await play(chunk, id: id)
                         loadingText = nil
                         loadingVoice = nil
                     }
                     try Task.checkCancellation()
-                    guard requestID == id else { return }
+                    guard requestID == id, isCurrent(request) else { return }
                     finishSource()
 #if DEBUG
                     print("[SpeechFlow] Playback adopted album lookahead request")
@@ -219,11 +294,11 @@ final class SpeechService: NSObject, ObservableObject {
                 guard let sessionProvider else { throw CloudSpeechError.noSession }
                 let auth = try await sessionProvider()
                 try Task.checkCancellation()
-                guard requestID == id else { return }
+                guard requestID == id, isCurrent(request), auth.userID == request.owner else { return }
                 var receivedAudio = false
-                let audio = try await cloud.stream(text: text, voice: voice, auth: auth) { [weak self] chunk in
+                let onAudio: (Data) async throws -> Void = { [weak self] chunk in
                     try Task.checkCancellation()
-                    guard let self, self.requestID == id else { throw CancellationError() }
+                    guard let self, self.requestID == id, self.isCurrent(request) else { throw CancellationError() }
                     try await self.play(chunk, id: id)
                     if !receivedAudio {
                         receivedAudio = true
@@ -234,24 +309,27 @@ final class SpeechService: NSObject, ObservableObject {
                     self.loadingText = nil
                     self.loadingVoice = nil
                 }
+                let audio = try await usesLegacyAPI
+                    ? cloud.stream(text: text, voice: voice ?? .mia, auth: auth, onAudio: onAudio)
+                    : cloud.stream(request: request, auth: auth, onAudio: onAudio)
                 try Task.checkCancellation()
-                guard requestID == id else { return }
+                guard requestID == id, isCurrent(request) else { return }
                 finishSource()
                 deadlineTask?.cancel()
-                await cache.save(audio, key: cacheKey(text: text, owner: auth.userID, voice: voice))
+                await cache.save(audio, key: key)
             } catch {
-                guard !Task.isCancelled, requestID == id else { return }
+                guard !Task.isCancelled, requestID == id, isCurrent(request) else { return }
 #if DEBUG
                 print("[SpeechFlow] Cloud unavailable; using system voice: \(error.localizedDescription)")
 #endif
-                playSystemSpeech(text)
+                playSystemSpeech(request)
             }
         }
         deadlineTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(18)) } catch { return }
-            guard let self, self.requestID == id else { return }
+            guard let self, self.requestID == id, self.isCurrent(request) else { return }
             self.stopPlayback()
-            self.playSystemSpeech(text)
+            self.playSystemSpeech(request)
         }
     }
 
@@ -278,20 +356,20 @@ final class SpeechService: NSObject, ObservableObject {
         sourceCompleted = false
         activeText = nil
         activeVoice = nil
+        activeRequest = nil
         loadingText = nil
         loadingVoice = nil
+        isUsingSystemVoice = false
         deactivateAudioSession()
     }
 
-    private func cacheKey(text: String, owner: String, voice: SpeechVoice) -> String {
-        SpeechAudioCache.key(text: text, scope: "\(cloud.cacheNamespace)|\(owner)", voice: voice)
-    }
-
     private func play(_ chunk: Data, id: UUID) async throws {
+        if let activeRequest, !isCurrent(activeRequest) { accountDidChange(); throw CancellationError() }
         if !engine.isRunning {
             try await audioSession.activate()
             try Task.checkCancellation()
             guard requestID == id else { throw CancellationError() }
+            if let activeRequest, !isCurrent(activeRequest) { accountDidChange(); throw CancellationError() }
         }
         pendingBytes.append(chunk)
         let frames = pendingBytes.count / 2
@@ -330,10 +408,12 @@ final class SpeechService: NSObject, ObservableObject {
         player.stop()
         engine.stop()
         activeText = nil
+        activeRequest = nil
         deactivateAudioSession()
     }
 
-    private func playSystemSpeech(_ text: String) {
+    private func playSystemSpeech(_ request: SpeechRequest) {
+        guard isCurrent(request) else { accountDidChange(); return }
         // Invalidate callbacks for partial cloud audio before starting the fallback.
         albumPrefetcher.cancelPlayback()
         albumPrefetcher.setForegroundBusy(false)
@@ -344,7 +424,8 @@ final class SpeechService: NSObject, ObservableObject {
         loadingText = nil
         loadingVoice = nil
         isUsingSystemVoice = true
-        activeText = text
+        activeText = request.text
+        activeRequest = request
         player.stop()
         engine.stop()
         scheduledBuffers = 0
@@ -358,15 +439,22 @@ final class SpeechService: NSObject, ObservableObject {
                 print("[SpeechFlow] System voice audio activation failed: \(error.localizedDescription)")
 #endif
             }
-            guard !Task.isCancelled, requestID == id else { return }
-            speakWithSystemVoice(text)
+            guard !Task.isCancelled, requestID == id, isCurrent(request) else { return }
+            speakWithSystemVoice(request)
             fallbackTask = nil
         }
     }
 
-    private func speakWithSystemVoice(_ text: String) {
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = preferredVoice()
+    private func speakWithSystemVoice(_ request: SpeechRequest) {
+        guard let voice = preferredVoice(for: request) else {
+            playbackErrorRequest = request
+            playbackError = .noMatchingSystemVoice
+            stopPlayback()
+            isUsingSystemVoice = false
+            return
+        }
+        let utterance = AVSpeechUtterance(string: request.text)
+        utterance.voice = voice
         utterance.rate = 0.42
         utterance.pitchMultiplier = 1.02
         utterance.volume = 1
@@ -387,7 +475,12 @@ final class SpeechService: NSObject, ObservableObject {
         audioSession.deactivate()
     }
 
-    private func preferredVoice() -> AVSpeechSynthesisVoice? {
+    private func preferredVoice(for request: SpeechRequest) -> AVSpeechSynthesisVoice? {
+        if request.language.rawValue != "en" {
+            let available = AVSpeechSynthesisVoice.speechVoices()
+            guard let locale = request.preferredSystemLocale(available: available.map(\.language)) else { return nil }
+            return available.first { $0.language == locale }
+        }
         let preferredIdentifiers = [
             "com.apple.voice.enhanced.en-US.Samantha",
             "com.apple.voice.enhanced.en-US.Alex",
@@ -400,7 +493,8 @@ final class SpeechService: NSObject, ObservableObject {
             }
         }
 
-        return AVSpeechSynthesisVoice(language: "en-US")
+        guard let voice = AVSpeechSynthesisVoice(language: "en-US"), voice.language == "en-US" else { return nil }
+        return voice
     }
 
 }
@@ -420,6 +514,7 @@ extension SpeechService: AVSpeechSynthesizerDelegate {
             guard let self, self.systemUtterance.map(ObjectIdentifier.init) == completedID else { return }
             self.systemUtterance = nil
             self.activeText = nil
+            self.activeRequest = nil
             self.deactivateAudioSession()
         }
     }

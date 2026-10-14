@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SentenceDetailView: View {
     @EnvironmentObject private var appModel: AppModel
-    @Environment(\.locale) private var locale
     @StateObject private var model = SentenceExplanationModel()
     @State private var generationTask: Task<Void, Never>?
     let memoryID: UUID
@@ -12,9 +11,13 @@ struct SentenceDetailView: View {
         appModel.memory(withID: memoryID)?.sentences.first { $0.id == sentenceID }
     }
 
-    private var language: String { locale.language.languageCode?.identifier == "zh" ? "zh" : "en" }
+    private var context: MemoryContentContext { appModel.memory(withID: memoryID)?.context ?? .legacyEnglish }
+    private var language: SupportLanguage { appModel.explanationLanguage }
     private var identity: String {
-        [appModel.accountRequests.revision.uuidString, sentenceID.uuidString, sentence?.english ?? "", sentence?.chinese ?? "", language].joined(separator: "|")
+        [appModel.accountRequests.revision.uuidString, sentenceID.uuidString, sentence?.targetText ?? "",
+         sentence?.translationText ?? "", String(sentence?.contentVersion ?? 1), context.targetLanguage.rawValue,
+         context.translationLanguage.rawValue, context.teachingLocale.rawValue, String(context.schemaVersion),
+         language.rawValue, appModel.learningSelection.mode.rawValue].joined(separator: "|")
     }
 
     var body: some View {
@@ -49,7 +52,7 @@ struct SentenceDetailView: View {
             model.reset()
             guard let sentence else { return }
             await model.load(generate: false) {
-                try await appModel.sentenceExplanation(sentence: sentence, language: language, generate: false)
+                try await appModel.sentenceExplanation(sentence: sentence, context: context, language: language, generate: false)
             }
         }
         .task(id: memoryID) { await appModel.ensureMemoryImageLoaded(memoryID: memoryID) }
@@ -58,14 +61,15 @@ struct SentenceDetailView: View {
 
     private func originalSentence(_ sentence: SentenceRecord) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
-            Text(sentence.english)
+            Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
                 .font(.system(.title2, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)
                 .textSelection(.enabled)
-            Text(sentence.chinese)
+            SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
+            Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
                 .font(.body)
                 .foregroundStyle(AppTextColor.secondary)
-            SentencePlaybackButton(speech: appModel.speech, text: sentence.english)
+            SentencePlaybackButton(speech: appModel.speech, request: appModel.speech.request(sentence: sentence, context: context))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(AppSpacing.xLarge)
@@ -75,9 +79,11 @@ struct SentenceDetailView: View {
     private func analysisAction(_ sentence: SentenceRecord) -> some View {
         VStack(spacing: AppSpacing.medium) {
             Button {
+                let context = context
+                let language = language
                 generationTask = Task {
                     await model.load(generate: true) {
-                        try await appModel.sentenceExplanation(sentence: sentence, language: language, generate: true)
+                        try await appModel.sentenceExplanation(sentence: sentence, context: context, language: language, generate: true)
                     }
                 }
             } label: {
@@ -115,15 +121,17 @@ struct SentenceExplanationContent: View {
             ForEach(explanation.points.indices, id: \.self) { index in
                 let point = explanation.points[index]
                 VStack(alignment: .leading, spacing: AppSpacing.small) {
-                    Text(point.title)
+                    Text(sentenceText: point.title, language: explanation.targetLanguage?.rawValue ?? "en")
                         .font(.system(.body, weight: .semibold))
                         .foregroundStyle(AppPalette.accentText)
-                    Text(point.explanation).font(.body).foregroundStyle(AppTextColor.primary)
+                    Text(sentenceText: point.explanation, language: explanation.explanationLanguage?.rawValue ?? "zh-Hans")
+                        .font(.body).foregroundStyle(AppTextColor.primary)
                     VStack(alignment: .leading, spacing: AppSpacing.small) {
-                        Text(point.example.english)
+                        Text(sentenceText: point.example.targetText, language: explanation.targetLanguage?.rawValue ?? "en")
                             .font(.system(.body, weight: .medium))
                             .foregroundStyle(AppTextColor.primary)
-                        Text(point.example.chinese).font(.subheadline).foregroundStyle(AppTextColor.secondary)
+                        Text(sentenceText: point.example.translationText, language: explanation.exampleTranslationLanguage?.rawValue ?? "zh-Hans")
+                            .font(.subheadline).foregroundStyle(AppTextColor.secondary)
                     }
                     .padding(.top, AppSpacing.small)
                 }

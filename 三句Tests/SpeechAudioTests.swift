@@ -249,7 +249,8 @@ final class SpeechAudioTests: XCTestCase {
         let started = expectation(description: "Preparing session")
         let cancelled = expectation(description: "Pending work cancelled")
         var requests = 0
-        speech.ownerProvider = { UUID().uuidString }
+        let owner = UUID().uuidString
+        speech.ownerProvider = { owner }
         speech.sessionProvider = {
             requests += 1
             started.fulfill()
@@ -273,7 +274,8 @@ final class SpeechAudioTests: XCTestCase {
         let secondStarted = expectation(description: "Second request")
         let firstCancelled = expectation(description: "First cancelled")
         var requests = 0
-        speech.ownerProvider = { UUID().uuidString }
+        let owner = UUID().uuidString
+        speech.ownerProvider = { owner }
         speech.sessionProvider = {
             requests += 1
             let number = requests

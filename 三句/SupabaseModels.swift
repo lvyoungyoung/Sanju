@@ -32,6 +32,7 @@ struct SupabaseMemoryRecord: Decodable {
     let createdAt: Date
     let tags: [String]?
     let sentences: [SupabaseMemorySentenceRecord]
+    var context: MemoryContentContext = .legacyEnglish
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -62,6 +63,11 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let learningTopicIDs: [String]?
     let presentationGroup: String?
     let isFavorite: Bool
+    var contentVersion: Int = 1
+    var learningMaterial: SentenceLearningMaterial? = nil
+
+    var targetText: String { english }
+    var translationText: String { chinese }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -330,6 +336,9 @@ enum SupabaseServiceError: LocalizedError {
         case .invalidResponse:
             return L10n.string("supabase_error.invalid_response", "Supabase 返回了无法识别的数据。")
         case .apiError(let message):
+            if let code = MultilingualAPIError.code(in: message) {
+                return MultilingualAPIError.message(for: code)
+            }
             let normalized = message.lowercased()
             if normalized.contains("study_scene_limit_reached") {
                 return StudySceneCreationPolicy.limitMessage
@@ -451,6 +460,7 @@ enum SupabaseServiceError: LocalizedError {
 
         let recoverableMarkers = [
             "generation_in_progress",
+            "generation_pending",
             "request time out",
             "request timed out",
             "timed out",

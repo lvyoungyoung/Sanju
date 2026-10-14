@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 extension AppModel {
     private var initialRemoteMemoryBatchSize: Int {
@@ -55,7 +56,8 @@ extension AppModel {
                 remoteImagePath: request.remoteImagePath,
                 syncedToAccount: memories[refreshedIndex].syncedToAccount,
                 tags: memories[refreshedIndex].tags,
-                sentences: memories[refreshedIndex].sentences
+                sentences: memories[refreshedIndex].sentences,
+                context: memories[refreshedIndex].context
             )
             persistMemories()
         } catch {
@@ -289,45 +291,9 @@ extension AppModel {
             let remoteRecords = try await supabaseService.fetchMemories(session: session)
             try accountRequests.check(revision)
             guard isSessionStillCurrent(session) else { return }
-            let existingMemories = memories.memoryDictionaryByID()
-            let remoteMemories = try remoteRecords.map { record -> MemoryEntry in
-                let sentences = record.sentences
-                    .sorted { $0.sortOrder < $1.sortOrder }
-                    .compactMap { sentence -> SentenceRecord? in
-                        guard let id = UUID(uuidString: sentence.id) else { return nil }
-                        return SentenceRecord(
-                            id: id,
-                            english: sentence.english,
-                            chinese: sentence.chinese,
-                            learningTopicIDs: sentence.learningTopicIDs ?? [],
-                            presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
-                            isFavorite: sentence.isFavorite
-                        )
-                    }
-
-                guard let memoryID = UUID(uuidString: record.id) else {
-                    throw SupabaseServiceError.invalidResponse
-                }
-
-                let cachedImageData: Data?
-                if let existingMemory = existingMemories[memoryID],
-                   existingMemory.remoteImagePath == record.imagePath {
-                    cachedImageData = existingMemory.imageData
-                } else {
-                    cachedImageData = nil
-                }
-
-                return MemoryEntry(
-                    id: memoryID,
-                    createdAt: record.createdAt,
-                    imageData: cachedImageData ?? Data(),
-                    remoteImagePath: record.imagePath,
-                    syncedToAccount: !session.isAnonymous,
-                    tags: record.tags ?? [],
-                    sentences: sentences
-                )
-            }
-            .filter { isMemoryContentComplete($0) }
+            let remoteMemories = try cloudSyncManager.makeRemoteMemories(
+                from: remoteRecords, cachedMemories: memories
+            )
 
             var loadedMemories = remoteMemories
             await reconcilePendingGeneratedMemoryImage(with: &loadedMemories, session: session)
@@ -469,7 +435,8 @@ extension AppModel {
                     remoteImagePath: request.remoteImagePath,
                     syncedToAccount: hydratedMemories[index].syncedToAccount,
                     tags: hydratedMemories[index].tags,
-                    sentences: hydratedMemories[index].sentences
+                    sentences: hydratedMemories[index].sentences,
+                    context: hydratedMemories[index].context
                 )
 
                 downloadedImageCount += 1
@@ -521,7 +488,8 @@ extension AppModel {
                 remoteImagePath: currentMemory.remoteImagePath,
                 syncedToAccount: currentMemory.syncedToAccount,
                 tags: currentMemory.tags,
-                sentences: currentMemory.sentences
+                sentences: currentMemory.sentences,
+                context: currentMemory.context
             )
             didUpdate = true
         }
@@ -650,19 +618,15 @@ extension AppModel {
         session: SupabaseSession
     ) async {
         guard let pendingGeneratedMemoryImage else { return }
+        guard pendingGeneratedMemoryImage.snapshot == nil else { return }
         guard !pendingGeneratedMemoryImage.imageData.isEmpty else {
             clearPendingGeneratedMemoryImage()
             return
         }
 
-        let previousMemoryIDs = Set(pendingGeneratedMemoryImage.previousMemoryIDs)
-        guard let targetIndex = memories.firstIndex(where: { memory in
-            !previousMemoryIDs.contains(memory.id) &&
-            memory.createdAt >= pendingGeneratedMemoryImage.startedAt.addingTimeInterval(-120) &&
-            memory.remoteImagePath != nil &&
-            memory.imageData.isEmpty &&
-            isMemoryContentComplete(memory)
-        }) else {
+        guard let targetIndex = cloudSyncManager.legacyRecoveryCandidateIndex(
+            for: pendingGeneratedMemoryImage, in: memories
+        ) else {
             return
         }
 
@@ -677,7 +641,8 @@ extension AppModel {
             remoteImagePath: remoteImagePath,
             syncedToAccount: targetMemory.syncedToAccount,
             tags: targetMemory.tags,
-            sentences: targetMemory.sentences
+            sentences: targetMemory.sentences,
+            context: targetMemory.context
         )
         clearPendingGeneratedMemoryImage()
         await uploadMemoryImageIfNeeded(
@@ -736,19 +701,120 @@ extension AppModel {
         persistPendingMemoryDeletions()
     }
 
+    func selectStudyLanguage(_ language: LearningLanguage) {
+        guard language != studyLanguage else { return }
+        studyLanguage = language
+        defaults.set(language.rawValue, forKey: "sanju.study.language")
+        studyOverviewRefreshID = UUID()
+        sentenceStudyDueCount = 0
+        sentenceStudyTodayCount = 0
+        sentenceStudyReviewableTodayCount = 0
+        favoriteSentenceStudyCounts = [:]
+        sentenceStudyTopicSummaries = [:]
+        studyOverviewLoadState = .loading
+    }
+
+    private func studyMemories(language: LearningLanguage) -> [MemoryEntry] {
+        memories.filter { $0.context.targetLanguage == language }
+    }
+
+    func studyStorage() throws -> StudyActivationStore {
+        let store: StudyActivationStore
+        if let existing = studyActivationStore {
+            store = existing
+        } else {
+            let directory = try FileManager.default.url(for: .applicationSupportDirectory,
+                in: .userDomainMask, appropriateFor: nil, create: true)
+            store = try StudyActivationStore(fileURL: directory.appendingPathComponent("Sanju/study-activations-v1.json"))
+            studyActivationStore = store
+        }
+        return store
+    }
+
+    private func guestStudyActivationStore() throws -> StudyActivationStore {
+        let store = try studyStorage()
+        // The session receipt is authoritative if the app stopped before the legacy cache write.
+        var restoredProgress = false
+        for receipt in try store.sessionStore().receipts(ownerID: AppStorageKey.guestMemoriesUserID) {
+            let progress = receipt.progress
+            let key = SentenceStudyProgressKey(sentenceID: progress.sentenceID, studyTopic: .favorites)
+            guard locateSentence(progress.sentenceID) != nil,
+                  progress.correctCount > (localSentenceStudyProgress[key]?.correctCount ?? 0) else { continue }
+            localSentenceStudyProgress[key] = LocalSentenceStudyProgress(id: progress.id,
+                sentenceID: progress.sentenceID, learningStep: progress.learningStep,
+                masteredReviewCount: progress.masteredReviewCount, correctCount: progress.correctCount,
+                wrongCount: progress.wrongCount, lastResult: progress.lastResult,
+                lastStudiedAt: progress.lastStudiedAt, lastStudiedDay: progress.lastStudiedAt,
+                nextReviewDay: progress.nextReviewAt)
+            restoredProgress = true
+        }
+        if restoredProgress { persistLocalSentenceStudyProgress() }
+        try store.importLegacyProgress(ownerID: AppStorageKey.guestMemoriesUserID,
+            sentenceIDs: localSentenceStudyProgress.values.map(\.sentenceID))
+        return store
+    }
+
+    func guestStudyActivationsForMigration() throws -> [StudyActivationStore.Activation] {
+        try guestStudyActivationStore().activations(ownerID: AppStorageKey.guestMemoriesUserID)
+    }
+
+    private func beginStudyQueue(language: LearningLanguage, mode: String) async throws -> [SentenceStudyQueueItem] {
+        if studyAccountOwnerID != nil { return try await prepareOnlineStudyQueue(language: language, mode: mode) }
+        guard !isRestoringAuthenticatedSession, loadStoredSession()?.isAnonymous != false else {
+            throw SentenceStudyTopicLoadingError.networkUnavailable
+        }
+        _ = try guestStudyActivationStore()
+        let candidates = mode == "today"
+            ? localSentenceStudyTodayReviewQueue(limit: 1000, language: language)
+            : localSentenceStudyDueQueue(limit: 1000, language: language)
+        return try prepareGuestStudyQueue(language: language, mode: mode, candidates: candidates)
+    }
+
+    private func prepareGuestStudyQueue(language: LearningLanguage, mode: String,
+                                        directSentenceID: UUID? = nil,
+                                        candidates: [SentenceStudyQueueItem]) throws -> [SentenceStudyQueueItem] {
+        let owner = AppStorageKey.guestMemoriesUserID
+        let activations = try guestStudyActivationStore()
+        let sessions = try activations.sessionStore()
+        let state = try sessions.prepare(ownerID: owner, language: language, mode: mode,
+            directSentenceID: directSentenceID, revision: accountRequests.revision, maximumAge: .infinity)
+        if sessions.confirmedQueue(for: state) == nil {
+            // Freeze content before claiming, so a crash between the two files can retry the same claim.
+            try sessions.confirm(state, queue: candidates.filter { SentenceStudyQuestion(item: $0, seed: state.seed).isValid })
+        }
+        let available = availableStudyItems(state.queue)
+        let claim = try activations.session(ownerID: owner, sessionID: state.id) ?? activations.beginSession(
+            ownerID: owner, sessionID: state.id, language: language, candidateIDs: available.map(\.id),
+            seed: state.seed, timeZone: TimeZone(identifier: state.timeZoneID) ?? .current)
+        let ids = Set(claim.sentenceIDs)
+        try sessions.confirm(state, queue: available.filter { ids.contains($0.id) })
+        activeStudySession = state
+        return sessions.confirmedQueue(for: state) ?? []
+    }
+
     func refreshSentenceStudyDueCount() async {
         guard !Task.isCancelled else { return }
+        let language = studyLanguage
         let refreshID = UUID()
         studyOverviewRefreshID = refreshID
         guard !isRestoringAuthenticatedSession else { return }
+        if !isNetworkAvailable, studyAccountOwnerID != nil {
+            do { try refreshCachedOnlineStudyOverview() }
+            catch { studyOverviewLoadState = .failed }
+            return
+        }
         if !isSignedIn, loadStoredSession()?.isAnonymous == false {
             studyOverviewLoadState = .failed
             return
         }
         guard isSignedIn else {
+            guard (try? guestStudyActivationStore()) != nil else {
+                studyOverviewLoadState = .failed
+                return
+            }
             refreshLocalSentenceStudyCounts()
             refreshLocalFavoriteSentenceStudyCounts()
-            memorySentenceCount = memories.reduce(0) { $0 + $1.sentences.count }
+            memorySentenceCount = studyMemories(language: language).reduce(0) { $0 + $1.sentences.count }
             masteredSentenceCount = localMasteredSentenceCount()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
             isRepeatingSentenceStudyQueue = false
@@ -759,35 +825,38 @@ extension AppModel {
         studyOverviewLoadState = .loading
         let revision = accountRequests.revision
         let requestedUserID = supabaseSession?.userID
+        if !isNetworkAvailable {
+            do { try refreshCachedOnlineStudyOverview() }
+            catch { studyOverviewLoadState = .failed }
+            return
+        }
+        await replayPendingStudyEvents()
+        guard accountRequests.revision == revision, studyOverviewRefreshID == refreshID else { return }
         do {
             let session = try await ensureValidSession()
             guard !session.isAnonymous, session.userID == requestedUserID,
                   isSessionStillCurrent(session) else { return }
             let favoriteSentenceIDs = currentFavoriteSentenceIDs()
-            let snapshot = try await StudyOverviewSnapshot.load(
-                from: supabaseService,
-                session: session,
-                favoriteSentenceIDs: favoriteSentenceIDs
-            )
+            let overview = try await supabaseService.fetchMultilingualStudyOverview(session: session, language: language)
+            let counts = try await supabaseService.fetchMultilingualStudyCounts(session: session, language: language,
+                sentenceIDs: favoriteSentenceIDs)
             guard !Task.isCancelled, isSignedIn, isSessionStillCurrent(session),
-                  studyOverviewRefreshID == refreshID else { return }
+                  studyOverviewRefreshID == refreshID, studyLanguage == language else { return }
 
-            if let count = snapshot.dueCount { sentenceStudyDueCount = count }
-            if let count = snapshot.todayCount { sentenceStudyTodayCount = count }
-            if let count = snapshot.reviewableTodayCount { sentenceStudyReviewableTodayCount = count }
-            if let count = snapshot.sentenceCount { memorySentenceCount = count }
-            if let count = snapshot.masteredCount { masteredSentenceCount = count }
-            if let counts = snapshot.favoriteCounts {
-                let existingCounts = favoriteSentenceStudyCounts
-                favoriteSentenceStudyCounts = currentFavoriteSentenceIDs().reduce(into: [:]) { result, sentenceID in
-                    result[sentenceID] = favoriteSentenceIDs.contains(sentenceID)
-                        ? (counts[sentenceID] ?? 0)
-                        : (existingCounts[sentenceID] ?? 0)
-                }
+            sentenceStudyDueCount = overview.dueCount
+            sentenceStudyTodayCount = overview.studiedTodayCount
+            sentenceStudyReviewableTodayCount = overview.studiedTodayCount
+            memorySentenceCount = studyMemories(language: language).reduce(0) { $0 + $1.sentences.count }
+            masteredSentenceCount = counts.values.filter { $0 >= 5 }.count
+            let existingCounts = favoriteSentenceStudyCounts
+            favoriteSentenceStudyCounts = currentFavoriteSentenceIDs().reduce(into: [:]) { result, sentenceID in
+                result[sentenceID] = favoriteSentenceIDs.contains(sentenceID)
+                    ? (counts[sentenceID] ?? 0)
+                    : (existingCounts[sentenceID] ?? 0)
             }
+            overlayPendingStudyProgress()
             sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
-            studyOverviewLoadState = snapshot.dueCount != nil && snapshot.todayCount != nil
-                && snapshot.reviewableTodayCount != nil ? .loaded : .failed
+            studyOverviewLoadState = .loaded
         } catch {
             // Network failures and view cancellation must not erase the last successful overview.
             if accountRequests.revision == revision, studyOverviewRefreshID == refreshID {
@@ -800,48 +869,17 @@ extension AppModel {
     func loadSentenceStudyTopicSession(
         for topic: SentenceStudyTopic
     ) async throws -> SentenceStudyTopicSession? {
-        // Only saved sentences participate in the favorites study queue.
         guard topic.usesFavoriteQueue else { return nil }
-
-        guard isSignedIn else {
-            refreshLocalSentenceStudyCounts()
-            sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
-
-            let queue = localSentenceStudyDueQueue(limit: Int.max, topic: topic).shuffled()
-            if !queue.isEmpty {
-                return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
-            }
-
-            let reviewQueue = localSentenceStudyTodayReviewQueue(limit: Int.max, topic: topic).shuffled()
-            guard !reviewQueue.isEmpty else { return nil }
-            return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
+        let language = studyLanguage
+        var queue = try await beginStudyQueue(language: language, mode: "due")
+        var isReview = false
+        if queue.isEmpty {
+            queue = try await beginStudyQueue(language: language, mode: "today")
+            isReview = true
         }
-
-        guard isNetworkAvailable else {
-            throw SentenceStudyTopicLoadingError.networkUnavailable
-        }
-
-        let session = try await ensureValidSession()
-        guard !session.isAnonymous else {
-            throw SentenceStudyTopicLoadingError.networkUnavailable
-        }
-
-        let queue = try await supabaseService.fetchSentenceStudyQueue(
-            session: session,
-            limit: 1000
-        ).shuffled()
-        if !queue.isEmpty {
-            await refreshSentenceStudyDueCount()
-            return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: false)
-        }
-
-        let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-            session: session,
-            limit: 1000
-        ).shuffled()
+        guard !queue.isEmpty else { return nil }
         await refreshSentenceStudyDueCount()
-        guard !reviewQueue.isEmpty else { return nil }
-        return SentenceStudyTopicSession(topic: topic, queue: reviewQueue, startsInReviewMode: true)
+        return SentenceStudyTopicSession(topic: topic, queue: queue, startsInReviewMode: isReview)
     }
 
     func extractStudyTopicExpressions(
@@ -861,11 +899,20 @@ extension AppModel {
     }
 
     func refreshFavoriteSentenceStudyCounts() async {
+        let language = studyLanguage
         let favoriteSentenceIDs = currentFavoriteSentenceIDs()
         guard !favoriteSentenceIDs.isEmpty else {
             favoriteSentenceStudyCounts = [:]
             return
         }
+
+        if !isNetworkAvailable, studyAccountOwnerID != nil {
+            do { try refreshCachedOnlineStudyOverview() }
+            catch { studyOverviewLoadState = .failed }
+            return
+        }
+        guard !isRestoringAuthenticatedSession else { return }
+        if !isSignedIn, loadStoredSession()?.isAnonymous == false { return }
 
         guard isSignedIn else {
             refreshLocalFavoriteSentenceStudyCounts(sentenceIDs: favoriteSentenceIDs)
@@ -879,15 +926,18 @@ extension AppModel {
                 return
             }
 
-            let remoteCounts = try await supabaseService.fetchSentenceStudyCounts(
+            let remoteCounts = try await supabaseService.fetchMultilingualStudyCounts(
                 session: session,
-                sentenceIDs: Array(favoriteSentenceIDs)
+                language: language,
+                sentenceIDs: favoriteSentenceIDs
             )
-            guard isSessionStillCurrent(session) else { return }
+            guard isSessionStillCurrent(session), studyLanguage == language else { return }
             favoriteSentenceStudyCounts = favoriteSentenceIDs.reduce(into: [:]) { partialResult, sentenceID in
                 partialResult[sentenceID] = remoteCounts[sentenceID] ?? 0
             }
+            overlayPendingStudyProgress(updatesOverview: false)
         } catch {
+            guard studyLanguage == language else { return }
             favoriteSentenceStudyCounts = favoriteSentenceStudyCounts.filter { sentenceID, _ in
                 favoriteSentenceIDs.contains(sentenceID)
             }
@@ -896,135 +946,78 @@ extension AppModel {
 
     func startSentenceStudy() async {
         guard !isLoadingSentenceStudyQueue else { return }
-
+        let revision = accountRequests.revision
         isLoadingSentenceStudyQueue = true
         sentenceStudyErrorMessage = nil
-        isRepeatingSentenceStudyQueue = false
         defer { isLoadingSentenceStudyQueue = false }
-
-        guard isSignedIn else {
-            startLocalSentenceStudy()
-            return
-        }
-
-        guard isNetworkAvailable else {
-            sentenceStudyErrorMessage = L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
-            return
-        }
-
         do {
-            let session = try await ensureValidSession()
-            guard !session.isAnonymous else {
-                sentenceStudyErrorMessage = L10n.string("study.error.sign_in_required", "登录后就可以同步学习记录了。")
-                isShowingSignInSheet = true
-                return
-            }
-
-            let dueCount = try await supabaseService.fetchSentenceStudyDueCount(session: session)
-            let todayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? 0
-            let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? 0
-            sentenceStudyDueCount = dueCount
-            sentenceStudyTodayCount = todayCount
-            sentenceStudyReviewableTodayCount = reviewableTodayCount
-
-            if dueCount > 0 {
-                let queue = try await supabaseService.fetchSentenceStudyQueue(
-                    session: session,
-                    limit: dueCount
-                ).shuffled()
-                sentenceStudyQueue = queue
-                isRepeatingSentenceStudyQueue = false
-
-                if queue.isEmpty {
-                    sentenceStudyDueCount = 0
-                    sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
-                    isShowingSentenceStudySession = false
-                    return
-                }
-
-                isShowingSentenceStudySession = true
-                return
-            }
-
-            guard reviewableTodayCount > 0 else {
-                sentenceStudyDueCount = 0
-                sentenceStudyReviewableTodayCount = 0
+            guard let session = try await loadSentenceStudyTopicSession(for: .favorites) else {
+                guard accountRequests.revision == revision else { return }
                 sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
-                isShowingSentenceStudySession = false
                 return
             }
-
-            let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-                session: session,
-                limit: max(reviewableTodayCount, 1)
-            )
-            let shuffledReviewQueue = reviewQueue.shuffled()
-            sentenceStudyQueue = shuffledReviewQueue
-
-            guard !shuffledReviewQueue.isEmpty else {
-                isRepeatingSentenceStudyQueue = false
-                sentenceStudyReviewableTodayCount = 0
-                sentenceStudyErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
-                isShowingSentenceStudySession = false
-                return
-            }
-
-            isRepeatingSentenceStudyQueue = true
+            guard accountRequests.revision == revision else { return }
+            sentenceStudyQueue = session.queue
+            isRepeatingSentenceStudyQueue = session.startsInReviewMode
             isShowingSentenceStudySession = true
         } catch {
-            #if DEBUG
-            print("[SentenceStudy] start failed :: \(error.localizedDescription)")
-            #endif
-            isRepeatingSentenceStudyQueue = false
+            guard accountRequests.revision == revision else { return }
             sentenceStudyErrorMessage = L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
         }
     }
 
     func prepareSentenceForDirectStudy(sentenceID: UUID) async -> SentenceStudyQueueItem? {
         guard let location = locateSentence(sentenceID) else { return nil }
-
-        if isSignedIn && !isNetworkAvailable {
-            sentenceStudyErrorMessage = L10n.string("study.error.network_unavailable", "当前网络不可用，请连接网络后再开始学习。")
-            return nil
-        }
-
         let memory = memories[location.memoryIndex]
         let sentence = memory.sentences[location.sentenceIndex]
-        let progress = isSignedIn ? nil : localSentenceStudyProgress[
-            SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: .favorites)
-        ]
-
-        return SentenceStudyQueueItem(
-            sentenceID: sentence.id,
-            memoryID: memory.id,
-            english: sentence.english,
-            chinese: sentence.chinese,
-            imagePath: memory.remoteImagePath ?? "",
-            createdAt: memory.createdAt,
-            learningStep: progress?.learningStep ?? 0,
-            masteredReviewCount: progress?.masteredReviewCount ?? 0,
-            correctCount: progress?.correctCount ?? favoriteSentenceStudyCounts[sentenceID] ?? 0,
-            wrongCount: progress?.wrongCount ?? 0,
-            lastResult: progress?.lastResult,
-            nextReviewAt: progress?.nextReviewDay
-        )
+        let revision = accountRequests.revision
+        do {
+            if studyAccountOwnerID != nil {
+                return try await prepareOnlineStudyQueue(language: memory.context.targetLanguage, mode: "due",
+                    directSentenceID: sentenceID).first
+            }
+            guard !isRestoringAuthenticatedSession, loadStoredSession()?.isAnonymous != false else {
+                throw SentenceStudyTopicLoadingError.networkUnavailable
+            }
+            _ = try guestStudyActivationStore()
+            let candidate = makeLocalSentenceStudyQueueItem(memory: memory, sentence: sentence,
+                progress: localProgress(for: sentenceID, topic: .favorites))
+            guard SentenceStudyQuestion(item: candidate).isValid else {
+                throw SentenceLearningMaterial.ValidationError.materialRequired
+            }
+            let queue = try prepareGuestStudyQueue(language: memory.context.targetLanguage, mode: "due",
+                directSentenceID: sentenceID, candidates: [candidate])
+            guard let restored = queue.first else {
+                sentenceStudyErrorMessage = L10n.string("study.error.daily_limit", "今天已开始学习 30 个新句子，请明天再学新句子。已学内容仍可复习。")
+                return nil
+            }
+            return restored
+        } catch {
+            guard accountRequests.revision == revision else { return nil }
+            if case SupabaseServiceError.apiError(let message) = error, message.contains("study_daily_new_limit") {
+                sentenceStudyErrorMessage = L10n.string("study.error.daily_limit", "今天已开始学习 30 个新句子，请明天再学新句子。已学内容仍可复习。")
+            } else {
+                sentenceStudyErrorMessage = L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
+            }
+            return nil
+        }
     }
 
     func recordSentenceStudyCompletion(
         sentenceID: UUID,
         studyTopic: SentenceStudyTopic = .favorites
     ) async throws -> SentenceStudyProgress {
-        guard isSignedIn else {
-            return recordLocalSentenceStudyCompletion(sentenceID: sentenceID, studyTopic: studyTopic)
+        guard let state = activeStudySession, state.accountRevision == accountRequests.revision,
+              state.sentenceIDs.contains(sentenceID), locateSentence(sentenceID) != nil else {
+            throw URLError(.resourceUnavailable)
+        }
+        guard let owner = studyAccountOwnerID else {
+            guard state.ownerID == AppStorageKey.guestMemoriesUserID else { throw CancellationError() }
+            return try recordLocalSentenceStudyCompletion(sentenceID: sentenceID, studyTopic: studyTopic)
         }
 
-        let session = try await ensureValidSession()
-        let progress = try await supabaseService.recordSentenceStudyResult(
-            session: session,
-            sentenceID: sentenceID,
-            wasCorrect: true,
-            studyTopic: studyTopic
-        )
+        guard state.ownerID == owner else { throw CancellationError() }
+        let progress = try onlineStudyStore().enqueue(state, sentenceID: sentenceID)
         let isFavorite: Bool
         if let location = locateSentence(sentenceID) {
             isFavorite = memories[location.memoryIndex].sentences[location.sentenceIndex].isFavorite
@@ -1032,49 +1025,31 @@ extension AppModel {
             isFavorite = false
         }
 
-        if studyTopic.usesFavoriteQueue && isFavorite {
+        if studyTopic.usesFavoriteQueue && isFavorite && studyLanguage == state.language {
             favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
-            sentenceStudyDueCount = max(0, sentenceStudyDueCount - 1)
-            sentenceStudyReviewableTodayCount += 1
         }
-        sentenceStudyTodayCount += 1
+        objectWillChange.send()
         Task { await refreshSentenceStudyDueCount() }
         return progress
     }
 
     func loadSentenceStudyTodayReviewQueue(
-        for topic: SentenceStudyTopic = .favorites
+        for topic: SentenceStudyTopic = .favorites,
+        language: LearningLanguage? = nil
     ) async throws -> [SentenceStudyQueueItem] {
         guard topic.usesFavoriteQueue else { return [] }
-
-        guard isSignedIn else {
-            let reviewQueue = localSentenceStudyTodayReviewQueue(limit: 1000, topic: topic).shuffled()
-            sentenceStudyQueue = reviewQueue
-            sentenceStudyReviewableTodayCount = reviewQueue.count
-            isRepeatingSentenceStudyQueue = !reviewQueue.isEmpty
-            return reviewQueue
-        }
-
-        let session = try await ensureValidSession()
-        guard !session.isAnonymous else { return [] }
-
-        let todayCount = (try? await supabaseService.fetchSentenceStudyTodayCount(session: session)) ?? sentenceStudyTodayCount
-        sentenceStudyTodayCount = todayCount
-        let reviewableTodayCount = (try? await supabaseService.fetchSentenceStudyReviewableTodayCount(session: session)) ?? sentenceStudyReviewableTodayCount
-        let reviewQueue = try await supabaseService.fetchSentenceStudyTodayReviewQueue(
-            session: session,
-            limit: max(reviewableTodayCount, 1)
-        ).shuffled()
-        sentenceStudyQueue = reviewQueue
-        sentenceStudyReviewableTodayCount = reviewQueue.count
-        isRepeatingSentenceStudyQueue = !reviewQueue.isEmpty
-        return reviewQueue
+        let language = language ?? activeStudySession?.language ?? studyLanguage
+        let queue = try await beginStudyQueue(language: language, mode: "today")
+        sentenceStudyQueue = queue
+        isRepeatingSentenceStudyQueue = !queue.isEmpty
+        return queue
     }
 
     func finishSentenceStudySession() async {
         isShowingSentenceStudySession = false
         isRepeatingSentenceStudyQueue = false
         sentenceStudyQueue = []
+        activeStudySession = nil
         await refreshSentenceStudyDueCount()
     }
 
@@ -1085,7 +1060,7 @@ extension AppModel {
         sentenceStudyReviewableTodayCount = localSentenceStudyTodayReviewQueue(limit: Int.max, today: today).count
     }
 
-    private func makeFavoriteStudyTopicSummary() -> SentenceStudyTopicSummary {
+    func makeFavoriteStudyTopicSummary() -> SentenceStudyTopicSummary {
         let sentenceIDs = currentFavoriteSentenceIDs()
         let correctCounts = sentenceIDs.map { favoriteSentenceStudyCounts[$0] ?? 0 }
         let masteryScore = correctCounts.isEmpty
@@ -1102,55 +1077,14 @@ extension AppModel {
             masteryScore: masteryScore
         )
     }
-
-    private func startLocalSentenceStudy() {
-        refreshLocalSentenceStudyCounts()
-
-        if sentenceStudyDueCount > 0 {
-            let queue = localSentenceStudyDueQueue(limit: sentenceStudyDueCount).shuffled()
-            sentenceStudyQueue = queue
-            isRepeatingSentenceStudyQueue = false
-
-            guard !queue.isEmpty else {
-                sentenceStudyDueCount = 0
-                sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
-                isShowingSentenceStudySession = false
-                return
-            }
-
-            isShowingSentenceStudySession = true
-            return
-        }
-
-        guard sentenceStudyReviewableTodayCount > 0 else {
-            sentenceStudyDueCount = 0
-            sentenceStudyReviewableTodayCount = 0
-            sentenceStudyErrorMessage = L10n.string("study.error.done_today", "今天该学的收藏句子已经完成了。")
-            isShowingSentenceStudySession = false
-            return
-        }
-
-        let reviewQueue = localSentenceStudyTodayReviewQueue(limit: sentenceStudyReviewableTodayCount).shuffled()
-        sentenceStudyQueue = reviewQueue
-
-        guard !reviewQueue.isEmpty else {
-            isRepeatingSentenceStudyQueue = false
-            sentenceStudyReviewableTodayCount = 0
-            sentenceStudyErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
-            isShowingSentenceStudySession = false
-            return
-        }
-
-        isRepeatingSentenceStudyQueue = true
-        isShowingSentenceStudySession = true
-    }
-
     private func recordLocalSentenceStudyCompletion(
         sentenceID: UUID,
         studyTopic: SentenceStudyTopic
-    ) -> SentenceStudyProgress {
+    ) throws -> SentenceStudyProgress {
         let now = Date()
-        let today = localStudyDay(for: now)
+        let zone = activeStudySession.flatMap { TimeZone(identifier: $0.timeZoneID) } ?? .current
+        let calendar = StudyCalendar.calendar(timeZone: zone)
+        let today = calendar.startOfDay(for: now)
         let progressKey = SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: studyTopic)
         var progress = localSentenceStudyProgress[progressKey] ?? LocalSentenceStudyProgress(
             sentenceID: sentenceID,
@@ -1159,8 +1093,10 @@ extension AppModel {
         )
 
         if let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay,
-           isSameLocalStudyDay(lastStudiedDay, today) {
-            return makeSentenceStudyProgress(from: progress)
+           calendar.isDate(lastStudiedDay, inSameDayAs: today) {
+            let result = makeSentenceStudyProgress(from: progress)
+            if let state = activeStudySession { try onlineStudyStore().completeGuestQuestion(state, progress: result) }
+            return result
         }
 
         progress.correctCount += 1
@@ -1170,20 +1106,23 @@ extension AppModel {
 
         if progress.learningStep < 5 {
             progress.learningStep += 1
-            progress.nextReviewDay = localNextReviewDay(after: today, learningStep: progress.learningStep)
+            progress.nextReviewDay = localNextReviewDay(after: today, learningStep: progress.learningStep, timeZone: zone)
         } else {
             progress.learningStep = 5
             progress.masteredReviewCount += 1
-            progress.nextReviewDay = localMasteredNextReviewDay(after: today, masteredReviewCount: progress.masteredReviewCount)
+            progress.nextReviewDay = localMasteredNextReviewDay(after: today, masteredReviewCount: progress.masteredReviewCount, timeZone: zone)
         }
 
+        if let state = activeStudySession {
+            try onlineStudyStore().completeGuestQuestion(state, progress: makeSentenceStudyProgress(from: progress))
+        }
         localSentenceStudyProgress[progressKey] = progress
-        if studyTopic.usesFavoriteQueue {
+        if studyTopic.usesFavoriteQueue && activeStudySession?.language == studyLanguage {
             favoriteSentenceStudyCounts[sentenceID] = progress.correctCount
         }
         persistLocalSentenceStudyProgress()
         refreshLocalSentenceStudyCounts()
-        memorySentenceCount = memories.reduce(0) { $0 + $1.sentences.count }
+        memorySentenceCount = studyMemories(language: studyLanguage).reduce(0) { $0 + $1.sentences.count }
         masteredSentenceCount = localMasteredSentenceCount()
         sentenceStudyTopicSummaries = [.favorites: makeFavoriteStudyTopicSummary()]
         return makeSentenceStudyProgress(from: progress)
@@ -1192,11 +1131,15 @@ extension AppModel {
     private func localSentenceStudyDueQueue(
         limit: Int,
         today: Date? = nil,
-        topic: SentenceStudyTopic? = nil
+        topic: SentenceStudyTopic? = nil,
+        language: LearningLanguage? = nil
     ) -> [SentenceStudyQueueItem] {
         let studyDay = today ?? localStudyDay()
-        return localSentenceStudyCandidates(today: studyDay, topic: topic)
+        guard let store = try? guestStudyActivationStore() else { return [] }
+        var remaining = store.remainingNew(ownerID: AppStorageKey.guestMemoriesUserID)
+        return localSentenceStudyCandidates(today: studyDay, topic: topic, language: language ?? studyLanguage)
             .filter { $0.priority < 99 }
+            .filter { SentenceStudyQuestion(item: $0.item).isValid }
             .sorted { lhs, rhs in
                 if lhs.priority != rhs.priority {
                     return lhs.priority < rhs.priority
@@ -1206,6 +1149,12 @@ extension AppModel {
                 }
                 return lhs.createdAt > rhs.createdAt
             }
+            .filter { candidate in
+                guard !store.isActivated(ownerID: AppStorageKey.guestMemoriesUserID, sentenceID: candidate.item.id) else { return true }
+                guard remaining > 0 else { return false }
+                remaining -= 1
+                return true
+            }
             .prefix(max(limit, 0))
             .map(\.item)
     }
@@ -1213,11 +1162,12 @@ extension AppModel {
     private func localSentenceStudyTodayReviewQueue(
         limit: Int,
         today: Date? = nil,
-        topic: SentenceStudyTopic? = nil
+        topic: SentenceStudyTopic? = nil,
+        language: LearningLanguage? = nil
     ) -> [SentenceStudyQueueItem] {
         let studyDay = today ?? localStudyDay()
 
-        return memories
+        return studyMemories(language: language ?? studyLanguage)
             .flatMap { memory in
                 memory.sentences
                     .filter { sentence in
@@ -1247,15 +1197,17 @@ extension AppModel {
                 }
                 return lhs.createdAt > rhs.createdAt
             }
+            .filter { SentenceStudyQuestion(item: $0.item).isValid }
             .prefix(max(limit, 0))
             .map(\.item)
     }
 
     private func localSentenceStudyCandidates(
         today: Date,
-        topic: SentenceStudyTopic? = nil
+        topic: SentenceStudyTopic? = nil,
+        language: LearningLanguage
     ) -> [LocalSentenceStudyCandidate] {
-        memories
+        studyMemories(language: language)
             .sorted { $0.createdAt > $1.createdAt }
             .flatMap { memory in
                 memory.sentences
@@ -1318,7 +1270,9 @@ extension AppModel {
             correctCount: progress?.correctCount ?? 0,
             wrongCount: progress?.wrongCount ?? 0,
             lastResult: progress?.lastResult,
-            nextReviewAt: progress?.nextReviewDay
+            nextReviewAt: progress?.nextReviewDay,
+            context: memory.context,
+            learningMaterial: sentence.learningMaterial
         )
     }
 
@@ -1338,7 +1292,7 @@ extension AppModel {
 
     private func currentFavoriteSentenceIDs() -> Set<UUID> {
         Set(
-            memories.flatMap { memory in
+            studyMemories(language: studyLanguage).flatMap { memory in
                 memory.sentences
                     .filter(\.isFavorite)
                     .map(\.id)
@@ -1354,15 +1308,18 @@ extension AppModel {
     }
 
     private func localMasteredSentenceCount() -> Int {
-        Set(
+        let ids = Set(studyMemories(language: studyLanguage).flatMap { $0.sentences.map(\.id) })
+        return Set(
             localSentenceStudyProgress.values.compactMap { progress in
-                progress.correctCount >= 5 ? progress.sentenceID : nil
+                progress.correctCount >= 5 && ids.contains(progress.sentenceID) ? progress.sentenceID : nil
             }
         ).count
     }
 
     private func localStudiedTodayCount(today: Date) -> Int {
-        localSentenceStudyProgress.values.filter { progress in
+        let ids = currentFavoriteSentenceIDs()
+        return localSentenceStudyProgress.values.filter { progress in
+            guard progress.studyTopic == .favorites, ids.contains(progress.sentenceID) else { return false }
             guard let lastStudiedDay = progress.lastStudiedAt ?? progress.lastStudiedDay else { return false }
             return isSameLocalStudyDay(lastStudiedDay, today)
         }.count
@@ -1376,7 +1333,7 @@ extension AppModel {
         StudyCalendar.calendar().isDate(lhs, inSameDayAs: rhs)
     }
 
-    private func localNextReviewDay(after today: Date, learningStep: Int) -> Date {
+    private func localNextReviewDay(after today: Date, learningStep: Int, timeZone: TimeZone = .current) -> Date {
         let daysToAdd: Int
         switch learningStep {
         case 1:
@@ -1390,12 +1347,12 @@ extension AppModel {
         default:
             daysToAdd = 14
         }
-        return StudyCalendar.calendar().date(byAdding: .day, value: daysToAdd, to: today) ?? today
+        return StudyCalendar.calendar(timeZone: timeZone).date(byAdding: .day, value: daysToAdd, to: today) ?? today
     }
 
-    private func localMasteredNextReviewDay(after today: Date, masteredReviewCount: Int) -> Date {
+    private func localMasteredNextReviewDay(after today: Date, masteredReviewCount: Int, timeZone: TimeZone = .current) -> Date {
         let daysToAdd = masteredReviewCount == 1 ? 30 : 60
-        return StudyCalendar.calendar().date(byAdding: .day, value: daysToAdd, to: today) ?? today
+        return StudyCalendar.calendar(timeZone: timeZone).date(byAdding: .day, value: daysToAdd, to: today) ?? today
     }
 }
 

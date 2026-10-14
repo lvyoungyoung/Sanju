@@ -142,11 +142,15 @@ struct AlbumFlipHistoryStore {
     }
 
     func transferGuestMemory(_ original: MemoryEntry, to migrated: MemoryEntry, destination: Self) {
+        guard original.context == migrated.context else { return }
         var guest = read()
         var target = destination.read()
         for sentence in original.sentences {
             guard let remote = migrated.sentences.first(where: { $0.id == sentence.id }) ??
-                migrated.sentences.first(where: { $0.english == sentence.english && $0.chinese == sentence.chinese }) else { continue }
+                migrated.sentences.first(where: {
+                    $0.targetText == sentence.targetText && $0.translationText == sentence.translationText &&
+                        $0.contentVersion == sentence.contentVersion
+                }) else { continue }
             let oldID = "\(original.id.uuidString):\(sentence.id.uuidString)"
             let events = guest.pending.filter { $0.itemID == oldID }.map {
                 AlbumFlipEvent(id: $0.id, memoryID: migrated.id, sentenceID: remote.id,

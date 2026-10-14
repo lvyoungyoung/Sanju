@@ -493,6 +493,7 @@ extension AppModel {
             persistCredits()
             defaults.removeObject(forKey: AppStorageKey.preserveLocalGuestCreditsAgainstAnonymousProfile)
             defaults.removeObject(forKey: AppStorageKey.memories)
+            defaults.removeObject(forKey: "\(AppStorageKey.memories).preV2Backup")
             defaults.removeObject(forKey: AppStorageKey.memoriesUserID)
         }
         clearStoredSession()
@@ -614,7 +615,7 @@ extension AppModel {
     }
 
     private func restoreCachedMemoriesForLaunch() {
-        guard let cachedUserID = defaults.string(forKey: AppStorageKey.memoriesUserID) else {
+        guard let cachedUserID = persistedMemoryCacheUserID else {
             memories = []
             recordedMemoriesCount = 0
             favoriteSentencesCount = 0
@@ -958,10 +959,12 @@ extension AppModel {
             AppStorageKey.installMarker,
             AppStorageKey.profile,
             AppStorageKey.memories,
+            "\(AppStorageKey.memories).preV2Backup",
             AppStorageKey.memoriesUserID,
             AppStorageKey.pendingMemoryImageUploads,
             AppStorageKey.pendingGeneratedMemoryImage,
             AppStorageKey.pendingGuestMemoryMigrationQueue,
+            "\(AppStorageKey.pendingGuestMemoryMigrationQueue).preV2Backup",
             AppStorageKey.pendingFavoriteChanges,
             AppStorageKey.pendingMemoryDeletions,
             AppStorageKey.pendingGuestCreditMergeLegacy,
@@ -1145,6 +1148,13 @@ extension AppModel {
         preferredNickname: String?,
         attemptID: UUID
     ) async throws {
+        // Finish the old owner's pending job before replacing its credentials or migrating credits.
+        if supabaseSession?.isAnonymous == true, hasPendingGeneratedMemoryRecoveryCandidate() {
+            guard await resumePendingGeneratedMemoryRecoveryIfNeeded() != nil else {
+                throw SupabaseServiceError.apiError("generation_in_progress")
+            }
+            prepareGuestMemoriesForAuthenticatedFlowIfNeeded()
+        }
         let preSignInGuestState = PreSignInGuestState(
             pendingMemoryDeletions: pendingMemoryDeletions
         )
@@ -1173,6 +1183,19 @@ extension AppModel {
 
         var finalProfile = baseProfile
         guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
+        // Import while the anonymous proof is still fresh; a failed login retains the local queue.
+        // Replaying successful imports is safe and does not overwrite remote favorite edits.
+        for memory in pendingGuestMemoriesToMigrate() {
+            _ = try await supabaseService.createMemoryCopy(session: session, memory: memory,
+                guestAccessToken: preparedGuestCreditMigration?.guestSession.accessToken)
+            guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
+        }
+        let guestActivations = try guestStudyActivationsForMigration()
+        if !guestActivations.isEmpty || !localSentenceStudyProgressToMerge().isEmpty {
+            _ = try await supabaseService.mergeLocalSentenceStudyProgress(session: session,
+                progressRecords: localSentenceStudyProgressToMerge(), activations: guestActivations)
+            guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
+        }
         if let preparedGuestCreditMigration,
            preparedGuestCreditMigration.guestSession.userID != session.userID {
             finalProfile = try await supabaseService.migrateGuestCredits(
@@ -1185,6 +1208,7 @@ extension AppModel {
         guard authenticationAttemptID == attemptID, !Task.isCancelled else { throw CancellationError() }
         clearPendingGuestCreditMigration()
         clearGuestCreditRecoveryWarningIfNeeded()
+        accountRequests.invalidate()
         supabaseSession = session
         persistSession()
         if hasCachedMemories(for: session.userID) {
@@ -1507,22 +1531,26 @@ extension AppModel {
 
     func localSentenceStudyProgressToMerge() -> [LocalSentenceStudyProgress] {
         localSentenceStudyProgress.values.filter { progress in
-            guard let location = locateSentence(progress.sentenceID) else { return false }
-            let sentence = memories[location.memoryIndex].sentences[location.sentenceIndex]
-            return progress.studyTopic.usesFavoriteQueue && sentence.isFavorite
+            // Unfavoriting does not erase earned progress. Only migrate supported progress
+            // whose sentence still belongs to the current account/guest memory collection.
+            progress.studyTopic.usesFavoriteQueue && locateSentence(progress.sentenceID) != nil
         }
     }
 
     private func syncLocalSentenceStudyProgressIfNeeded() async {
         let progressRecords = localSentenceStudyProgressToMerge()
-        guard !progressRecords.isEmpty else { return }
         guard let session = supabaseSession, !session.isAnonymous else { return }
+        let revision = accountRequests.revision
 
         do {
+            let activations = try guestStudyActivationsForMigration()
+            guard !progressRecords.isEmpty || !activations.isEmpty else { return }
             let mergedSentenceIDs = try await supabaseService.mergeLocalSentenceStudyProgress(
                 session: session,
-                progressRecords: progressRecords
+                progressRecords: progressRecords,
+                activations: activations
             )
+            try accountRequests.check(revision)
             guard !mergedSentenceIDs.isEmpty else { return }
 
             for _ in mergedSentenceIDs {
@@ -1561,16 +1589,17 @@ extension AppModel {
         }
 
         let queuedGuestMemories = pendingGuestMemoriesToMigrate()
-        let remoteRecords: [SupabaseMemoryRecord]
+        let remoteMemories: [MemoryEntry]
         do {
-            remoteRecords = try await supabaseService.fetchMemories(session: session)
+            let remoteRecords = try await supabaseService.fetchMemories(session: session)
+            remoteMemories = try cloudSyncManager.makeRemoteMemories(from: remoteRecords)
         } catch {
             pendingCloudSyncDebugLog("remote fetch failed before sync: \(error.localizedDescription)")
-            remoteRecords = []
+            // A failed/unknown-version page must never be interpreted as an empty remote account.
+            return
         }
 
         guard (try? accountRequests.check(revision)) != nil else { return }
-        let remoteMemories = cloudSyncManager.makeRemoteMemories(from: remoteRecords)
 
         reconcileLocalMemoriesWithRemote(remoteMemories, sessionUserID: session.userID)
         let queuedMemoryDeletions = state?.pendingMemoryDeletions ?? pendingMemoryDeletions
@@ -1593,7 +1622,10 @@ extension AppModel {
                 )
             )
         }
-        guard cloudSyncPlan.totalCount > 0 else { return }
+        guard cloudSyncPlan.totalCount > 0 else {
+            await syncLocalSentenceStudyProgressIfNeeded()
+            return
+        }
 
         if showsProgress {
             isSyncingPendingCloudChanges = true

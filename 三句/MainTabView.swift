@@ -48,11 +48,14 @@ struct MainTabView: View {
                 Label(L10n.string("tab.memories", "回忆"), systemImage: "photo.on.rectangle")
             }
 
-            NavigationStack {
+            NavigationStack(path: $appModel.favoritesNavigationPath) {
                 FavoritesView()
+                    .navigationDestination(for: FavoriteSentenceRoute.self) { route in
+                        SentenceDetailView(memoryID: route.memoryID, sentenceID: route.sentenceID)
+                    }
             }
             .tag(AppTab.favorites)
-            .toolbar(.visible, for: .tabBar)
+            .toolbar(appModel.favoritesNavigationPath.isEmpty ? .visible : .hidden, for: .tabBar)
             .tabItem {
                 Label(L10n.string("tab.favorites", "收藏"), systemImage: "star")
             }

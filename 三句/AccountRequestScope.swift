@@ -6,8 +6,12 @@ final class AccountRequestScope {
     nonisolated deinit {}
 
     private(set) var revision = UUID()
+    private(set) var invalidationCount: UInt64 = 0
 
-    func invalidate() { revision = UUID() }
+    func invalidate() {
+        revision = UUID()
+        invalidationCount &+= 1
+    }
 
     func check(_ revision: UUID) throws {
         try Task.checkCancellation()

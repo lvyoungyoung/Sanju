@@ -13,6 +13,13 @@ enum SpeechPlaybackState: Equatable {
             self = .idle
         }
     }
+
+    init(request: SpeechRequest, activeRequest: SpeechRequest?, activeText: String?, loadingText: String?) {
+        guard request == activeRequest else { self = .idle; return }
+        if loadingText == request.text { self = .loading }
+        else if activeText == request.text { self = .playing }
+        else { self = .idle }
+    }
 }
 
 struct SpeechPlaybackLabel: View {
@@ -21,15 +28,30 @@ struct SpeechPlaybackLabel: View {
     var title: String? = nil
     var icon = "play.fill"
     var playingTitle: String? = nil
+    var request: SpeechRequest? = nil
 
     var body: some View {
-        let state = SpeechPlaybackState(text: text, activeText: speech.activeText, loadingText: speech.loadingText)
+        let state = request.map {
+            SpeechPlaybackState(request: $0, activeRequest: speech.activeRequest,
+                                activeText: speech.activeText, loadingText: speech.loadingText)
+        } ?? SpeechPlaybackState(text: text, activeText: speech.activeText, loadingText: speech.loadingText)
         SpeechPlaybackContent(
             state: state == .playing && playingTitle == nil ? .idle : state,
             title: title,
             icon: icon,
             playingTitle: playingTitle
         )
+        .alert(L10n.string("speech.unavailable.title", "无法播放"), isPresented: Binding(
+            get: {
+                speech.playbackError != nil && (request.map { speech.playbackErrorRequest == $0 }
+                    ?? (speech.playbackErrorRequest?.text == text))
+            },
+            set: { if !$0 { speech.dismissPlaybackError() } }
+        )) {
+            Button(L10n.string("common.ok", "好"), role: .cancel) { speech.dismissPlaybackError() }
+        } message: {
+            Text(L10n.string("speech.unavailable.message", "暂时无法播放此语言，请稍后重试，或在系统设置中下载对应语言的声音。"))
+        }
     }
 }
 
@@ -79,16 +101,28 @@ struct SpeechPlaybackContent: View {
 }
 
 struct SentencePlaybackButton: View {
-    let speech: SpeechService
+    @ObservedObject var speech: SpeechService
     let text: String
+    let request: SpeechRequest?
+
+    init(speech: SpeechService, text: String) {
+        self.speech = speech; self.text = text; request = nil
+    }
+
+    init(speech: SpeechService, request: SpeechRequest) {
+        self.speech = speech; self.request = request; text = request.text
+    }
 
     var body: some View {
-        Button { speech.speak(text) } label: {
+        Button {
+            if let request { speech.speak(request) } else { speech.speak(text) }
+        } label: {
             SpeechPlaybackLabel(
                 speech: speech,
                 text: text,
                 title: L10n.string("new.result.play", "播放"),
-                playingTitle: L10n.string("new.result.playing", "播放中")
+                playingTitle: L10n.string("new.result.playing", "播放中"),
+                request: request
             )
         }
         .buttonStyle(SentenceActionButtonStyle(isEmphasized: true))

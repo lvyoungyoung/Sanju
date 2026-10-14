@@ -3,12 +3,17 @@ confirm-purchase
 create-study-scene
 delete-account
 explain-sentence
+explain-sentence-v2
 extract-study-topic-expressions
 generate-memory-v2
+generate-memory-v3
+import-guest-memories-v1
 process-generation-enrichment
 migrate-guest-credits
 moderate-image-v1
 recover-guest-generation
+recover-generation-v2
 review-study-scene
 synthesize-speech
+synthesize-speech-v2
 update-profile-avatar

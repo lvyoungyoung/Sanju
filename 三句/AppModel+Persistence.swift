@@ -103,6 +103,16 @@ private enum MemoryImagePersistenceStore {
 extension AppModel {
     private static let memoryWidgetSnapshotDebounceNanoseconds: UInt64 = 500_000_000
 
+    var persistedMemoryCacheUserID: String? {
+        guard let data = defaults.data(forKey: AppStorageKey.memories) else { return nil }
+        do {
+            return try MemoryCachePersistence.owner(in: data, legacyOwner: defaults.string(forKey: AppStorageKey.memoriesUserID))
+        } catch {
+            credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+            return nil
+        }
+    }
+
     private struct PersistedMemoryEntry: Codable {
         let id: UUID
         let createdAt: Date
@@ -110,6 +120,7 @@ extension AppModel {
         let syncedToAccount: Bool?
         let tags: [String]?
         let sentences: [SentenceRecord]
+        let context: MemoryContentContext?
     }
 
     private struct PersistedPendingGeneratedMemoryImage: Codable {
@@ -117,6 +128,8 @@ extension AppModel {
         let previousMemoryIDs: [UUID]
         let guestJobID: String?
         let clientRequestID: String?
+        let snapshot: GenerationRequestSnapshot?
+        let imageFileName: String?
     }
 
     private struct PersistedPendingGuestMemoryMigrationEntry: Codable {
@@ -126,6 +139,17 @@ extension AppModel {
         let syncedToAccount: Bool?
         let tags: [String]?
         let sentences: [SentenceRecord]
+        let context: MemoryContentContext?
+    }
+
+    private func decodeMemoryCache<Value: Codable>(_ type: Value.Type, data: Data, userID: String?) throws -> Value {
+        try MemoryCachePersistence.decode(type, data: data, userID: userID)
+    }
+
+    /// Encode and verify before replacing the single cache value; retain the pre-migration bytes.
+    private func writeMemoryCache<Value: Codable>(_ value: Value, key: String, userID: String?) throws {
+        let oldOwner = key == AppStorageKey.memories ? defaults.string(forKey: AppStorageKey.memoriesUserID) : nil
+        try MemoryCachePersistence.write(value, key: key, userID: userID, previousOwner: oldOwner, defaults: defaults)
     }
 
     private struct CachedMemories {
@@ -193,7 +217,6 @@ extension AppModel {
     }
 
     func persistMemories(for userID: String?) {
-        let encoder = JSONEncoder()
         let persistedMemories = memories.map {
             PersistedMemoryEntry(
                 id: $0.id,
@@ -201,15 +224,16 @@ extension AppModel {
                 remoteImagePath: $0.remoteImagePath,
                 syncedToAccount: $0.syncedToAccount,
                 tags: $0.tags,
-                sentences: $0.sentences
+                sentences: $0.sentences,
+                context: $0.context
             )
         }
-        let data = PersistenceDiagnostics.encode(
-            persistedMemories,
-            using: encoder,
-            operation: "Encode persisted memories"
-        )
-        defaults.set(data, forKey: AppStorageKey.memories)
+        do {
+            try writeMemoryCache(persistedMemories, key: AppStorageKey.memories, userID: userID)
+        } catch {
+            credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+            return
+        }
         defaults.set(userID, forKey: AppStorageKey.memoriesUserID)
         MemoryImagePersistenceStore.schedulePersist(memories: memories)
         scheduleMemoryWidgetSnapshotUpdate(with: memories)
@@ -320,8 +344,15 @@ extension AppModel {
     }
 
     private func completeLocalDeleteAccountClear() {
-        if let owner = loadPendingLocalAccountTransition()?.userID {
+        let transition = loadPendingLocalAccountTransition()
+        var studyCleanupError: Error?
+        if let owner = transition?.userID {
             AlbumFlipHistoryStore(defaults: defaults, ownerID: owner).clear()
+            // Revoked credentials alone do not prove deletion; only a confirmed delete purges the outbox.
+            if transition?.remoteDeletionConfirmed == true {
+                do { try discardStudyData(ownerID: owner) }
+                catch { studyCleanupError = error }
+            }
         }
         resetLocalAccountState(resetCredits: false)
         clearLearningDraft()
@@ -332,7 +363,12 @@ extension AppModel {
         remainingCredits = 0
         persistCredits()
         defaults.removeObject(forKey: AppStorageKey.preserveLocalGuestCreditsAgainstAnonymousProfile)
-        clearPendingLocalAccountTransition()
+        if let studyCleanupError {
+            // Keep the confirmed transaction so startup retries the idempotent owner cleanup.
+            credentialWarningMessage = studyCleanupError.localizedDescription
+        } else {
+            clearPendingLocalAccountTransition()
+        }
     }
 
     private func persistPendingLocalAccountTransition(_ transition: PendingLocalAccountTransition) {
@@ -491,27 +527,32 @@ extension AppModel {
         defaults.removeObject(forKey: AppStorageKey.pendingMemoryImageUploads)
     }
 
-    func persistPendingGeneratedMemoryImage() {
+    @discardableResult
+    func persistPendingGeneratedMemoryImage() -> Bool {
         let encoder = JSONEncoder()
-        if let pendingGeneratedMemoryImage {
-            writePendingGeneratedImageData(pendingGeneratedMemoryImage.imageData)
-        } else {
-            removePendingGeneratedImageData()
+        guard let pendingGeneratedMemoryImage else {
+            clearPendingGeneratedMemoryImage()
+            return true
         }
-        let persistedValue = pendingGeneratedMemoryImage.map {
-                PersistedPendingGeneratedMemoryImage(
-                    startedAt: $0.startedAt,
-                    previousMemoryIDs: $0.previousMemoryIDs,
-                    guestJobID: $0.guestJobID,
-                    clientRequestID: $0.clientRequestID
-                )
-            }
-        let data = PersistenceDiagnostics.encode(
-            persistedValue,
-            using: encoder,
-            operation: "Encode pending generated memory image metadata"
-        )
-        defaults.set(data, forKey: AppStorageKey.pendingGeneratedMemoryImage)
+        let fileName = "\(UUID().uuidString.lowercased()).jpg"
+        let persistedValue = PersistedPendingGeneratedMemoryImage(
+            startedAt: pendingGeneratedMemoryImage.startedAt,
+            previousMemoryIDs: pendingGeneratedMemoryImage.previousMemoryIDs,
+            guestJobID: pendingGeneratedMemoryImage.guestJobID,
+            clientRequestID: pendingGeneratedMemoryImage.clientRequestID,
+            snapshot: pendingGeneratedMemoryImage.snapshot, imageFileName: fileName)
+        do {
+            let data = try encoder.encode(persistedValue)
+            let directory = pendingGeneratedImageDirectoryURL()
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try pendingGeneratedMemoryImage.imageData.write(to: directory.appendingPathComponent(fileName), options: .atomic)
+            // Metadata is committed only after the uniquely named image is durable.
+            defaults.set(data, forKey: AppStorageKey.pendingGeneratedMemoryImage)
+            return true
+        } catch {
+            credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+            return false
+        }
     }
 
     func clearPendingGeneratedMemoryImage() {
@@ -529,6 +570,7 @@ extension AppModel {
         cachedMemoryImageHydrationTask?.cancel()
         memoryWidgetSnapshotUpdateTask?.cancel()
         defaults.removeObject(forKey: AppStorageKey.memories)
+        defaults.removeObject(forKey: "\(AppStorageKey.memories).preV2Backup")
         defaults.removeObject(forKey: AppStorageKey.memoriesUserID)
         PersistenceDiagnostics.removeItem(at: memoryImageDirectoryURL(), operation: "Remove memory image directory")
         MemoryWidgetSnapshotStore.scheduleUpdate(with: [])
@@ -537,6 +579,7 @@ extension AppModel {
     func clearPendingGuestMemoryMigrationQueue() {
         pendingGuestMemoryMigrationQueue = []
         defaults.removeObject(forKey: AppStorageKey.pendingGuestMemoryMigrationQueue)
+        defaults.removeObject(forKey: "\(AppStorageKey.pendingGuestMemoryMigrationQueue).preV2Backup")
         PersistenceDiagnostics.removeItem(
             at: pendingGuestMemoryImageDirectoryURL(),
             operation: "Remove pending guest memory image directory"
@@ -544,7 +587,6 @@ extension AppModel {
     }
 
     func persistPendingGuestMemoryMigrationQueue() {
-        let encoder = JSONEncoder()
         let persistedQueue = pendingGuestMemoryMigrationQueue.map {
             PersistedPendingGuestMemoryMigrationEntry(
                 id: $0.id,
@@ -552,15 +594,16 @@ extension AppModel {
                 remoteImagePath: $0.remoteImagePath,
                 syncedToAccount: $0.syncedToAccount,
                 tags: $0.tags,
-                sentences: $0.sentences
+                sentences: $0.sentences,
+                context: $0.context
             )
         }
-        let data = PersistenceDiagnostics.encode(
-            persistedQueue,
-            using: encoder,
-            operation: "Encode pending guest memory migration queue"
-        )
-        defaults.set(data, forKey: AppStorageKey.pendingGuestMemoryMigrationQueue)
+        do {
+            try writeMemoryCache(persistedQueue, key: AppStorageKey.pendingGuestMemoryMigrationQueue, userID: nil)
+        } catch {
+            credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+            return
+        }
         persistPendingGuestMemoryImageFiles()
     }
 
@@ -570,14 +613,9 @@ extension AppModel {
             return
         }
 
-        let decoder = JSONDecoder()
-        guard let persistedQueue = PersistenceDiagnostics.decode(
-            [PersistedPendingGuestMemoryMigrationEntry].self,
-            from: data,
-            using: decoder,
-            operation: "Decode pending guest memory migration queue"
-        ) else {
-            pendingGuestMemoryMigrationQueue = []
+        guard let persistedQueue = try? decodeMemoryCache([PersistedPendingGuestMemoryMigrationEntry].self,
+            data: data, userID: nil) else {
+            credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
             return
         }
 
@@ -589,7 +627,8 @@ extension AppModel {
                 remoteImagePath: memory.remoteImagePath,
                 syncedToAccount: memory.syncedToAccount ?? false,
                 tags: memory.tags ?? [],
-                sentences: memory.sentences
+                sentences: memory.sentences,
+                context: memory.context ?? .legacyEnglish
             )
         }
     }
@@ -668,7 +707,8 @@ extension AppModel {
                         remoteImagePath: mergedMemories[matchingIndex].remoteImagePath,
                         syncedToAccount: mergedMemories[matchingIndex].syncedToAccount,
                         tags: mergedMemories[matchingIndex].tags,
-                        sentences: mergedMemories[matchingIndex].sentences
+                        sentences: mergedMemories[matchingIndex].sentences,
+                        context: mergedMemories[matchingIndex].context
                     )
                     didChange = true
                 }
@@ -700,19 +740,23 @@ extension AppModel {
         for userID: String,
         imageLoading: CachedMemoryImageLoadingMode = .immediateForAll
     ) -> CachedMemories? {
-        let cachedUserID = defaults.string(forKey: AppStorageKey.memoriesUserID)
+        let cachedUserID = persistedMemoryCacheUserID
         guard cachedUserID == userID,
               let memoryData = defaults.data(forKey: AppStorageKey.memories) else {
             return nil
         }
 
         let decoder = JSONDecoder()
-        if let persistedMemories = PersistenceDiagnostics.decode(
-            [PersistedMemoryEntry].self,
-            from: memoryData,
-            using: decoder,
-            operation: "Decode cached memories"
-        ) {
+        // Earliest builds kept image bytes inline. Decode that shape before the metadata-only shape.
+        if let rows = (try? JSONSerialization.jsonObject(with: memoryData)) as? [[String: Any]],
+           rows.contains(where: { $0["imageData"] != nil }) {
+            guard let legacyMemories = try? decoder.decode([MemoryEntry].self, from: memoryData) else {
+                credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+                return nil
+            }
+            return CachedMemories(memories: legacyMemories, deferredImageMemoryIDs: [])
+        }
+        if let persistedMemories = try? decodeMemoryCache([PersistedMemoryEntry].self, data: memoryData, userID: userID) {
             let defaultSyncedToAccount = defaultSyncedValueForCachedMemories(userID: userID)
             var deferredImageMemoryIDs: [UUID] = []
             let decodedMemories = persistedMemories.map { memory -> MemoryEntry in
@@ -730,7 +774,8 @@ extension AppModel {
                     remoteImagePath: memory.remoteImagePath,
                     syncedToAccount: syncedToAccount,
                     tags: memory.tags ?? [],
-                    sentences: memory.sentences
+                    sentences: memory.sentences,
+                    context: memory.context ?? .legacyEnglish
                 )
             }
             return CachedMemories(memories: decodedMemories, deferredImageMemoryIDs: deferredImageMemoryIDs)
@@ -745,6 +790,7 @@ extension AppModel {
             return CachedMemories(memories: decodedLegacyMemories, deferredImageMemoryIDs: [])
         }
 
+        credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
         return nil
     }
 
@@ -753,7 +799,7 @@ extension AppModel {
     }
 
     func hasCachedMemories(for userID: String) -> Bool {
-        let cachedUserID = defaults.string(forKey: AppStorageKey.memoriesUserID)
+        let cachedUserID = persistedMemoryCacheUserID
         guard cachedUserID == userID else { return false }
         return defaults.data(forKey: AppStorageKey.memories) != nil
     }
@@ -787,7 +833,7 @@ extension AppModel {
             }.value
 
             guard !Task.isCancelled, let self else { return }
-            guard self.defaults.string(forKey: AppStorageKey.memoriesUserID) == userID else { return }
+            guard self.persistedMemoryCacheUserID == userID else { return }
 
             var didHydrateImage = false
             let hydratedMemories = self.memories.map { memory in
@@ -805,7 +851,8 @@ extension AppModel {
                     remoteImagePath: memory.remoteImagePath,
                     syncedToAccount: memory.syncedToAccount,
                     tags: memory.tags,
-                    sentences: memory.sentences
+                    sentences: memory.sentences,
+                    context: memory.context
                 )
             }
 
@@ -903,14 +950,25 @@ extension AppModel {
             using: decoder,
             operation: "Decode pending generated memory image metadata"
         ) {
-            let imageData = loadPendingGeneratedImageData()
+            let imageData: Data?
+            if let name = persistedValue.imageFileName {
+                guard name == URL(fileURLWithPath: name).lastPathComponent, name.hasSuffix(".jpg") else {
+                    credentialWarningMessage = LanguageContractError.corruptContent.localizedDescription
+                    return
+                }
+                imageData = PersistenceDiagnostics.readData(from: pendingGeneratedImageDirectoryURL().appendingPathComponent(name),
+                    operation: "Load pending generated image")
+            } else {
+                imageData = loadPendingGeneratedImageData()
+            }
             pendingGeneratedMemoryImage = imageData.map {
                 PendingGeneratedMemoryImage(
                     startedAt: persistedValue.startedAt,
                     previousMemoryIDs: persistedValue.previousMemoryIDs,
                     guestJobID: persistedValue.guestJobID,
                     clientRequestID: persistedValue.clientRequestID,
-                    imageData: $0
+                    imageData: $0,
+                    snapshot: persistedValue.snapshot
                 )
             }
         } else if let legacyValue = PersistenceDiagnostics.decode(
@@ -970,7 +1028,7 @@ extension AppModel {
     }
 
     private func removePendingGeneratedImageData() {
-        PersistenceDiagnostics.removeItem(at: pendingGeneratedImageFileURL(), operation: "Remove pending generated image")
+        PersistenceDiagnostics.removeItem(at: pendingGeneratedImageDirectoryURL(), operation: "Remove pending generated images")
     }
 
     private func memoryImageDirectoryURL() -> URL {

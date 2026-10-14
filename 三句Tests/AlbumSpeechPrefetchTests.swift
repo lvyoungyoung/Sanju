@@ -189,7 +189,8 @@ final class AlbumSpeechPrefetchTests: XCTestCase {
     }
 
     func testIncompletePCMAndTimeoutAreNotCached() async throws {
-        queue = AlbumSpeechPrefetcher(cache: cache, namespace: "test", timeout: .milliseconds(100), fetch: source.fetch)
+        // Allow simulator cache I/O to finish before exercising the stalled fetch deadline.
+        queue = AlbumSpeechPrefetcher(cache: cache, namespace: "test", timeout: .seconds(2), fetch: source.fetch)
         update(["Next"])
         try await waitUntil { self.source.requests.count == 1 }
         let stream = try XCTUnwrap(queue.takeOver(text: "Next", voice: .mia, owner: "alice"))
@@ -335,7 +336,7 @@ final class AlbumSpeechPrefetchTests: XCTestCase {
         source.send(pcm, at: 0)
         source.finish(at: 0)
         let cacheKey = SpeechAudioCache.key(
-            text: context.text, scope: "\(CloudSpeechClient().cacheNamespace)|alice", voice: speech.selectedVoice
+            request: .english(context.text, voice: speech.selectedVoice, owner: "alice"), environment: CloudSpeechClient().cacheNamespace
         )
         try await waitUntil { await self.cache.load(cacheKey) == self.pcm }
         study.end()
@@ -357,7 +358,7 @@ final class AlbumSpeechPrefetchTests: XCTestCase {
         source.send(Data([1]), at: 0)
         source.finish(at: 0)
         let cacheKey = SpeechAudioCache.key(
-            text: "Current", scope: "\(CloudSpeechClient().cacheNamespace)|alice", voice: speech.selectedVoice
+            request: .english("Current", voice: speech.selectedVoice, owner: "alice"), environment: CloudSpeechClient().cacheNamespace
         )
         await Task.yield()
         let partial = await cache.load(cacheKey)
@@ -433,7 +434,7 @@ final class AlbumSpeechPrefetchTests: XCTestCase {
     }
 
     private func key(_ text: String, owner: String = "alice", voice: SpeechVoice = .mia) -> String {
-        SpeechAudioCache.key(text: text, scope: "test|\(owner)", voice: voice)
+        SpeechAudioCache.key(request: .english(text, voice: voice, owner: owner), environment: "test")
     }
 
     private func waitForCache(_ text: String) async throws {

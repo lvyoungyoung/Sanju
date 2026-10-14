@@ -10,6 +10,15 @@ final class StudySpeechPrefetch {
         let text: String
         let ownerID: String?
         let enabled: Bool
+        let request: SpeechRequest?
+
+        init(text: String, ownerID: String?, enabled: Bool) {
+            self.text = text; self.ownerID = ownerID; self.enabled = enabled; request = nil
+        }
+
+        init(request: SpeechRequest, enabled: Bool) {
+            self.request = request; text = request.text; ownerID = request.owner; self.enabled = enabled
+        }
     }
 
     private let speech: SpeechService
@@ -34,7 +43,11 @@ final class StudySpeechPrefetch {
         }
         guard let scopeID else { return }
         // No sentence is playing yet. Put this question first in the silent queue.
-        speech.updateAlbumSpeechPrefetch(id: scopeID, current: "", upcoming: [context.text], enabled: true)
+        if let request = context.request {
+            speech.updateAlbumSpeechPrefetch(id: scopeID, current: nil, upcoming: [request], enabled: true)
+        } else {
+            speech.updateAlbumSpeechPrefetch(id: scopeID, current: "", upcoming: [context.text], enabled: true)
+        }
     }
 
     func end() {

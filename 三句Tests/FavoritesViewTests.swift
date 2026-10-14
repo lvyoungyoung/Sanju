@@ -48,6 +48,7 @@ final class FavoritesViewTests: XCTestCase {
     func testUnfavoriteAndRefavoriteKeepTheStudyHistory() async throws {
         let model = makeModel()
         let favorite = model.memories[0].sentences[0]
+        _ = await model.prepareSentenceForDirectStudy(sentenceID: favorite.id)
         _ = try await model.recordSentenceStudyCompletion(sentenceID: favorite.id)
         model.deleteFavorite(sentenceID: favorite.id)
         await model.refreshSentenceStudyDueCount()
@@ -304,6 +305,10 @@ final class FavoritesViewTests: XCTestCase {
 
     private func makeModel() -> AppModel {
         let model = AppModel()
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("study.json")
+        model.studyActivationStore = try! StudyActivationStore(fileURL: file)
+        addTeardownBlock { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
         model.localSentenceStudyProgress = [:]
         model.memories = [MemoryEntry(imageData: Data(), sentences: [
             SentenceRecord(english: "The coffee smells really good.", chinese: "咖啡闻起来很香。", isFavorite: true),

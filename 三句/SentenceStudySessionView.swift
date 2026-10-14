@@ -3,6 +3,7 @@ import UIKit
 
 struct SentenceStudySessionView: View {
     @EnvironmentObject private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     @State private var activeQueue: [SentenceStudyQueueItem]
     @State private var currentIndex = 0
     @State private var isShowingCompletion = false
@@ -10,10 +11,13 @@ struct SentenceStudySessionView: View {
     @State private var isPreparingReviewQueue = false
     @State private var reviewQueueErrorMessage: String?
     @State private var isShowingStudySettings = false
+    @State private var sessionTodayCount: Int
     private let onDismiss: @MainActor () -> Void
     private let repeatsActiveQueueOnCompletion: Bool
     private let usesSingleSentenceCompletion: Bool
     private let studyTopic: SentenceStudyTopic
+    private let sessionLanguage: LearningLanguage
+    private let questionSeed: UInt64
 
     init(
         queue: [SentenceStudyQueueItem],
@@ -21,11 +25,16 @@ struct SentenceStudySessionView: View {
         startsInReviewMode: Bool = false,
         repeatsActiveQueueOnCompletion: Bool = false,
         usesSingleSentenceCompletion: Bool = false,
+        seed: UInt64 = 0,
+        initialTodayCount: Int = 0,
         onDismiss: @escaping @MainActor () -> Void = {}
     ) {
         _activeQueue = State(initialValue: queue)
         _isReviewingToday = State(initialValue: startsInReviewMode)
+        _sessionTodayCount = State(initialValue: max(initialTodayCount, startsInReviewMode ? queue.count : 0))
         self.studyTopic = studyTopic
+        self.sessionLanguage = queue.first?.context.targetLanguage ?? .english
+        self.questionSeed = seed
         self.repeatsActiveQueueOnCompletion = repeatsActiveQueueOnCompletion
         self.usesSingleSentenceCompletion = usesSingleSentenceCompletion
         self.onDismiss = onDismiss
@@ -46,14 +55,14 @@ struct SentenceStudySessionView: View {
                     Group {
                         if usesSingleSentenceCompletion, let completedItem = activeQueue.last {
                             SentenceStudySingleSentenceCompletionView(
-                                sentence: completedItem.english,
+                                sentence: completedItem.targetText,
                                 onReviewAgain: restartTodayReview,
                                 onClose: closeSession
                             )
                         } else {
                             SentenceStudyCompletionView(
-                                todayCompletedCount: appModel.sentenceStudyTodayCount,
-                                canReviewToday: repeatsActiveQueueOnCompletion || appModel.hasSentenceStudyReviewContent || !activeQueue.isEmpty,
+                                todayCompletedCount: sessionTodayCount,
+                                canReviewToday: !activeQueue.isEmpty,
                                 isPreparingReviewQueue: isPreparingReviewQueue,
                                 reviewQueueErrorMessage: reviewQueueErrorMessage,
                                 onReviewToday: restartTodayReview,
@@ -72,9 +81,12 @@ struct SentenceStudySessionView: View {
                         studyTopic: studyTopic,
                         recordsProgress: !isReviewingToday,
                         automaticallyAdvanceOnCompletion: usesSingleSentenceCompletion,
-                        automaticallySpeakOnCompletion: !usesSingleSentenceCompletion
+                        automaticallySpeakOnCompletion: !usesSingleSentenceCompletion,
+                        seed: appModel.activeStudySession?.seed ?? questionSeed
                     ) {
                         isShowingStudySettings = false
+                        appModel.markStudyQuestionAdvanced(sentenceID: currentItem.id, isReview: isReviewingToday)
+                        if !isReviewingToday { sessionTodayCount += 1 }
                         if currentIndex < activeQueue.count - 1 {
                             currentIndex += 1
                         } else {
@@ -140,6 +152,7 @@ struct SentenceStudySessionView: View {
             .sheet(isPresented: $isShowingStudySettings) {
                 StudySettingsSheet(
                     speech: appModel.speech,
+                    language: sessionLanguage,
                     isAutoSpeakingEnabled: appModel.isAutoSpeakingSolvedSentenceEnabled,
                     onToggleAutoSpeaking: { isEnabled in
                         appModel.setAutoSpeakingSolvedSentenceEnabled(isEnabled)
@@ -148,11 +161,23 @@ struct SentenceStudySessionView: View {
                 .presentationBackground(AppSurfaceColor.page)
                 .presentationDragIndicator(.visible)
             }
+            .onChange(of: appModel.accountRequests.revision) { _, _ in
+                closeSession()
+            }
+            .task(id: appModel.isNetworkAvailable) { await appModel.replayPendingStudyEvents() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await appModel.replayPendingStudyEvents() } }
+            }
         }
     }
 
     private var studySettingsButton: some View {
-        HStack {
+        VStack(spacing: AppSpacing.small) {
+            if let message = appModel.studySyncStatusText {
+                Text(message).font(.caption).foregroundStyle(AppTextColor.secondary)
+                    .multilineTextAlignment(.center).padding(.horizontal, AppSpacing.section)
+            }
+            HStack {
             Spacer()
 
             Button {
@@ -173,6 +198,7 @@ struct SentenceStudySessionView: View {
             .accessibilityLabel(L10n.string("study.settings.title", "学习设置"))
 
             Spacer()
+            }
         }
         .padding(.bottom, AppSpacing.medium)
     }
@@ -196,7 +222,7 @@ struct SentenceStudySessionView: View {
         isPreparingReviewQueue = true
         Task { @MainActor in
             do {
-                let reviewQueue = try await appModel.loadSentenceStudyTodayReviewQueue(for: studyTopic)
+                let reviewQueue = try await appModel.loadSentenceStudyTodayReviewQueue(for: studyTopic, language: sessionLanguage)
                 guard !reviewQueue.isEmpty else {
                     reviewQueueErrorMessage = L10n.string("study.error.review_queue_unavailable", "今天学过的句子暂时无法加载，请稍后再试。")
                     isPreparingReviewQueue = false
@@ -223,7 +249,9 @@ struct SentenceStudySessionView: View {
 }
 
 private struct StudySettingsSheet: View {
+    @EnvironmentObject private var appModel: AppModel
     let speech: SpeechService
+    let language: LearningLanguage
     let isAutoSpeakingEnabled: Bool
     let onToggleAutoSpeaking: (Bool) -> Void
     @State private var isShowingSpeechSettings = false
@@ -244,6 +272,9 @@ private struct StudySettingsSheet: View {
 
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
+            if language == .japanese {
+                Toggle(L10n.string("study.reading.show", "显示假名读音"), isOn: $appModel.showsJapaneseReadings)
+            }
             Text(L10n.string("study.settings.title", "学习设置"))
                 .font(.system(size: AppFontSize.field, weight: .bold))
                 .foregroundStyle(AppTextColor.title)
@@ -315,6 +346,7 @@ private struct SentenceStudyQuestionView: View {
         recordsProgress: Bool = true,
         automaticallyAdvanceOnCompletion: Bool = false,
         automaticallySpeakOnCompletion: Bool = true,
+        seed: UInt64 = 0,
         onAdvance: @escaping () -> Void
     ) {
         self.item = item
@@ -325,7 +357,7 @@ private struct SentenceStudyQuestionView: View {
         self.automaticallyAdvanceOnCompletion = automaticallyAdvanceOnCompletion
         self.automaticallySpeakOnCompletion = automaticallySpeakOnCompletion
         self.onAdvance = onAdvance
-        let question = SentenceStudyQuestion(item: item)
+        let question = SentenceStudyQuestion(item: item, seed: seed)
         _question = State(initialValue: question)
         _activeBlankID = State(initialValue: question.blankIDs.first)
     }
@@ -344,13 +376,12 @@ private struct SentenceStudyQuestionView: View {
     }
 
     private var allBlanksFilled: Bool {
-        filledBlankWordIDs.count == question.blankIDs.count
+        question.isValid && filledBlankWordIDs.count == question.blankIDs.count
     }
 
     private var speechPrefetchContext: StudySpeechPrefetch.Context {
         StudySpeechPrefetch.Context(
-            text: item.english,
-            ownerID: appModel.supabaseSession?.userID,
+            request: appModel.speech.request(text: item.targetText, context: item.context),
             enabled: automaticallySpeakOnCompletion
                 && appModel.isAutoSpeakingSolvedSentenceEnabled
                 && appModel.isNetworkAvailable
@@ -363,7 +394,7 @@ private struct SentenceStudyQuestionView: View {
             VStack(spacing: AppSpacing.large) {
                 SentenceStudyPromptCard(
                     image: image,
-                    chinese: item.chinese,
+                    chinese: item.translationText,
                     progressText: "\(index) / \(total)"
                 )
                 .transaction { transaction in
@@ -371,7 +402,7 @@ private struct SentenceStudyQuestionView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 18) {
-                    StudyFlowLayout(horizontalSpacing: 8, verticalSpacing: 12) {
+                    StudyFlowLayout(horizontalSpacing: 0, verticalSpacing: 12) {
                         ForEach(question.tokens) { token in
                             if token.isBlank,
                                let blankID = token.blankID,
@@ -381,7 +412,8 @@ private struct SentenceStudyQuestionView: View {
                                     width: question.blankWidth(for: matchingWord),
                                     filledWord: filledWord(for: blankID),
                                     isFocused: activeBlankID == blankID,
-                                    isWrong: wrongBlankID == blankID
+                                    isWrong: wrongBlankID == blankID,
+                                    showsReading: appModel.showsJapaneseReadings
                                 ) {
                                     activeBlankID = blankID
                                     if wrongBlankID != blankID {
@@ -389,12 +421,19 @@ private struct SentenceStudyQuestionView: View {
                                     }
                                 }
                             } else {
-                                Text(token.displayText)
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(AppTextColor.title)
+                                VStack(spacing: 2) {
+                                    if appModel.showsJapaneseReadings, let reading = token.visibleReading() {
+                                        Text(reading).font(.caption2).foregroundStyle(AppTextColor.secondary)
+                                            .accessibilityHidden(true)
+                                    }
+                                    Text(token.displayText)
+                                        .font(.system(size: 22, weight: .semibold))
+                                        .foregroundStyle(AppTextColor.title)
+                                }
                             }
                         }
                     }
+                    .environment(\.locale, Locale(identifier: item.context.teachingLocale.rawValue))
 
                     Divider()
                         .overlay(AppStroke.subtle)
@@ -413,14 +452,20 @@ private struct SentenceStudyQuestionView: View {
                 .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                 .appCardShadow()
 
-                if allBlanksFilled {
+                if !allBlanksFilled, let saveErrorMessage {
+                    Text(saveErrorMessage).font(.caption).foregroundStyle(AppTextColor.secondary)
+                }
+                if !question.isValid {
+                    Text(L10n.string("study.error.material_unavailable", "此句暂时无法生成练习，请返回后重试。"))
+                        .foregroundStyle(AppTextColor.secondary)
+                } else if allBlanksFilled {
                     SentenceStudySolvedState(
                         speech: appModel.speech,
-                        spokenText: item.english,
+                        speechRequest: appModel.speech.request(text: item.targetText, context: item.context),
                         isSavingProgress: isSavingProgress,
                         saveErrorMessage: saveErrorMessage,
                         onSpeak: {
-                            appModel.speech.speak(item.english)
+                            appModel.speech.speak(appModel.speech.request(text: item.targetText, context: item.context))
                         },
                         onRetrySync: {
                             submitSolvedSentenceIfNeeded(forceRetry: true)
@@ -443,6 +488,16 @@ private struct SentenceStudyQuestionView: View {
             await appModel.ensureMemoryImageLoaded(memoryID: item.memoryID)
         }
         .onAppear {
+            if recordsProgress || appModel.activeStudySession?.ownerID == AppStorageKey.guestMemoriesUserID {
+                let restored = appModel.restoreStudyDraft(sentenceID: item.id)
+                var used = Set<UUID>()
+                filledBlankWordIDs = restored.filter { blankID, wordID in
+                    guard let word = question.wordBank.first(where: { $0.id == wordID }),
+                          question.isCorrectWord(word, for: blankID) else { return false }
+                    return used.insert(wordID).inserted
+                }
+                activeBlankID = question.blankIDs.first { filledBlankWordIDs[$0] == nil }
+            }
             let prefetch = StudySpeechPrefetch(speech: appModel.speech)
             speechPrefetch = prefetch
             prefetch.update(speechPrefetchContext)
@@ -485,7 +540,17 @@ private struct SentenceStudyQuestionView: View {
             return false
         }
 
-        filledBlankWordIDs[blankID] = wordID
+        var answers = filledBlankWordIDs
+        answers[blankID] = wordID
+        if recordsProgress || appModel.activeStudySession?.ownerID == AppStorageKey.guestMemoriesUserID {
+            do { try appModel.persistStudyDraft(sentenceID: item.id, answers: answers) }
+            catch {
+                saveErrorMessage = L10n.string("study.error.load_failed", "暂时无法加载学习内容，请稍后再试。")
+                return false
+            }
+        }
+        saveErrorMessage = nil
+        filledBlankWordIDs = answers
         wrongBlankID = nil
         activeBlankID = nextUnfilledBlank(after: blankID)
         return true
@@ -500,7 +565,7 @@ private struct SentenceStudyQuestionView: View {
         guard !didAutoSpeak,
               appModel.isAutoSpeakingSolvedSentenceEnabled else { return }
         didAutoSpeak = true
-        appModel.speech.speak(item.english)
+        appModel.speech.speak(appModel.speech.request(text: item.targetText, context: item.context))
     }
 
     private func nextUnfilledBlank(after blankID: UUID) -> UUID? {
@@ -605,7 +670,7 @@ private struct SentenceStudyPromptCard: View {
 
 private struct SentenceStudySolvedState: View {
     @ObservedObject var speech: SpeechService
-    let spokenText: String
+    let speechRequest: SpeechRequest
     let isSavingProgress: Bool
     let saveErrorMessage: String?
     let onSpeak: () -> Void
@@ -651,10 +716,11 @@ private struct SentenceStudySolvedState: View {
                 Button {
                     onSpeak()
                 } label: {
-                    SpeechPlaybackLabel(speech: speech, text: spokenText,
+                    SpeechPlaybackLabel(speech: speech, text: speechRequest.text,
                                         title: L10n.string("study.solved.speak", "朗读句子"),
                                         icon: "speaker.wave.2.fill",
-                                        playingTitle: L10n.string("speech.playing", "朗读中"))
+                                        playingTitle: L10n.string("speech.playing", "朗读中"),
+                                        request: speechRequest)
                         .font(.system(size: AppFontSize.body, weight: .semibold))
                         .foregroundStyle(AppPalette.accentText)
                         .frame(maxWidth: .infinity)

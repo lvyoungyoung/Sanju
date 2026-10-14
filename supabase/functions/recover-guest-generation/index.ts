@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
 
     const { data: job, error: jobError } = await adminClient
       .from("guest_generation_jobs")
-      .select("id, status, image_path, created_at, remaining_credits, sentences, tags")
+      .select("id, status, image_path, created_at, remaining_credits, sentences, tags, request_schema_version")
       .eq("id", guestJobID)
       .eq("user_id", user.id)
       .maybeSingle()
@@ -79,6 +79,9 @@ Deno.serve(async (req) => {
 
     if (!job) {
       return jsonResponse({ recovered: false })
+    }
+    if (job.request_schema_version && job.request_schema_version !== 1) {
+      return jsonResponse({ recovered: false, code: "request_context_mismatch" }, 409)
     }
 
     if (job.status !== "completed" && job.status !== "acknowledged") {

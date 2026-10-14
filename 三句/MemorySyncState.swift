@@ -7,7 +7,18 @@ extension AppModel {
                 || !pendingFavoriteChanges.isEmpty || !pendingMemoryDeletions.isEmpty
                 || !pendingMemoryImageUploads.isEmpty || pendingGuestCreditMigration != nil
                 || !localSentenceStudyProgressToMerge().isEmpty
+                || hasPendingStudyEventsForSignOut
         ))
+    }
+
+    var hasPendingStudyEventsForSignOut: Bool {
+        guard let session = supabaseSession, !session.isAnonymous else { return false }
+        do {
+            return try onlineStudyStore().hasPendingEvents(ownerID: session.userID)
+        } catch {
+            // An unreadable outbox is not evidence that all of this owner's events were delivered.
+            return true
+        }
     }
 }
 
@@ -65,7 +76,7 @@ struct MemorySyncState {
             if result.imageData.isEmpty, local.remoteImagePath == result.remoteImagePath {
                 result = MemoryEntry(id: result.id, createdAt: result.createdAt, imageData: local.imageData,
                                      remoteImagePath: result.remoteImagePath, syncedToAccount: result.syncedToAccount,
-                                     tags: result.tags, sentences: result.sentences)
+                                     tags: result.tags, sentences: result.sentences, context: result.context)
             }
             return result
         }

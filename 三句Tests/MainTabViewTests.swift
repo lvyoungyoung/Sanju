@@ -87,6 +87,27 @@ final class MainTabViewTests: XCTestCase {
         attach(host.snapshot(), name: "NativeTabs-FavoritesBadge")
     }
 
+    func testFavoritesDetailHidesNativeTabBarAndRestoresItOnReturn() async throws {
+        let model = try makeModel()
+        let memory = try XCTUnwrap(model.memories.first)
+        let sentence = try XCTUnwrap(memory.sentences.first)
+        model.selectedTab = .favorites
+        let host = try TabViewHost(model: model)
+        defer { host.close(); model.speech.stop() }
+        try await host.settle()
+        let controller = try XCTUnwrap(host.tabController)
+        XCTAssertFalse(controller.tabBar.isHidden)
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        model.favoritesNavigationPath = [FavoriteSentenceRoute(memoryID: memory.id, sentenceID: sentence.id)]
+        try await host.settle()
+        XCTAssertTrue(controller.tabBar.isHidden)
+        attach(host.snapshot(), name: "NativeTabs-FavoriteSentenceDetail")
+        model.favoritesNavigationPath = []
+        try await host.settle()
+        XCTAssertFalse(controller.tabBar.isHidden)
+    }
+
     func testSwitchingTabsStillResetsProfileNavigation() async throws {
         let model = try makeModel()
         model.selectedTab = .profile

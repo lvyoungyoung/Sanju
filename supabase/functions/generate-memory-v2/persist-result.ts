@@ -1,6 +1,6 @@
 import type { EnrichmentScope } from "../_shared/generation-enrichment.ts"
 import type { GenerationTiming } from "../_shared/generation-timing.ts"
-import { type GenerationFormat, type FinalizedSentence, toClientSentences } from "./content.ts"
+import { type Sentence, type GenerationFormat, type FinalizedSentence, toClientSentences } from "./content.ts"
 import { serializeGenerationError, jsonResponse, generationPendingResponse } from "./responses.ts"
 import type { requestWithFallback } from "./providers.ts"
 import { finalizeAuthenticatedGeneration, finalizeGuestGeneration, updateMemoryGenerationDiagnostics, updateGuestGenerationDiagnostics, loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGuestGenerationResponseIfNeeded, updateAuthenticatedGenerationDiagnostics, markAuthenticatedGenerationJobFailed, markGuestGenerationJobFailed } from "./repository.ts"
@@ -18,7 +18,7 @@ interface PersistGeneratedResultContext {
   authenticatedClientRequestID: string | null
   imageBytes: Uint8Array
   generationFormat: GenerationFormat
-  completionResult: Extract<Awaited<ReturnType<typeof requestWithFallback>>, { ok: true }>
+  completionResult: Extract<Awaited<ReturnType<typeof requestWithFallback<Sentence>>>, { ok: true }>
   onFinalizationStarted: (scope: EnrichmentScope) => void
 }
 

@@ -1,6 +1,19 @@
 import Foundation
 
 extension AppModel {
+    func interfaceLanguageDidChange() async {
+        InterfaceLanguageStore.shared.syncWidgetLocale()
+        guard isLearningReminderEnabled else { return }
+        do {
+            try await LearningReminderScheduler.refreshDailyReminderLanguage()
+        } catch {
+            // Keep the existing reminder and preferences if a text-only update fails.
+            #if DEBUG
+            print("[LearningReminder] Interface language refresh failed")
+            #endif
+        }
+    }
+
     var learningReminderDisplayText: String {
         formattedLearningReminderTime(hour: learningReminderHour, minute: learningReminderMinute)
     }
@@ -65,6 +78,7 @@ extension AppModel {
 
     private func formattedLearningReminderTime(hour: Int, minute: Int) -> String {
         let date = dateForLearningReminder(hour: hour, minute: minute)
+        Self.learningReminderTimeFormatter.locale = Locale(identifier: InterfaceLanguageStore.resolvedCode)
         return Self.learningReminderTimeFormatter.string(from: date)
     }
 

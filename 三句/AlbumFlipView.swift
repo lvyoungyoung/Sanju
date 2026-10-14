@@ -42,18 +42,22 @@ struct AlbumFlipView: View {
     @State private var spokenCardID: UUID?
     @State private var speechPrefetchID: UUID?
     @State private var favoriteFeedback: FavoriteFeedback?
+    @State private var photoToPrepare: PhotosPickerItem?
+    @State private var isPreparingPhoto = false
+    @State private var showsPhotoReadError = false
     private let ownerID: String
-    private let onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)?
+    private let onSelectAnotherPhoto: ((PhotosPickerItem) async -> Bool)?
 
     private struct FavoriteFeedback {
         let id = UUID()
         let cardID: UUID
         let isFavorite: Bool
+        let showsDoubleTapHint: Bool
     }
 
     init(
         items: [AlbumFlipItem], ownerID: String, defaults: UserDefaults = .standard,
-        mode: AlbumFlipMode = .continuous, onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)? = nil
+        mode: AlbumFlipMode = .continuous, onSelectAnotherPhoto: ((PhotosPickerItem) async -> Bool)? = nil
     ) {
         self.ownerID = ownerID
         self.onSelectAnotherPhoto = onSelectAnotherPhoto
@@ -65,7 +69,7 @@ struct AlbumFlipView: View {
     init(
         deck: AlbumFlipDeck, ownerID: String,
         photoSelection: AlbumFlipPhotoSelection? = nil,
-        onSelectAnotherPhoto: ((PhotosPickerItem) -> Void)? = nil
+        onSelectAnotherPhoto: ((PhotosPickerItem) async -> Bool)? = nil
     ) {
         self.ownerID = ownerID
         self.onSelectAnotherPhoto = onSelectAnotherPhoto
@@ -101,29 +105,41 @@ struct AlbumFlipView: View {
         }
         // Keep the full-screen background outside the swipe content's clipping region.
         .background(AppSurfaceColor.page.ignoresSafeArea())
-        .sheet(isPresented: $photoSelection.isPresented, onDismiss: finishPhotoSelection) {
-            NavigationStack {
-                PhotosPicker(
-                    selection: Binding(
-                        get: { photoSelection.selectedItem.map { [$0] } ?? [] },
-                        set: { photoSelection.select($0.first) }
-                    ),
-                    maxSelectionCount: 1,
-                    selectionBehavior: .continuous,
-                    matching: .images,
-                    photoLibrary: .shared()
-                ) { EmptyView() }
-                .photosPickerStyle(.inline)
-                .photosPickerDisabledCapabilities(.selectionActions)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(L10n.string("common.close", "关闭")) {
-                            photoSelection.isPresented = false
-                        }
-                    }
+        .overlay {
+            if isPreparingPhoto {
+                ZStack {
+                    AppSurfaceColor.page.opacity(0.7)
+                    ProgressView()
                 }
+                .ignoresSafeArea()
             }
-            .presentationDetents([.large])
+        }
+        .alert(L10n.string("new.photo.read_failed", "读取图片失败，请重试。"), isPresented: $showsPhotoReadError) {
+            Button(L10n.string("common.ok", "好"), role: .cancel) { }
+        }
+        .task(id: photoToPrepare) {
+            guard let item = photoToPrepare, let onSelectAnotherPhoto else { return }
+            let ready = await onSelectAnotherPhoto(item)
+            guard !Task.isCancelled, isVisible, appModel.albumFlipOwnerID == ownerID else { return }
+            isPreparingPhoto = false
+            photoToPrepare = nil
+            if ready {
+                close()
+            } else {
+                showsPhotoReadError = true
+            }
+        }
+        .photosPicker(
+            isPresented: $photoSelection.isPresented,
+            selection: Binding(
+                get: { photoSelection.selectedItem },
+                set: { photoSelection.select($0) }
+            ),
+            matching: .images,
+            photoLibrary: .shared()
+        )
+        .onChange(of: photoSelection.isPresented) { _, isPresented in
+            if !isPresented { finishPhotoSelection() }
         }
         .onAppear {
             isVisible = true
@@ -249,7 +265,9 @@ struct AlbumFlipView: View {
                 }
                 .overlay {
                     if isFront, let feedback = favoriteFeedback, feedback.cardID == page.id {
-                        AlbumFlipFavoriteFeedbackView(isFavorite: feedback.isFavorite)
+                        AlbumFlipFavoriteFeedbackView(
+                            isFavorite: feedback.isFavorite, showsDoubleTapHint: feedback.showsDoubleTapHint
+                        )
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity))
                         .allowsHitTesting(false)
                     }
@@ -278,11 +296,14 @@ struct AlbumFlipView: View {
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
                         showsTranslation.toggle()
                     }
-                }
+                },
+                showsJapaneseReadings: appModel.showsJapaneseReadings
             ) {
                 AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
             }
-            .gesture(TapGesture(count: 2).onEnded { toggleCurrentCardFavorite(cardID: card.id) })
+            .gesture(TapGesture(count: 2).onEnded {
+                toggleCurrentCardFavorite(cardID: card.id, showsDoubleTapHint: false)
+            })
             // Keep the button outside the card's double-tap recognizer.
             .overlay(alignment: .topTrailing) {
                 AlbumFlipFavoriteButton(isFavorite: isFavorite(card.item)) {
@@ -362,7 +383,9 @@ struct AlbumFlipView: View {
     private func controls(exitWidth: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 20) {
             feedbackButton(.again, icon: "arrow.uturn.backward", width: exitWidth)
-            AlbumFlipReplayButton(speech: appModel.speech, text: deck.currentItem?.sentence.english ?? "") {
+            AlbumFlipReplayButton(speech: appModel.speech, request: deck.currentItem.map {
+                appModel.speech.request(sentence: $0.sentence, context: $0.context)
+            }) {
                 speakCurrentCard(automatically: false)
             }
             .disabled(isAdvancing || deck.currentItem == nil)
@@ -451,12 +474,14 @@ struct AlbumFlipView: View {
         appModel.memory(withID: item.memoryID)?.sentences.first(where: { $0.id == item.sentence.id })?.isFavorite ?? false
     }
 
-    private func toggleCurrentCardFavorite(cardID: UUID) {
+    private func toggleCurrentCardFavorite(cardID: UUID, showsDoubleTapHint: Bool = true) {
         guard isVisible, !isAdvancing, scenePhase == .active,
               deck.currentPageID == cardID, let item = deck.currentItem,
               appModel.toggleAlbumFlipSentenceFavorite(item, ownerID: ownerID) else { return }
         withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.8)) {
-            favoriteFeedback = FavoriteFeedback(cardID: cardID, isFavorite: isFavorite(item))
+            favoriteFeedback = FavoriteFeedback(
+                cardID: cardID, isFavorite: isFavorite(item), showsDoubleTapHint: showsDoubleTapHint
+            )
         }
     }
 
@@ -466,15 +491,16 @@ struct AlbumFlipView: View {
               let item = deck.currentItem else { return }
         guard !automatically || (!isMuted && spokenCardID != pageID) else { return }
         spokenCardID = pageID
-        appModel.speech.speak(item.sentence.english)
+        appModel.speech.speak(appModel.speech.request(sentence: item.sentence, context: item.context))
     }
 
     private func finishPhotoSelection() {
         guard let item = photoSelection.takeSelectionAfterDismissal(), isVisible,
-              appModel.albumFlipOwnerID == ownerID, let onSelectAnotherPhoto else { return }
-        // The picker has finished dismissing; only a confirmed selection closes the album.
-        onSelectAnotherPhoto(item)
-        close()
+              appModel.albumFlipOwnerID == ownerID, onSelectAnotherPhoto != nil else { return }
+        // Cancelling the system picker leaves the album and its current card in place.
+        // Keep covering the old result until the new photo and cleared result are ready.
+        isPreparingPhoto = true
+        photoToPrepare = item
     }
 
     private func close() {
@@ -488,8 +514,8 @@ struct AlbumFlipView: View {
         guard isVisible, !isAdvancing, !photoSelection.isPresented, appModel.albumFlipOwnerID == ownerID,
               let speechPrefetchID, let current = deck.currentItem else { return }
         appModel.speech.updateAlbumSpeechPrefetch(
-            id: speechPrefetchID, current: current.sentence.english,
-            upcoming: deck.upcomingSpeechTexts,
+            id: speechPrefetchID, current: appModel.speech.request(sentence: current.sentence, context: current.context),
+            upcoming: deck.upcomingSpeechItems.map { appModel.speech.request(sentence: $0.sentence, context: $0.context) },
             enabled: scenePhase == .active && appModel.isNetworkAvailable
         )
     }
@@ -593,11 +619,13 @@ private extension SpeechPlaybackState {
 private struct AlbumFlipReplayButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ObservedObject var speech: SpeechService
-    let text: String
+    let request: SpeechRequest?
     let onReplay: () -> Void
 
     private var playbackState: SpeechPlaybackState {
-        SpeechPlaybackState(text: text, activeText: speech.activeText, loadingText: speech.loadingText)
+        guard let request else { return .idle }
+        return SpeechPlaybackState(request: request, activeRequest: speech.activeRequest,
+                                   activeText: speech.activeText, loadingText: speech.loadingText)
     }
 
     var body: some View {
@@ -623,5 +651,13 @@ private struct AlbumFlipReplayButton: View {
         .buttonStyle(StudioPressStyle())
         .accessibilityLabel(L10n.string("album_flip.replay", "再听一遍"))
         .accessibilityValue(playbackState == .idle ? "" : playbackState.title)
+        .alert(L10n.string("speech.unavailable.title", "无法播放"), isPresented: Binding(
+            get: { speech.playbackError != nil && request != nil && speech.playbackErrorRequest == request },
+            set: { if !$0 { speech.dismissPlaybackError() } }
+        )) {
+            Button(L10n.string("common.ok", "好"), role: .cancel) { speech.dismissPlaybackError() }
+        } message: {
+            Text(L10n.string("speech.unavailable.message", "暂时无法播放此语言，请稍后重试，或在系统设置中下载对应语言的声音。"))
+        }
     }
 }

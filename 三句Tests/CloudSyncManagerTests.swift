@@ -13,14 +13,14 @@ import XCTest
 final class CloudSyncManagerTests: XCTestCase {
     private let manager = CloudSyncManager()
 
-    func testRemotePhotoCategoriesSurviveConversion() {
+    func testRemotePhotoCategoriesSurviveConversion() throws {
         let record = makeRemoteRecord(tags: ["food_and_drinks", "restaurants_and_cafes"])
-        let memories = manager.makeRemoteMemories(from: [record])
+        let memories = try manager.makeRemoteMemories(from: [record])
         XCTAssertEqual(memories.first?.tags, record.tags)
         XCTAssertEqual(MemoryPhotoCollection(memories: memories).topics.map(\.id), record.tags)
     }
 
-    func testMakeRemoteMemoriesSortsSentencesAndDropsInvalidRecords() {
+    func testMakeRemoteMemoriesSortsSentencesAndRejectsInvalidRecords() throws {
         let validMemoryID = UUID()
         let firstSentenceID = UUID()
         let secondSentenceID = UUID()
@@ -41,7 +41,9 @@ final class CloudSyncManagerTests: XCTestCase {
             ])
         ]
 
-        let memories = manager.makeRemoteMemories(from: records)
+        XCTAssertThrowsError(try manager.makeRemoteMemories(from: records))
+        XCTAssertThrowsError(try manager.makeRemoteMemories(from: [records[0], records[2]]))
+        let memories = try manager.makeRemoteMemories(from: [records[0]])
 
         XCTAssertEqual(memories.count, 1)
         XCTAssertEqual(memories.first?.id, validMemoryID)
@@ -68,6 +70,17 @@ final class CloudSyncManagerTests: XCTestCase {
         XCTAssertTrue(result.didChange)
         XCTAssertEqual(result.memories.count, 1)
         XCTAssertTrue(result.memories[0].syncedToAccount)
+    }
+
+    func testInvalidSentenceAndDuplicateSentenceNeverDisappearFromRemoteMapping() {
+        let valid = makeRemoteSentence(sortOrder: 0)
+        let invalid = makeRemoteSentence(id: "not-a-uuid", sortOrder: 3)
+        XCTAssertThrowsError(try manager.makeRemoteMemories(from: [makeRemoteRecord(sentences: [
+            valid, makeRemoteSentence(sortOrder: 1), makeRemoteSentence(sortOrder: 2), invalid
+        ])]))
+        XCTAssertThrowsError(try manager.makeRemoteMemories(from: [makeRemoteRecord(sentences: [
+            valid, makeRemoteSentence(id: valid.id, sortOrder: 1), makeRemoteSentence(sortOrder: 2)
+        ])]))
     }
 
     func testReconcileLocalMemoriesKeepsReconciledMemoryForCurrentAccount() {

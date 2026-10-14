@@ -13,10 +13,13 @@ import UserNotifications
 struct __App: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var isShowingOnboarding = OnboardingProgress.beginIfNeeded()
+    @StateObject private var interfaceLanguage = InterfaceLanguageStore.shared
 
     var body: some Scene {
         WindowGroup {
             ContentView(isShowingOnboarding: $isShowingOnboarding)
+                .environment(\.locale, interfaceLanguage.locale)
+                .environmentObject(interfaceLanguage)
         }
     }
 }

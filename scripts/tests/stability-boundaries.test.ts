@@ -16,6 +16,8 @@ async function loadHandler(name: string, prelude: string, exports = "") {
 const cleanup = await loadHandler(
   "cleanup-guest-generation-jobs",
   `
+import { consumeMemoryImageCleanup } from ${JSON.stringify(new URL("../../supabase/functions/_shared/memory-image-cleanup.ts", import.meta.url).href)};
+import { fetchWithinDeadline } from ${JSON.stringify(new URL("../../supabase/functions/_shared/fetch-with-timeout.ts", import.meta.url).href)};
 export let handler: (request: Request) => Promise<Response>;
 export const state = { imageCalls: 0, deleteCalls: 0, loadCalls: 0, storageError: false, databaseError: false,
   jobs: [{ id: 'expired-guest-job', image_path: 'guest/photo.jpg' }], limit: 0, loadError: false,
@@ -31,6 +33,7 @@ function createClient() {
       return { data: state.jobs.slice(0, limit), error: state.loadError ? { message: 'load unavailable' } : null }; }
   };
   return {
+    rpc: async () => ({ data: [], error: null }),
     from: () => ({
       select: () => query,
       delete: () => ({ in: () => ({ select: async () => { state.deleteCalls++;

@@ -701,6 +701,28 @@ struct MemoryPhotoPrint: View {
         }
         .aspectRatio(MemoryPhotoPrintStyle.slotAspectRatio, contentMode: .fit)
         .contentShape(Rectangle())
+        .contentShape(.contextMenuPreview, MemoryPhotoPrintShape(style: MemoryPhotoPrintStyle(memoryID: memory.id)))
+    }
+}
+
+struct MemoryPhotoPrintShape: Shape {
+    let style: MemoryPhotoPrintStyle
+
+    func path(in rect: CGRect) -> Path {
+        let size = style.printSize(in: rect.size)
+        let center = style.center(in: rect.size)
+        let paperRect = CGRect(
+            x: rect.minX + center.x - size.width / 2,
+            y: rect.minY + center.y - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+        let rotation = CGAffineTransform(translationX: paperRect.midX, y: paperRect.midY)
+            .rotated(by: style.rotationDegrees * .pi / 180)
+            .translatedBy(x: -paperRect.midX, y: -paperRect.midY)
+        return RoundedRectangle(cornerRadius: MemoryPhotoPrintStyle.paperCornerRadius, style: .continuous)
+            .path(in: paperRect)
+            .applying(rotation)
     }
 }
 

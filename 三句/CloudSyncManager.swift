@@ -46,34 +46,74 @@ struct CloudSyncReconciliationResult {
 }
 
 struct CloudSyncManager {
-    func makeRemoteMemories(from records: [SupabaseMemoryRecord]) -> [MemoryEntry] {
-        records.compactMap { record -> MemoryEntry? in
-            guard let memoryID = UUID(uuidString: record.id) else { return nil }
+    func makeRemoteMemories(
+        from records: [SupabaseMemoryRecord],
+        cachedMemories: [MemoryEntry] = []
+    ) throws -> [MemoryEntry] {
+        let cachedByID = cachedMemories.memoryDictionaryByID()
+        var memoryIDs = Set<UUID>()
+        return try records.map { record in
+            guard let memoryID = UUID(uuidString: record.id), memoryIDs.insert(memoryID).inserted else {
+                throw SupabaseServiceError.invalidResponse
+            }
+            try record.context.validate()
+            guard record.sentences.map(\.sortOrder).sorted() == Array(0..<record.sentences.count) else {
+                throw SupabaseServiceError.invalidResponse
+            }
             let sentences = record.sentences
                 .sorted { $0.sortOrder < $1.sortOrder }
-                .compactMap { sentence -> SentenceRecord? in
-                    guard let sentenceID = UUID(uuidString: sentence.id) else { return nil }
-                    return SentenceRecord(
-                        id: sentenceID,
-                        english: sentence.english,
-                        chinese: sentence.chinese,
-                        learningTopicIDs: sentence.learningTopicIDs ?? [],
-                        presentationGroup: SentencePresentationGroup(rawValue: sentence.presentationGroup ?? "") ?? .whatISee,
-                        isFavorite: sentence.isFavorite
-                    )
+            let mappedSentences = try sentences.map { sentence -> SentenceRecord in
+                guard let sentenceID = UUID(uuidString: sentence.id) else {
+                    throw SupabaseServiceError.invalidResponse
                 }
+                let group: SentencePresentationGroup
+                if let rawGroup = sentence.presentationGroup {
+                    guard let knownGroup = SentencePresentationGroup(rawValue: rawGroup) else {
+                        throw SupabaseServiceError.invalidResponse
+                    }
+                    group = knownGroup
+                } else {
+                    group = .whatISee
+                }
+                return SentenceRecord(
+                    id: sentenceID,
+                    targetText: sentence.targetText,
+                    translationText: sentence.translationText,
+                    contentVersion: sentence.contentVersion,
+                    learningMaterial: sentence.learningMaterial,
+                    learningTopicIDs: sentence.learningTopicIDs ?? [],
+                    presentationGroup: group,
+                    isFavorite: sentence.isFavorite
+                )
+            }
 
-            guard sentences.count == 3 || sentences.count == 6 else { return nil }
-
-            return MemoryEntry(
+            let cached = cachedByID[memoryID]
+            let memory = MemoryEntry(
                 id: memoryID,
                 createdAt: record.createdAt,
-                imageData: Data(),
+                imageData: cached?.remoteImagePath == record.imagePath ? cached?.imageData ?? Data() : Data(),
                 remoteImagePath: record.imagePath,
                 syncedToAccount: true,
                 tags: record.tags ?? [],
-                sentences: sentences
+                sentences: mappedSentences,
+                context: record.context
             )
+            try SupabaseContentMemory(memory: memory, imagePath: record.imagePath).validate()
+            return memory
+        }
+    }
+
+    func legacyRecoveryCandidateIndex(
+        for pending: PendingGeneratedMemoryImage,
+        in memories: [MemoryEntry]
+    ) -> Int? {
+        // Snapshot jobs are recovered only by their immutable request ID, never by timing guesses.
+        guard pending.snapshot == nil, !pending.imageData.isEmpty else { return nil }
+        let previousIDs = Set(pending.previousMemoryIDs)
+        return memories.firstIndex {
+            !previousIDs.contains($0.id) && $0.context.isLegacyCompatible &&
+                $0.createdAt >= pending.startedAt.addingTimeInterval(-120) &&
+                $0.remoteImagePath != nil && $0.imageData.isEmpty && MemoryIdentity.isContentComplete($0)
         }
     }
 

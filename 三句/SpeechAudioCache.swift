@@ -15,6 +15,28 @@ actor SpeechAudioCache {
         return SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
+    nonisolated static func key(request: SpeechRequest, environment: String) -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        // Length-delimited JSON prevents collisions from text containing separators.
+        let descriptor = String(data: try! encoder.encode(request.descriptor), encoding: .utf8)!
+        let fields = [environment, request.owner, String(request.accountRevision), request.text,
+                      request.language.rawValue, request.teachingLocale.rawValue, descriptor]
+        return SHA256.hash(data: try! encoder.encode(fields)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    nonisolated static func legacyKey(request: SpeechRequest, environment: String) -> String? {
+        guard request.isValid, let voice = request.descriptor.legacyVoice else { return nil }
+        return key(text: request.text, scope: "\(environment)|\(request.owner)", voice: voice)
+    }
+
+    func load(request: SpeechRequest, environment: String) -> Data? {
+        guard request.isValid else { return nil }
+        if let audio = load(Self.key(request: request, environment: environment)) { return audio }
+        guard let legacy = Self.legacyKey(request: request, environment: environment) else { return nil }
+        return load(legacy)
+    }
+
     func load(_ key: String) -> Data? {
         let url = directory.appendingPathComponent(key).appendingPathExtension("pcm")
         guard let info = try? url.resourceValues(forKeys: [.fileSizeKey]),

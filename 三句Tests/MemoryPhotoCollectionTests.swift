@@ -91,6 +91,29 @@ final class MemoryPhotoCollectionTests: XCTestCase {
         XCTAssertTrue(collection.flipItems(in: nil).isEmpty)
     }
 
+    func testContextMenuPreviewFollowsTheRotatedPaperInsteadOfTheGridSlot() throws {
+        for width in [CGFloat(124), 164, 200, 320] {
+            for index in 0..<60 {
+                let id = try XCTUnwrap(UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", index)))
+                let style = MemoryPhotoPrintStyle(memoryID: id)
+                let slot = CGRect(x: 17, y: 23, width: width,
+                                  height: width / MemoryPhotoPrintStyle.slotAspectRatio)
+                let center = style.center(in: slot.size)
+                let path = MemoryPhotoPrintShape(style: style).path(in: slot)
+                let bounds = path.boundingRect
+                let rotatedSize = style.rotatedSize(in: slot.size)
+                XCTAssertEqual(bounds.midX, slot.minX + center.x, accuracy: 0.01)
+                XCTAssertEqual(bounds.midY, slot.minY + center.y, accuracy: 0.01)
+                XCTAssertEqual(bounds.width, rotatedSize.width, accuracy: 1)
+                XCTAssertEqual(bounds.height, rotatedSize.height, accuracy: 1)
+                XCTAssertTrue(slot.contains(bounds))
+                XCTAssertTrue(path.contains(CGPoint(x: bounds.midX, y: bounds.midY)))
+                XCTAssertFalse(path.contains(CGPoint(x: slot.midX, y: slot.minY + 1)),
+                               "Empty grid padding must not become a context-menu preview background")
+            }
+        }
+    }
+
     func testUsesPhotoCategoriesNotSentenceTopicsWithoutDuplicateCounts() throws {
         let photo = memory(categories: ["food_and_drinks", "food_and_drinks", "restaurants_and_cafes"], topics: [["travel"], ["friends_gatherings"]])
         let collection = MemoryPhotoCollection(memories: [photo, photo])

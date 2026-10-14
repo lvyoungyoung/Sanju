@@ -611,13 +611,19 @@ final class AlbumFlipTests: XCTestCase {
                 .environment(\.dynamicTypeSize, typeSize))
             let unsaved = UIHostingController(rootView: AlbumFlipFavoriteFeedbackView(isFavorite: false)
                 .environment(\.dynamicTypeSize, typeSize))
+            let doubleTapSaved = UIHostingController(rootView: AlbumFlipFavoriteFeedbackView(
+                isFavorite: true, showsDoubleTapHint: false
+            ).environment(\.dynamicTypeSize, typeSize))
             let proposal = CGSize(width: 272, height: 500)
             let savedSize = saved.sizeThatFits(in: proposal)
             let unsavedSize = unsaved.sizeThatFits(in: proposal)
+            let doubleTapSavedSize = doubleTapSaved.sizeThatFits(in: proposal)
             XCTAssertLessThanOrEqual(savedSize.width, proposal.width)
             XCTAssertLessThanOrEqual(unsavedSize.width, proposal.width)
             XCTAssertGreaterThan(savedSize.height, unsavedSize.height,
                                  "Only the saved feedback should include the double-tap hint")
+            XCTAssertLessThan(doubleTapSavedSize.height, savedSize.height,
+                              "Double-tap saving should show only the result, without the gesture hint")
             for scheme in [ColorScheme.light, .dark] {
                 for isFavorite in [true, false] {
                     let view = AlbumFlipFavoriteFeedbackView(isFavorite: isFavorite)
@@ -871,9 +877,10 @@ final class AlbumFlipTests: XCTestCase {
                 .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController)
             let album = try XCTUnwrap(root.presentedViewController)
             selection.begin()
-            try await Task.sleep(for: .milliseconds(1500))
+            try await self.waitForPresentation { album.presentedViewController != nil }
             XCTAssertTrue(root.presentedViewController === album)
-            XCTAssertNotNil(album.presentedViewController, "The picker must be presented on top of the album")
+            let picker = try XCTUnwrap(album.presentedViewController,
+                                      "The system picker must be presented on top of the album")
             if let window = root.view.window {
                 let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                     window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
@@ -885,7 +892,7 @@ final class AlbumFlipTests: XCTestCase {
             }
 
             selection.isPresented = false
-            try await Task.sleep(for: .milliseconds(700))
+            try await self.waitForPresentation { album.presentedViewController == nil }
             XCTAssertNil(album.presentedViewController)
             XCTAssertTrue(root.presentedViewController === album, "Cancelling must not dismiss the album")
             XCTAssertTrue(presentation.isShowingAlbum)
@@ -896,14 +903,56 @@ final class AlbumFlipTests: XCTestCase {
             XCTAssertEqual(deck.viewedCount, 6)
 
             selection.begin()
-            try await Task.sleep(for: .milliseconds(700))
+            try await self.waitForPresentation { album.presentedViewController != nil }
             XCTAssertNotNil(album.presentedViewController)
+            XCTAssertFalse(album.presentedViewController === picker, "Reopening creates a fresh system picker")
             let item = PhotosPickerItem(itemIdentifier: "newly-selected-photo")
             selection.select(item)
-            try await Task.sleep(for: .milliseconds(1200))
+            try await self.waitForPresentation { root.presentedViewController == nil }
             XCTAssertEqual(presentation.selectedItems, [item])
+            XCTAssertTrue(presentation.wasAlbumVisibleWhilePreparing,
+                          "The old generation page stays covered until the new photo is ready")
             XCTAssertFalse(presentation.isShowingAlbum)
             XCTAssertNil(root.presentedViewController, "The album closes only after a confirmed photo selection")
+        }
+    }
+
+    private func waitForPresentation(_ condition: () -> Bool) async throws {
+        for _ in 0..<50 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTFail("The system picker presentation did not settle within five seconds")
+    }
+
+    func testPhotoReadFailureKeepsTheAlbumOpen() async throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        model.albumFlipHistorySync = nil
+        model.speech.sessionProvider = { throw CancellationError() }
+        defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: [makeMemory()]),
+                                 store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+                                 mode: .photoRounds)
+        let pageID = deck.currentPageID
+        let selection = AlbumFlipPhotoSelection()
+        let presentation = AlbumFlipPresentationTestState()
+        presentation.photoPreparationSucceeds = false
+        let view = AlbumFlipPresentationTestHost(model: model, deck: deck, selection: selection, presentation: presentation)
+        _ = try await renderInWindow(view, size: CGSize(width: 393, height: 852), settleDuration: .milliseconds(900)) {
+            let root = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController)
+            let album = try XCTUnwrap(root.presentedViewController)
+            selection.begin()
+            try await self.waitForPresentation { album.presentedViewController != nil }
+            selection.select(PhotosPickerItem(itemIdentifier: "unreadable-photo"))
+            try await self.waitForPresentation { presentation.wasAlbumVisibleWhilePreparing }
+            try await Task.sleep(for: .milliseconds(500))
+            XCTAssertTrue(presentation.isShowingAlbum)
+            XCTAssertTrue(root.presentedViewController === album)
+            XCTAssertEqual(deck.currentPageID, pageID)
+            XCTAssertEqual(presentation.selectedItems.count, 1)
         }
     }
 
@@ -980,6 +1029,8 @@ final class AlbumFlipTests: XCTestCase {
 private final class AlbumFlipPresentationTestState: ObservableObject {
     @Published var isShowingAlbum = false
     var selectedItems: [PhotosPickerItem] = []
+    var wasAlbumVisibleWhilePreparing = false
+    var photoPreparationSucceeds = true
 }
 
 private struct AlbumFlipPresentationTestHost: View {
@@ -994,6 +1045,9 @@ private struct AlbumFlipPresentationTestHost: View {
             .fullScreenCover(isPresented: $presentation.isShowingAlbum) {
                 AlbumFlipView(deck: deck, ownerID: "guest", photoSelection: selection) { item in
                     presentation.selectedItems.append(item)
+                    try? await Task.sleep(for: .milliseconds(400))
+                    presentation.wasAlbumVisibleWhilePreparing = presentation.isShowingAlbum
+                    return presentation.photoPreparationSucceeds
                 }
                 .environmentObject(model)
                 .environment(\.scenePhase, .active)

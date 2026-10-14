@@ -6,6 +6,7 @@ struct SentenceStudyBlankTokenView: View {
     let filledWord: SentenceStudyWordBankItem?
     let isFocused: Bool
     let isWrong: Bool
+    var showsReading: Bool = true
     let onTap: () -> Void
 
     var body: some View {
@@ -17,15 +18,24 @@ struct SentenceStudyBlankTokenView: View {
             }
 
             Button(action: onTap) {
-                Text(filledWord?.text ?? " ")
+                VStack(spacing: 2) {
+                    if showsReading, let reading = token.visibleReading(isAnswered: filledWord != nil) {
+                        Text(reading).font(.caption2).foregroundStyle(AppTextColor.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    Text(filledWord?.text ?? " ")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(filledWord == nil ? Color.clear : Color(red: 0.23, green: 0.62, blue: 0.36))
                     .frame(width: width, height: 32)
                     .background(blankShape.fill(blankBackground))
                     .overlay(blankOverlay)
                     .clipShape(blankShape)
+                }
+                .frame(minHeight: 44)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(token.accessibilityText(isAnswered: filledWord != nil,
+                blankLabel: L10n.string("study.question.blank", "填空")))
 
             if !token.suffix.isEmpty {
                 Text(token.suffix)

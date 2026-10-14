@@ -5,6 +5,7 @@ struct AlbumFlipItem: Identifiable, Equatable {
     let memoryID: UUID
     let memoryCreatedAt: Date
     let sentence: SentenceRecord
+    var context: MemoryContentContext = .legacyEnglish
 
     var id: String { "\(memoryID.uuidString):\(sentence.id.uuidString)" }
 
@@ -12,8 +13,9 @@ struct AlbumFlipItem: Identifiable, Equatable {
         var seen = Set<String>()
         return memories.flatMap { memory in
             memory.sentences.compactMap { sentence in
-                let item = AlbumFlipItem(memoryID: memory.id, memoryCreatedAt: memory.createdAt, sentence: sentence)
-                guard !sentence.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                let item = AlbumFlipItem(memoryID: memory.id, memoryCreatedAt: memory.createdAt,
+                                         sentence: sentence, context: memory.context)
+                guard !sentence.targetText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                       seen.insert(item.id).inserted else { return nil }
                 return item
             }
@@ -101,7 +103,10 @@ final class AlbumFlipDeck: ObservableObject {
         return pages
     }
     var upcomingSpeechTexts: [String] {
-        cards.dropFirst(isShowingRoundBreak ? 0 : 1).prefix(Self.lookaheadCount).map { $0.item.sentence.english }
+        upcomingSpeechItems.map { $0.sentence.targetText }
+    }
+    var upcomingSpeechItems: [AlbumFlipItem] {
+        cards.dropFirst(isShowingRoundBreak ? 0 : 1).prefix(Self.lookaheadCount).map(\.item)
     }
 
     init(

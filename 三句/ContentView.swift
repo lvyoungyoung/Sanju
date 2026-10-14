@@ -13,6 +13,8 @@ struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var signInSheetHeight: CGFloat = 380
     @State private var studyDayContext = StudyCalendar.currentDayContext
+    @State private var isShowingInitialLanguageSettings = false
+    @ObservedObject private var interfaceLanguage = InterfaceLanguageStore.shared
 
     init(isShowingOnboarding: Binding<Bool> = .constant(false)) {
         _isShowingOnboarding = isShowingOnboarding
@@ -49,6 +51,9 @@ struct ContentView: View {
                     .presentationBackground(AppSurfaceColor.page)
                     .presentationDragIndicator(.visible)
             }
+            .sheet(isPresented: $isShowingInitialLanguageSettings) {
+                LearningLanguageSettingsView(isInitialSetup: true).environmentObject(appModel)
+            }
             .onOpenURL { url in
                 if isShowingOnboarding { finishOnboarding() }
                 appModel.handleIncomingURL(url)
@@ -67,6 +72,10 @@ struct ContentView: View {
                 openFavoritesIfNeededFromLearningReminder()
                 refreshStudyDayIfNeeded()
                 appModel.syncOnForegroundIfNeeded()
+                Task { await appModel.interfaceLanguageDidChange() }
+            }
+            .onChange(of: interfaceLanguage.resolvedLanguageCode) { _, _ in
+                Task { await appModel.interfaceLanguageDidChange() }
             }
         }
         .tint(AppPalette.accent)
@@ -82,6 +91,10 @@ struct ContentView: View {
     private func finishOnboarding() {
         OnboardingProgress.complete()
         isShowingOnboarding = false
+        if !appModel.defaults.bool(forKey: "sanju.learning.selection.confirmed") {
+            appModel.defaults.set(true, forKey: "sanju.learning.selection.required")
+            isShowingInitialLanguageSettings = true
+        }
     }
 
     private func openFavoritesIfNeededFromLearningReminder() {

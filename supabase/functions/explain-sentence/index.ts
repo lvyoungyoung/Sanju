@@ -31,7 +31,9 @@ Deno.serve(async (req) => {
     },
     async source(userID, sentenceID) {
       const { data, error } = await admin.from("memory_sentences")
-        .select("english,chinese,memories!inner(user_id)").eq("id", sentenceID).eq("memories.user_id", userID).maybeSingle()
+        .select("english,chinese,memories!inner(user_id)").eq("id", sentenceID).eq("memories.user_id", userID)
+        .eq("memories.target_language", "en").eq("memories.translation_language", "zh-Hans")
+        .eq("memories.teaching_locale", "en-US").maybeSingle()
       if (error) throw new Error(`Sentence lookup: ${error.message}`)
       return data ? { english: data.english, chinese: data.chinese } : null
     },

@@ -3,6 +3,22 @@ import SwiftUI
 import UIKit
 import WidgetKit
 
+enum WidgetInterfaceLanguage {
+    static var resolvedCode: String {
+        let shared = UserDefaults(suiteName: WidgetSnapshotStore.appGroupID)
+        if let code = shared?.string(forKey: "sanju.interface.resolved-language.v1"), ["zh-Hans", "en"].contains(code) {
+            return code
+        }
+        let preferred = Locale.preferredLanguages.first ?? "en"
+        return preferred == "zh" || preferred.hasPrefix("zh-Hans") || preferred.hasPrefix("zh-CN") || preferred.hasPrefix("zh-SG") ? "zh-Hans" : "en"
+    }
+
+    static func string(_ key: String) -> String {
+        let bundle = Bundle.main.path(forResource: resolvedCode, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
+        return bundle.localizedString(forKey: key, value: nil, table: nil)
+    }
+}
+
 enum WidgetSnapshotStore {
     static let appGroupID = "group.com.yanglv.sanju"
     static let widgetKind = "SanjuMemoryWidget"
@@ -12,15 +28,65 @@ enum WidgetSnapshotStore {
     struct Snapshot: Decodable {
         let generatedAt: Date
         let items: [Item]
+
+        private enum CodingKeys: String, CodingKey { case schemaVersion, generatedAt, items }
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            let version = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+            guard [1, 2].contains(version) else {
+                throw DecodingError.dataCorruptedError(forKey: .schemaVersion, in: c, debugDescription: "Unsupported snapshot version")
+            }
+            generatedAt = try c.decode(Date.self, forKey: .generatedAt)
+            items = try c.decode([Item].self, forKey: .items)
+        }
     }
 
     struct Item: Decodable, Hashable {
         let id: String
         let memoryID: String
         let createdAt: Date
-        let english: String
-        let chinese: String
+        let targetText: String
+        let translationText: String
+        let targetLanguage: String
+        let translationLanguage: String
+        let teachingLocale: String
         let imageFileName: String?
+
+        init(id: String, memoryID: String, createdAt: Date, english: String, chinese: String, imageFileName: String?) {
+            self.id = id; self.memoryID = memoryID; self.createdAt = createdAt
+            targetText = english; translationText = chinese
+            targetLanguage = "en"; translationLanguage = "zh-Hans"; teachingLocale = "en-US"
+            self.imageFileName = imageFileName
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, memoryID, createdAt, english, chinese, targetText, translationText
+            case targetLanguage, translationLanguage, teachingLocale, imageFileName
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            memoryID = try c.decode(String.self, forKey: .memoryID)
+            createdAt = try c.decode(Date.self, forKey: .createdAt)
+            imageFileName = try c.decodeIfPresent(String.self, forKey: .imageFileName)
+            if [.targetText, .translationText, .targetLanguage, .translationLanguage, .teachingLocale].contains(where: c.contains) {
+                targetText = try c.decode(String.self, forKey: .targetText)
+                translationText = try c.decode(String.self, forKey: .translationText)
+                targetLanguage = try c.decode(String.self, forKey: .targetLanguage)
+                translationLanguage = try c.decode(String.self, forKey: .translationLanguage)
+                teachingLocale = try c.decode(String.self, forKey: .teachingLocale)
+                let locales = ["en": "en-US", "es": "es-419", "ja": "ja-JP", "fr": "fr-FR"]
+                guard locales[targetLanguage] == teachingLocale,
+                      ["zh-Hans", "en", "es", "ja", "fr"].contains(translationLanguage) else {
+                    throw DecodingError.dataCorruptedError(forKey: .targetLanguage, in: c, debugDescription: "Invalid content language")
+                }
+            } else {
+                targetText = try c.decode(String.self, forKey: .english)
+                translationText = try c.decode(String.self, forKey: .chinese)
+                targetLanguage = "en"; translationLanguage = "zh-Hans"; teachingLocale = "en-US"
+            }
+        }
     }
 
     static func loadSnapshot() -> Snapshot? {
@@ -225,8 +291,12 @@ enum WidgetSelectionStore {
 }
 
 struct ShuffleMemoryIntent: AppIntent {
-    static var title: LocalizedStringResource = "切换随机回忆"
-    static var description = IntentDescription("随机切换小组件里展示的回忆。")
+    static var title: LocalizedStringResource {
+        LocalizedStringResource("切换随机回忆", locale: Locale(identifier: WidgetInterfaceLanguage.resolvedCode))
+    }
+    static var description: IntentDescription {
+        IntentDescription(LocalizedStringResource("随机切换小组件里展示的回忆。", locale: Locale(identifier: WidgetInterfaceLanguage.resolvedCode)))
+    }
 
     @MainActor
     func perform() async throws -> some IntentResult {
@@ -247,6 +317,7 @@ struct ShuffleMemoryIntent: AppIntent {
 struct SanjuMemoryWidgetEntry: TimelineEntry {
     let date: Date
     let item: WidgetSnapshotStore.Item?
+    var interfaceLanguageCode = WidgetInterfaceLanguage.resolvedCode
 }
 
 struct SanjuMemoryWidgetProvider: TimelineProvider {
@@ -258,7 +329,7 @@ struct SanjuMemoryWidgetProvider: TimelineProvider {
                 memoryID: "placeholder",
                 createdAt: .now,
                 english: "A quiet photo can become a sentence you really remember.",
-                chinese: "一张安静的照片，也能变成你真正记住的一句英语。",
+                chinese: "一张安静的照片，也能变成你真正记住的一句话。",
                 imageFileName: nil
             )
         )
@@ -334,7 +405,7 @@ struct SanjuMemoryWidgetView: View {
                             )
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(item.english)
+                            Text(attributedText(item.targetText, language: item.teachingLocale))
                                 .font(.callout)
                                 .foregroundStyle(Color(red: 0.24, green: 0.22, blue: 0.18))
                                 .lineLimit(5)
@@ -357,6 +428,7 @@ struct SanjuMemoryWidgetView: View {
                                         .background(Color.white.opacity(0.68), in: Circle())
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel(Text("切换随机回忆"))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -379,6 +451,7 @@ struct SanjuMemoryWidgetView: View {
             )
         }
         .widgetURL(entry.item.flatMap(widgetURL(for:)) ?? emptyStateWidgetURL())
+        .environment(\.locale, Locale(identifier: entry.interfaceLanguageCode))
     }
 
     private func emptyStateView(imageSide: CGFloat) -> some View {
@@ -465,6 +538,12 @@ struct SanjuMemoryWidgetView: View {
         return UIImage(contentsOfFile: imageURL.path)
     }
 
+    private func attributedText(_ text: String, language: String) -> AttributedString {
+        var value = AttributedString(text)
+        value.languageIdentifier = language
+        return value
+    }
+
     private func widgetURL(for item: WidgetSnapshotStore.Item) -> URL? {
         URL(string: "sanju://memory/\(item.memoryID)")
     }
@@ -481,8 +560,8 @@ struct SanjuMemoryWidget: Widget {
         StaticConfiguration(kind: kind, provider: SanjuMemoryWidgetProvider()) { entry in
             SanjuMemoryWidgetView(entry: entry)
         }
-        .configurationDisplayName("随机回忆")
-        .description("从你生成过的回忆里，随机挑一句放到桌面上。")
+        .configurationDisplayName(Text(verbatim: WidgetInterfaceLanguage.string("随机回忆")))
+        .description(Text(verbatim: WidgetInterfaceLanguage.string("从你生成过的回忆里，随机挑一句放到桌面上。")))
         .supportedFamilies([.systemMedium])
         .contentMarginsDisabled()
     }

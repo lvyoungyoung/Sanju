@@ -31,7 +31,7 @@ struct NewLearningView: View {
     @State private var activePendingRecoveryTask: Task<Void, Never>?
     @State private var photoLoadRequestID = UUID()
     @State private var albumFlipSession: GeneratedAlbumFlipSession?
-    @State private var selectedPhotoAfterAlbumFlip: PhotosPickerItem?
+    @State private var isShowingLanguageSettings = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -90,7 +90,6 @@ struct NewLearningView: View {
 
                                     Button {
                                         appModel.speech.stop()
-                                        selectedPhotoAfterAlbumFlip = nil
                                         selectedItem = nil
                                         albumFlipSession = GeneratedAlbumFlipSession(
                                             items: AlbumFlipItem.makeItems(from: [displayedMemory]),
@@ -130,7 +129,28 @@ struct NewLearningView: View {
                     } else {
                         VStack(spacing: AppSpacing.medium) {
                             Button {
+                                isShowingLanguageSettings = true
+                            } label: {
+                                HStack(spacing: AppSpacing.small) {
+                                    Image(systemName: "globe")
+                                    Text(L10n.string("language.generation.summary", "%@ · %@", appModel.learningSelection.targetLanguage.displayTitle,
+                                        appModel.learningPreferences.level(for: appModel.learningSelection.targetLanguage).displayTitle))
+                                    Spacer()
+                                    Text(L10n.string("common.change", "更改"))
+                                }
+                                .font(.subheadline)
+                                .foregroundStyle(AppTextColor.secondary)
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            Button {
                                 guard !isRecoveryInteractionLocked else { return }
+                                if appModel.defaults.bool(forKey: "sanju.learning.selection.required") &&
+                                    !appModel.defaults.bool(forKey: "sanju.learning.selection.confirmed") {
+                                    isShowingLanguageSettings = true
+                                    return
+                                }
                                 if appModel.remainingCredits <= 0 {
                                     isShowingPurchasePrompt = true
                                 } else {
@@ -181,7 +201,7 @@ struct NewLearningView: View {
             .padding(.bottom, AppSpacing.section)
         }
         .task(id: selectedItem) {
-            await loadSelectedPhoto()
+            _ = await loadSelectedPhoto(selectedItem)
         }
         .task {
             startPendingRecoveryTaskIfNeeded(isInitialAttempt: true)
@@ -212,14 +232,12 @@ struct NewLearningView: View {
             PurchaseSheet()
                 .environmentObject(appModel)
         }
-        .fullScreenCover(item: $albumFlipSession, onDismiss: {
-            guard let item = selectedPhotoAfterAlbumFlip else { return }
-            selectedPhotoAfterAlbumFlip = nil
-            shouldClearGeneratedMemoryOnNextPhotoSelection = true
-            selectedItem = item
-        }) { session in
+        .sheet(isPresented: $isShowingLanguageSettings) {
+            LearningLanguageSettingsView().environmentObject(appModel)
+        }
+        .fullScreenCover(item: $albumFlipSession) { session in
             AlbumFlipView(items: session.items, ownerID: session.ownerID, mode: .photoRounds) { item in
-                selectedPhotoAfterAlbumFlip = item
+                await loadSelectedPhoto(item, replacingGeneratedMemory: true)
             }
             .environmentObject(appModel)
         }
@@ -471,17 +489,17 @@ struct NewLearningView: View {
         }
     }
 
-    private func loadSelectedPhoto() async {
+    private func loadSelectedPhoto(_ selectedItem: PhotosPickerItem?, replacingGeneratedMemory: Bool = false) async -> Bool {
         guard let selectedItem else {
             photoLoadRequestID = UUID()
             isLoadingSelectedPhoto = false
-            return
+            return false
         }
 
         let loadRequestID = UUID()
         photoLoadRequestID = loadRequestID
         isLoadingSelectedPhoto = true
-        if shouldClearGeneratedMemoryOnNextPhotoSelection {
+        if shouldClearGeneratedMemoryOnNextPhotoSelection && !replacingGeneratedMemory {
             clearDisplayedDraftForNewPhotoSelection()
         }
         defer {
@@ -495,17 +513,17 @@ struct NewLearningView: View {
                 from: selectedItem,
                 timeout: photoLoadTimeout
             ) else {
-                guard photoLoadRequestID == loadRequestID else { return }
+                guard photoLoadRequestID == loadRequestID, !Task.isCancelled else { return false }
                 errorMessage = L10n.string("new.photo.read_unavailable", "无法读取这张图片。")
                 self.selectedItem = nil
-                return
+                return false
             }
 
-            guard photoLoadRequestID == loadRequestID else { return }
+            guard photoLoadRequestID == loadRequestID, !Task.isCancelled else { return false }
 
             let itemIdentifier = selectedItem.itemIdentifier
             let isNewSelection: Bool
-            if shouldClearGeneratedMemoryOnNextPhotoSelection {
+            if replacingGeneratedMemory || shouldClearGeneratedMemoryOnNextPhotoSelection {
                 isNewSelection = true
             } else if let itemIdentifier {
                 isNewSelection = appModel.draftLearningItemIdentifier != itemIdentifier
@@ -523,8 +541,9 @@ struct NewLearningView: View {
             }
             errorMessage = nil
             recoveryFailureState = nil
+            return true
         } catch {
-            guard photoLoadRequestID == loadRequestID else { return }
+            guard photoLoadRequestID == loadRequestID, !Task.isCancelled else { return false }
             recoveryFailureState = nil
             if error is PhotoLoadError {
                 errorMessage = L10n.string("new.photo.read_timeout", "读取照片超时，请确认原图已下载后重试。")
@@ -532,6 +551,7 @@ struct NewLearningView: View {
                 errorMessage = L10n.string("new.photo.read_failed", "读取图片失败，请重试。")
             }
             self.selectedItem = nil
+            return false
         }
     }
 
@@ -855,7 +875,7 @@ private struct NewLearningSentenceList: View {
                 .padding(.vertical, AppSpacing.xLarge)
             } else {
                 ForEach(displayedSentences) { sentence in
-                    NewLearningSentenceRow(sentence: sentence)
+                    NewLearningSentenceRow(sentence: sentence, context: memory.context)
                         .padding(20)
                         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                         .appCardBorder()
@@ -869,23 +889,26 @@ private struct NewLearningSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
 
     let sentence: SentenceRecord
+    let context: MemoryContentContext
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(sentence.english)
+                Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
                     .font(AppTypography.sentence)
                     .lineSpacing(4)
                     .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(sentence.chinese)
+                SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
+
+                Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
                     .font(.system(size: 13))
                     .foregroundStyle(AppTextColor.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            SentenceActions(speech: appModel.speech, text: sentence.english, isFavorite: sentence.isFavorite) {
+            SentenceActions(speech: appModel.speech, request: appModel.speech.request(sentence: sentence, context: context), isFavorite: sentence.isFavorite) {
                 appModel.toggleFavorite(sentenceID: sentence.id)
             }
         }

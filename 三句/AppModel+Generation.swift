@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 private struct PreparedGenerationImages {
     let originalImageData: Data
@@ -12,6 +13,8 @@ private struct GenerationRequestContext {
     let guestJobID: String?
     let clientRequestID: String?
     let timing: GenerationTiming
+    let spec: GenerationSpec
+    let accountRevision: UUID
 }
 
 private enum GenerationRequestOutcome {
@@ -44,6 +47,16 @@ extension AppModel {
     // MARK: - Generation
 
     func generateMemory(from imageData: Data) async throws -> MemoryEntry {
+        guard learningPreferenceSync?.hasInvalidCache != true else {
+            throw LanguageContractError.corruptContent
+        }
+        let spec = currentGenerationSpec
+        try spec.validate()
+        let scope = GenerationAccountScope(accountRequests: accountRequests,
+            session: supabaseSession ?? loadStoredSession())
+        guard !hasPendingGeneratedMemoryRecoveryCandidate() else {
+            throw SupabaseServiceError.apiError("generation_in_progress")
+        }
         let timing = GenerationTiming()
         var outcome = "failed"
         defer { timing.finish(outcome: outcome) }
@@ -55,11 +68,13 @@ extension AppModel {
 
         timing.start("client_compress")
         let images = try prepareGenerationImages(from: imageData)
-        let context = try await prepareGenerationRequestContext(memoryImageData: images.memoryImageData, timing: timing)
+        let context = try await prepareGenerationRequestContext(images: images, timing: timing,
+            spec: spec, scope: scope)
 
         timing.start("client_generate_request")
         switch try await performGenerationRequest(images: images, context: context) {
         case let .generated(result, session):
+            try accountRequests.check(context.accountRevision)
             observeGeneratedSentenceEnrichment(session: session, memoryID: result.memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             timing.start("client_local_save")
             let memory = makeGeneratedMemory(
@@ -74,10 +89,12 @@ extension AppModel {
                 session: session,
                 timing: timing
             )
+            try accountRequests.check(context.accountRevision)
             outcome = "success"
             return memory
 
         case let .recovered(memory, session):
+            try accountRequests.check(context.accountRevision)
             observeGeneratedSentenceEnrichment(session: session, memoryID: memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             outcome = "recovered"
             return memory
@@ -92,9 +109,15 @@ extension AppModel {
         )
     }
 
-    private func prepareGenerationRequestContext(memoryImageData: Data, timing: GenerationTiming) async throws -> GenerationRequestContext {
+    private func prepareGenerationRequestContext(images: PreparedGenerationImages, timing: GenerationTiming,
+        spec: GenerationSpec, scope: GenerationAccountScope) async throws -> GenerationRequestContext {
         timing.start("client_session")
         let session = try await ensureValidSession()
+        let revision = try scope.resolvedRevision(session: session, currentSession: supabaseSession,
+            accountRequests: accountRequests)
+        guard !hasPendingGeneratedMemoryRecoveryCandidate() else {
+            throw SupabaseServiceError.apiError("generation_in_progress")
+        }
         timing.start("client_pending_save")
         let existingMemoryIDs = Set(memories.map(\.id))
         let guestJobID = session.isAnonymous ? UUID().uuidString.lowercased() : nil
@@ -105,16 +128,24 @@ extension AppModel {
             previousMemoryIDs: Array(existingMemoryIDs),
             guestJobID: guestJobID,
             clientRequestID: clientRequestID,
-            imageData: memoryImageData
+            imageData: images.memoryImageData,
+            snapshot: GenerationRequestSnapshot(owner: session.userID, accountRevision: revision,
+                requestID: UUID(uuidString: timing.requestID)!, guestJobID: guestJobID.flatMap(UUID.init(uuidString:)),
+                spec: spec, imageDigest: SHA256.hash(data: images.analysisImageData).map { String(format: "%02x", $0) }.joined(),
+                createdAt: .now)
         )
-        persistPendingGeneratedMemoryImage()
+        guard persistPendingGeneratedMemoryImage() else {
+            throw LanguageContractError.corruptContent
+        }
 
         return GenerationRequestContext(
             session: session,
             existingMemoryIDs: existingMemoryIDs,
             guestJobID: guestJobID,
             clientRequestID: clientRequestID,
-            timing: timing
+            timing: timing,
+            spec: spec,
+            accountRevision: revision
         )
     }
 
@@ -126,11 +157,14 @@ extension AppModel {
             let result = try await requestGeneratedMemorySentences(
                 session: context.session,
                 imageData: images.analysisImageData,
+                spec: context.spec,
                 guestJobID: context.guestJobID,
                 clientRequestID: context.clientRequestID
             )
+            try accountRequests.check(context.accountRevision)
             return .generated(result, context.session)
         } catch {
+            try accountRequests.check(context.accountRevision)
             if isInvalidJWTGenerationError(error) {
                 return try await retryGenerationAfterRefreshingSession(
                     images: images,
@@ -144,6 +178,7 @@ extension AppModel {
                 previousMemoryIDs: context.existingMemoryIDs,
                 session: context.session
             ) {
+                try accountRequests.check(context.accountRevision)
                 let reconciledMemory = await finalizeRecoveredGeneratedMemory(
                     recoveredMemory,
                     originalImageData: images.originalImageData,
@@ -154,6 +189,7 @@ extension AppModel {
                 return .recovered(reconciledMemory, context.session)
             }
 
+            try accountRequests.check(context.accountRevision)
             clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for: error)
             throw error
         }
@@ -165,17 +201,22 @@ extension AppModel {
     ) async throws -> GenerationRequestOutcome {
         context.timing.start("client_refresh_session")
         let refreshedSession = try await forceRefreshSession()
+        try accountRequests.check(context.accountRevision)
+        guard refreshedSession.userID == context.session.userID else { throw CancellationError() }
 
         do {
             context.timing.start("client_generate_request")
             let result = try await requestGeneratedMemorySentences(
                 session: refreshedSession,
                 imageData: images.analysisImageData,
+                spec: context.spec,
                 guestJobID: context.guestJobID,
                 clientRequestID: context.clientRequestID
             )
+            try accountRequests.check(context.accountRevision)
             return .generated(result, refreshedSession)
         } catch {
+            try accountRequests.check(context.accountRevision)
             clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for: error)
             throw error
         }
@@ -184,13 +225,14 @@ extension AppModel {
     private func requestGeneratedMemorySentences(
         session: SupabaseSession,
         imageData: Data,
+        spec: GenerationSpec,
         guestJobID: String?,
         clientRequestID: String?
     ) async throws -> SupabaseGenerateMemoryResult {
         try await supabaseService.generateMemorySentences(
             session: session,
             imageData: imageData,
-            englishLevel: englishLevel,
+            spec: spec,
             guestJobID: guestJobID,
             clientRequestID: clientRequestID
         )
@@ -202,7 +244,7 @@ extension AppModel {
     }
 
     private func clearPendingGeneratedMemoryImageIfRecoveryIsNotNeeded(for error: Error) {
-        if !shouldAttemptGenerationRecovery(for: error) {
+        if case .nonRecoverable = error.generationRecoveryDisposition {
             clearPendingGeneratedMemoryImage()
         }
     }
@@ -224,6 +266,7 @@ extension AppModel {
         session: SupabaseSession,
         timing: GenerationTiming
     ) async -> MemoryEntry {
+        let revision = accountRequests.revision
         timing.start("client_recovered_save")
         let reconciledMemory = MemoryEntry(
             id: recoveredMemory.id,
@@ -232,7 +275,8 @@ extension AppModel {
             remoteImagePath: recoveredMemory.remoteImagePath,
             syncedToAccount: !session.isAnonymous,
             tags: recoveredMemory.tags,
-            sentences: recoveredMemory.sentences
+            sentences: recoveredMemory.sentences,
+            context: recoveredMemory.context
         )
 
         if let recoveredIndex = memories.firstIndex(where: { $0.id == recoveredMemory.id }) {
@@ -240,18 +284,21 @@ extension AppModel {
             persistMemories()
         }
 
-        enqueuePendingMemoryImageUploadIfNeeded(
-            memoryID: reconciledMemory.id,
-            remoteImagePath: reconciledMemory.remoteImagePath,
-            imageData: memoryImageData
-        )
-        timing.start("client_photo_upload")
-        await uploadMemoryImageIfNeeded(
-            memoryID: reconciledMemory.id,
-            remoteImagePath: reconciledMemory.remoteImagePath,
-            imageData: memoryImageData,
-            session: session
-        )
+        if reconciledMemory.context.isLegacyCompatible {
+            enqueuePendingMemoryImageUploadIfNeeded(
+                memoryID: reconciledMemory.id,
+                remoteImagePath: reconciledMemory.remoteImagePath,
+                imageData: memoryImageData
+            )
+            timing.start("client_photo_upload")
+            await uploadMemoryImageIfNeeded(
+                memoryID: reconciledMemory.id,
+                remoteImagePath: reconciledMemory.remoteImagePath,
+                imageData: memoryImageData,
+                session: session
+            )
+        }
+        guard (try? accountRequests.check(revision)) != nil else { return reconciledMemory }
 
         timing.start("client_recovered_finish")
         draftLearningImageData = originalImageData
@@ -277,7 +324,9 @@ extension AppModel {
                     chinese: sentence.chinese,
                     learningTopicIDs: sentence.learningTopicIDs,
                     presentationGroup: sentence.presentationGroup,
-                    isFavorite: sentence.isFavorite
+                    isFavorite: sentence.isFavorite,
+                    contentVersion: sentence.contentVersion,
+                    learningMaterial: sentence.learningMaterial
                 )
             }
             return MemoryEntry(
@@ -287,7 +336,8 @@ extension AppModel {
                 remoteImagePath: nil,
                 syncedToAccount: false,
                 tags: generationResult.memory.tags,
-                sentences: localSentences
+                sentences: localSentences,
+                context: generationResult.memory.context
             )
         }
 
@@ -298,7 +348,8 @@ extension AppModel {
             remoteImagePath: generationResult.memory.remoteImagePath,
             syncedToAccount: true,
             tags: generationResult.memory.tags,
-            sentences: generationResult.memory.sentences
+            sentences: generationResult.memory.sentences,
+            context: generationResult.memory.context
         )
     }
 
@@ -322,7 +373,7 @@ extension AppModel {
         persistCredits()
         clearPendingGeneratedMemoryImage()
 
-        guard !session.isAnonymous else { return }
+        guard !session.isAnonymous, memory.context.isLegacyCompatible else { return }
         enqueuePendingMemoryImageUploadIfNeeded(
             memoryID: memory.id,
             remoteImagePath: memory.remoteImagePath,
@@ -346,6 +397,10 @@ extension AppModel {
     ) async -> MemoryEntry? {
         guard shouldAttemptGenerationRecovery(for: error) else {
             return nil
+        }
+
+        if pendingGeneratedMemoryImage?.snapshot != nil {
+            return await recoverVersionedGeneration(session: session, retryDelays: [.milliseconds(800), .seconds(2), .seconds(3), .seconds(4)])
         }
 
         if session.isAnonymous, pendingGeneratedMemoryImage?.guestJobID?.isEmpty == false {
@@ -403,6 +458,7 @@ extension AppModel {
     }
 
     func resumePendingGeneratedMemoryRecoveryIfNeeded() async -> MemoryEntry? {
+        let revision = accountRequests.revision
         guard !Task.isCancelled else { return nil }
         guard let pendingRecovery = pendingGeneratedMemoryImage else { return nil }
         guard !isPendingGeneratedRecoveryExpired(pendingRecovery) else {
@@ -412,6 +468,13 @@ extension AppModel {
 
         let previousMemoryIDs = Set(pendingRecovery.previousMemoryIDs)
         guard let session = try? await ensureValidSession() else { return nil }
+        guard (try? accountRequests.check(revision)) != nil else { return nil }
+        if pendingRecovery.snapshot != nil {
+            let memory = await recoverVersionedGeneration(session: session, retryDelays: [.zero, .seconds(5), .seconds(10), .seconds(20)])
+            guard (try? accountRequests.check(revision)) != nil else { return nil }
+            if memory != nil { clearPendingGeneratedMemoryImage() }
+            return memory
+        }
         if session.isAnonymous {
             let recoveredMemory = await recoverAnonymousGeneratedMemoryIfNeeded(
                 previousMemoryIDs: previousMemoryIDs,
@@ -462,12 +525,54 @@ extension AppModel {
     }
 
     private func finalizeExplicitPendingRecoveryResult(_ recoveredMemory: MemoryEntry?) -> MemoryEntry? {
-        guard let recoveredMemory else {
-            clearPendingGeneratedMemoryImage()
-            return nil
-        }
-
+        // A timeout is not evidence that the server failed. Preserve the recovery identity.
         return recoveredMemory
+    }
+
+    private func recoverVersionedGeneration(session: SupabaseSession, retryDelays: [Duration]) async -> MemoryEntry? {
+        let revision = accountRequests.revision
+        guard let pending = pendingGeneratedMemoryImage, let snapshot = pending.snapshot,
+              snapshot.owner == session.userID,
+              UUID(uuidString: pending.clientRequestID ?? "") == snapshot.requestID,
+              pending.guestJobID.flatMap(UUID.init(uuidString:)) == snapshot.guestJobID,
+              (try? snapshot.spec.validate()) != nil else { return nil }
+
+        for delay in retryDelays {
+            guard await waitForRecoveryDelay(delay), (try? accountRequests.check(revision)) != nil else { return nil }
+            do {
+                let result = try await supabaseService.recoverGeneration(session: session, imageData: pending.imageData,
+                    guestJobID: pending.guestJobID, clientRequestID: pending.clientRequestID)
+                try accountRequests.check(revision)
+                guard pendingGeneratedMemoryImage?.snapshot == snapshot else { return nil }
+                guard let result else { continue }
+                guard result.memory.context == snapshot.spec.context else { throw SupabaseServiceError.invalidResponse }
+                let recoveredMemory: MemoryEntry
+                if let existing = memories.first(where: { $0.id == result.memory.id }) {
+                    recoveredMemory = existing
+                } else {
+                    recoveredMemory = result.memory
+                    memories.insert(recoveredMemory, at: 0)
+                }
+                recordedMemoriesCount = memories.count
+                favoriteSentencesCount = memories.reduce(0) { $0 + $1.sentences.filter(\.isFavorite).count }
+                remainingCredits = result.remainingCredits
+                upsertPendingGuestMemoryMigrationIfNeeded(recoveredMemory)
+                persistMemories()
+                persistCredits()
+                if !session.isAnonymous, recoveredMemory.context.isLegacyCompatible {
+                    enqueuePendingMemoryImageUploadIfNeeded(memoryID: recoveredMemory.id,
+                        remoteImagePath: recoveredMemory.remoteImagePath, imageData: recoveredMemory.imageData)
+                }
+                return recoveredMemory
+            } catch {
+                guard (try? accountRequests.check(revision)) != nil else { return nil }
+                if case let SupabaseServiceError.apiError(message) = error, message == "generation_failed" {
+                    clearPendingGeneratedMemoryImage()
+                    return nil
+                }
+            }
+        }
+        return nil
     }
 
     private func recoverAuthenticatedGeneratedMemoryIfNeeded(
@@ -476,6 +581,7 @@ extension AppModel {
         session: SupabaseSession,
         retryDelays: [Duration]
     ) async -> MemoryEntry? {
+        let revision = accountRequests.revision
         guard !clientRequestID.isEmpty else { return nil }
 
         for delay in retryDelays {
@@ -487,7 +593,7 @@ extension AppModel {
             ) else {
                 continue
             }
-            guard !Task.isCancelled else { return nil }
+            guard (try? accountRequests.check(revision)) != nil else { return nil }
 
             switch job.status {
             case "completed":
@@ -504,6 +610,7 @@ extension AppModel {
                 let didRefresh = await runRecoveryAttemptWithTimeout {
                     await self.syncMemoriesFromRemote(refreshCounts: true, downloadsImages: false)
                 }
+                guard (try? accountRequests.check(revision)) != nil else { return nil }
                 guard didRefresh else { continue }
 
                 if let recoveredMemory = memory(withID: memoryID) {
@@ -553,6 +660,7 @@ extension AppModel {
         previousMemoryIDs: Set<UUID>,
         session: SupabaseSession
     ) async -> MemoryEntry? {
+        let revision = accountRequests.revision
         guard !Task.isCancelled else { return nil }
         guard let pendingRecovery = pendingGeneratedMemoryImage else { return nil }
         guard !isPendingGeneratedRecoveryExpired(pendingRecovery) else {
@@ -580,6 +688,7 @@ extension AppModel {
             }
             guard !Task.isCancelled else { return nil }
 
+            guard (try? accountRequests.check(revision)) != nil else { return nil }
             let recoveredMemory: MemoryEntry
             if let existingIndex = memories.firstIndex(where: {
                 matchesMemoryIdentity($0, recovered.memory)

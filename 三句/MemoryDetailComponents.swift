@@ -94,7 +94,7 @@ struct MemoryDetailSentencePanel: View {
                 .padding(.vertical, AppSpacing.xLarge)
             } else {
                 ForEach(displayedSentences) { sentence in
-                    MemoryDetailSentenceRow(sentence: sentence)
+                    MemoryDetailSentenceRow(sentence: sentence, context: memory.context)
                         .padding(20)
                         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
                         .appCardBorder()
@@ -107,23 +107,26 @@ struct MemoryDetailSentencePanel: View {
 struct MemoryDetailSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
     let sentence: SentenceRecord
+    var context: MemoryContentContext = .legacyEnglish
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             VStack(alignment: .leading, spacing: 10) {
-                Text(sentence.english)
+                Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
                     .font(AppTypography.sentence)
                     .lineSpacing(4)
                     .foregroundStyle(AppTextColor.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                Text(sentence.chinese)
+                SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
+
+                Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
                     .font(.system(size: 13))
                     .foregroundStyle(AppTextColor.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            SentenceActions(speech: appModel.speech, text: sentence.english, isFavorite: sentence.isFavorite) {
+            SentenceActions(speech: appModel.speech, request: appModel.speech.request(sentence: sentence, context: context), isFavorite: sentence.isFavorite) {
                 appModel.toggleFavorite(sentenceID: sentence.id)
             }
         }

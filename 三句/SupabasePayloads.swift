@@ -1,5 +1,57 @@
 import Foundation
 
+struct SupabaseContentGenerationRequest: Encodable {
+    let imageBase64: String
+    let generationSpec: GenerationSpec
+    let guestJobID: String?
+    let clientRequestID: String?
+}
+
+struct SupabaseContentRecoveryRequest: Encodable {
+    let guestJobID: String?
+    let clientRequestID: String?
+}
+
+struct SupabaseContentListRequest: Encodable {
+    let cursor: SupabaseContentCursor?
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encodeNil(forKey: .targetLanguage)
+        try values.encodeIfPresent(cursor?.createdAt, forKey: .createdAt)
+        try values.encodeIfPresent(cursor?.id.uuidString.lowercased(), forKey: .id)
+        try values.encode(100, forKey: .limit)
+    }
+    enum CodingKeys: String, CodingKey {
+        case targetLanguage = "p_target_language", createdAt = "p_cursor_created_at"
+        case id = "p_cursor_id", limit = "p_limit"
+    }
+}
+
+struct SupabaseContentImportRequest: Encodable {
+    let memories: [SupabaseContentMemory]
+    let guestAccessToken: String?
+}
+
+struct SupabaseContentImportResponse: Decodable {
+    struct Result: Decodable {
+        let id: UUID
+        let imported: Bool
+        let code: String?
+    }
+    let schemaVersion: Int
+    let results: [Result]
+}
+
+struct ContentMutationAcknowledgement: Decodable {}
+
+struct ContentFavoritePayload: Encodable {
+    let sentenceID: UUID
+    let isFavorite: Bool
+    enum CodingKeys: String, CodingKey {
+        case sentenceID = "p_sentence_id", isFavorite = "p_is_favorite"
+    }
+}
+
 struct SupabaseEmailSignInRequest: Encodable {
     let email: String
     let password: String
@@ -370,6 +422,7 @@ struct SupabaseLocalSentenceStudyProgressMergeItem: Encodable {
     let lastStudiedAt: Date?
     let lastStudiedOn: String?
     let nextReviewOn: String
+    var firstActivatedAt: Date? = nil
 
     enum CodingKeys: String, CodingKey {
         case sentenceID = "sentence_id"
@@ -382,6 +435,7 @@ struct SupabaseLocalSentenceStudyProgressMergeItem: Encodable {
         case lastStudiedAt = "last_studied_at"
         case lastStudiedOn = "last_studied_on"
         case nextReviewOn = "next_review_on"
+        case firstActivatedAt = "first_activated_at"
     }
 }
 

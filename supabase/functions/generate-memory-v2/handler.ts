@@ -8,6 +8,11 @@ import { requestWithFallback, usesDeepSeekGeneration } from "./providers.ts"
 import { loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGuestGenerationResponseIfNeeded, markAuthenticatedGenerationJobFailed, tryAcquireGenerationSlot, releaseGenerationSlot, removeStoragePathQuietly, markGuestGenerationJobFailed } from "./repository.ts"
 import { type GenerationViolationRecord, moderateImageBeforeGeneration, isGenerationViolationBanEnabled, isFutureTimestamp, recordGenerationViolation, buildGenerationPolicyViolationError } from "./moderation.ts"
 import { persistGeneratedResult } from "./persist-result.ts"
+import { prepareGenerationRequest } from "../_shared/generation/spec.ts"
+import { buildMultilingualPrompt, parseMultilingualContent, type GeneratedSentence } from "../_shared/generation/content.ts"
+import { claimGeneration, recoverGeneration, recoveryResponse, persistMultilingualResult } from "../_shared/generation/adapter.ts"
+import type { Sentence } from "./content.ts"
+import { readAssistanceJSON } from "../_shared/assistance-input.ts"
 
 interface RequestBody {
   imageBase64: string
@@ -15,9 +20,10 @@ interface RequestBody {
   guestJobID?: string
   clientRequestID?: string
   generationFormat?: string
+  generationSpec?: unknown
 }
 const GENERATION_REQUEST_BUDGET_MS = 90000
-export async function handleGenerationRequest(req: Request, timing: GenerationTiming): Promise<Response> {
+export async function handleGenerationRequest(req: Request, timing: GenerationTiming, version: 2 | 3 = 2): Promise<Response> {
   let adminClient: any = null
   let generationSlotRequestID: string | null = null
   let generationSlotAcquired = false
@@ -111,20 +117,32 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     }
 
     timing.start("request_decode")
-    const body = (await req.json()) as RequestBody
+    let body: RequestBody
+    try { body = (version === 3 ? await readAssistanceJSON(req, 15 * 1024 * 1024) : await req.json()) as RequestBody } catch {
+      if (version === 3) return jsonResponse({error: "Invalid JSON", code: "invalid_request"}, 400)
+      throw new Error("Invalid JSON")
+    }
+    if (version === 3 && (!body || typeof body.imageBase64 !== "string" || body.imageBase64.length > 14 * 1024 * 1024)) {
+      return jsonResponse({error: "Invalid image", code: "invalid_image"}, 400)
+    }
     const imageBase64 = body.imageBase64?.replace(/\s+/g, "").trim()
 
     if (!imageBase64) {
       return jsonResponse({ error: "imageBase64 is required" }, 400)
     }
 
-    const imageBytes = decodeBase64(imageBase64)
+    let imageBytes: Uint8Array
+    try { imageBytes = decodeBase64(imageBase64) } catch {
+      if (version === 3) return jsonResponse({error: "Invalid image", code: "invalid_image"}, 400)
+      throw new Error("Invalid image")
+    }
     const englishLevel = body.englishLevel ?? "中等"
-    const generationFormat: GenerationFormat = body.generationFormat === "dual_tabs_v1"
+    const generationFormat: GenerationFormat = version === 3 || body.generationFormat === "dual_tabs_v1"
       ? "dual_tabs_v1"
       : "legacy_v1"
     const isAnonymous = user.is_anonymous === true
-    const guestJobID = isAnonymous ? body.guestJobID?.trim() : undefined
+    const prepared = version === 3 ? await prepareGenerationRequest(body, isAnonymous, imageBytes) : null
+    const guestJobID = isAnonymous ? prepared?.requestID ?? body.guestJobID?.trim() : undefined
     authenticatedClientRequestID = isAnonymous
       ? null
       : normalizeOptionalUUID(body.clientRequestID) ?? null
@@ -137,7 +155,11 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     let existingGuestJob: { id: string; status: string; provider?: string | null } | null = null
 
     timing.start("existing_result")
-    if (!isAnonymous && authenticatedClientRequestID) {
+    if (prepared) {
+      const existing = recoveryResponse(await recoverGeneration(adminClient, user.id, prepared.requestID, isAnonymous, prepared.fingerprint))
+      if (existing) return existing
+    }
+    if (!prepared && !isAnonymous && authenticatedClientRequestID) {
       const completedResponse = await loadCompletedAuthenticatedGenerationResponseIfNeeded(
         adminClient,
         {
@@ -153,10 +175,10 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       }
     }
 
-    if (isAnonymous) {
+    if (!prepared && isAnonymous) {
       const { data: loadedGuestJob, error: existingGuestJobError } = await adminClient
         .from("guest_generation_jobs")
-        .select("id, status, provider")
+        .select("id, status, provider, request_schema_version")
         .eq("id", guestJobID)
         .eq("user_id", user.id)
         .maybeSingle()
@@ -171,6 +193,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
         )
       }
 
+      if (loadedGuestJob?.request_schema_version && loadedGuestJob.request_schema_version !== 1) return jsonResponse({ error: "Use versioned recovery", code: "request_context_mismatch" }, 409)
       existingGuestJob = loadedGuestJob
 
       if (
@@ -254,7 +277,9 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     const requestID = isAnonymous ? guestJobID! : authenticatedClientRequestID
     if (requestID) {
       timing.start("job_claim")
-      const { data: claim, error: claimError } = await adminClient.rpc("claim_generation_job", {
+      const { data: claim, error: claimError } = prepared
+        ? { data: await claimGeneration(adminClient, prepared, user.id, isAnonymous, guestImagePath), error: null }
+        : await adminClient.rpc("claim_generation_job", {
         p_user_id: user.id,
         p_request_id: requestID,
         p_is_anonymous: isAnonymous,
@@ -263,6 +288,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       if (claimError) throw new Error(`Generation claim failed: ${claimError.message}`)
       if (claim !== "acquired") {
         if (claim === "completed" || claim === "acknowledged") {
+          if (prepared) return recoveryResponse(await recoverGeneration(adminClient, user.id, prepared.requestID, isAnonymous, prepared.fingerprint)) ?? generationPendingResponse()
           const completed = isAnonymous
             ? await loadCompletedGuestGenerationResponseIfNeeded(adminClient, {
                 guestJobID: requestID, userID: user.id, fallbackCreatedAt: createdAt,
@@ -358,9 +384,9 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     timing.start("prompt")
     // Choose once so retries and provider fallback keep the same scene question type.
     const sceneQuestionType = generationFormat === "dual_tabs_v1" ? selectSceneQuestionType() : undefined
-    const promptText = buildPromptText(englishLevel, generationFormat, sceneQuestionType)
+    const promptText = prepared ? buildMultilingualPrompt(prepared.spec, sceneQuestionType) : buildPromptText(englishLevel, generationFormat, sceneQuestionType)
 
-    const completionResult = await requestWithFallback({
+    const completionResult = await requestWithFallback<Sentence | GeneratedSentence>({
       imageBase64,
       promptText,
       mimoBaseURL,
@@ -371,6 +397,8 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       generationFormat,
       fetcher: generationFetch,
       timing,
+      ...(prepared ? { parseContent: (raw: string) => parseMultilingualContent(raw, prepared.spec) } : {}),
+      ...(prepared && prepared.spec.targetLanguage !== "en" ? { maxCompletionTokens: 12288 } : {}),
     })
 
     if (!completionResult.ok) {
@@ -413,16 +441,27 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       return jsonResponse(completionResult.publicError, completionResult.statusCode)
     }
 
+    if (prepared) return await persistMultilingualResult({
+      client: adminClient, cleanupClient, userID: user.id, anonymous: isAnonymous, prepared,
+      guestImagePath, imageBytes, createdAt,
+      completion: { ...completionResult, sentences: completionResult.sentences as GeneratedSentence[] },
+      onFinalizationStarted: (scope) => { finalizationStarted = true; enrichmentScope = scope },
+    })
+
     return await persistGeneratedResult({
       adminClient, cleanupClient, timing, userID: user.id, isAnonymous,
       guestJobID, guestImagePath, guestImageUploaded, createdAt,
-      authenticatedClientRequestID, imageBytes, generationFormat, completionResult,
+      authenticatedClientRequestID, imageBytes, generationFormat,
+      completionResult: { ...completionResult, sentences: completionResult.sentences as Sentence[] },
       onFinalizationStarted: (scope) => {
         finalizationStarted = true
         enrichmentScope = scope
       },
     })
   } catch (error) {
+    if (version === 3 && error && typeof error === "object" && "status" in error && "code" in error) {
+      return jsonResponse({ error: String(error.code), code: String(error.code) }, Number(error.status))
+    }
     timing.start("error_handling")
     // A transport failure during finalization cannot prove that the DB rolled back.
     if (cleanupClient && generationUserID && !finalizationStarted) {

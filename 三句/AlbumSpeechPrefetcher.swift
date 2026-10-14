@@ -7,9 +7,20 @@ final class AlbumSpeechPrefetcher {
     nonisolated deinit {}
 
     struct Request: Equatable {
-        let text: String
-        let voice: SpeechVoice
-        let owner: String
+        let speech: SpeechRequest
+        let usesLegacyAPI: Bool
+        var text: String { speech.text }
+        var voice: SpeechVoice { speech.descriptor.legacyVoice ?? .mia }
+        var owner: String { speech.owner }
+
+        init(text: String, voice: SpeechVoice, owner: String, accountRevision: Int = 0) {
+            speech = .english(text, voice: voice, owner: owner, accountRevision: accountRevision)
+            usesLegacyAPI = true
+        }
+
+        init(speech: SpeechRequest) { self.speech = speech; usesLegacyAPI = false }
+
+        static func == (lhs: Self, rhs: Self) -> Bool { lhs.speech == rhs.speech }
     }
 
     typealias Fetch = (Request, @escaping @MainActor (Data) -> Void) async throws -> Data
@@ -48,17 +59,32 @@ final class AlbumSpeechPrefetcher {
         self.fetch = fetch
     }
 
-    func updateWindow(currentText: String, upcoming: [String], voice: SpeechVoice, owner: String, enabled: Bool) {
+    func updateWindow(currentText: String, upcoming: [String], voice: SpeechVoice, owner: String, enabled: Bool, accountRevision: Int = 0) {
         let currentText = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
         var requests: [Request] = []
         for text in upcoming.prefix(AlbumFlipDeck.lookaheadCount) {
             let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, text.count <= 500, text != currentText else { continue }
-            let request = Request(text: text, voice: voice, owner: owner)
+            guard !text.isEmpty, text.utf16.count <= 500, text != currentText else { continue }
+            let request = Request(text: text, voice: voice, owner: owner, accountRevision: accountRevision)
+            guard request.speech.isValid else { continue }
             if !requests.contains(request) { requests.append(request) }
         }
+        updateRequests(current: Request(text: currentText, voice: voice, owner: owner, accountRevision: accountRevision),
+                       requests: requests, enabled: enabled)
+    }
+
+    func updateWindow(current: SpeechRequest?, upcoming: [SpeechRequest], enabled: Bool) {
+        var requests: [Request] = []
+        for speech in upcoming.prefix(AlbumFlipDeck.lookaheadCount) where speech.isValid && speech != current {
+            let request = Request(speech: speech)
+            if !requests.contains(request) { requests.append(request) }
+        }
+        updateRequests(current: current.map { Request(speech: $0) }, requests: requests, enabled: enabled)
+    }
+
+    private func updateRequests(current visible: Request?, requests: [Request], enabled: Bool) {
         if let flight = current {
-            let isVisible = flight.request == Request(text: currentText, voice: voice, owner: owner)
+            let isVisible = flight.request == visible
             if !isVisible && !requests.contains(flight.request) { cancel(flight) }
         }
         pending = requests.filter { $0 != current?.request }
@@ -80,8 +106,12 @@ final class AlbumSpeechPrefetcher {
     }
 
     func takeOver(text: String, voice: SpeechVoice, owner: String) -> AudioStream? {
-        guard let flight = current,
-              flight.request == Request(text: text, voice: voice, owner: owner),
+        takeOver(request: .english(text, voice: voice, owner: owner))
+    }
+
+    func takeOver(request: SpeechRequest) -> AudioStream? {
+        guard request.isValid, let flight = current,
+              flight.request.speech == request,
               flight.playback == nil else { return nil }
         let (stream, continuation) = AudioStream.makeStream()
         flight.playback = continuation
@@ -137,9 +167,9 @@ final class AlbumSpeechPrefetcher {
                 }
             }
             let request = flight.request
-            let key = SpeechAudioCache.key(text: request.text, scope: "\(namespace)|\(request.owner)", voice: request.voice)
+            let key = SpeechAudioCache.key(request: request.speech, environment: namespace)
             do {
-                if let cached = await cache.load(key) {
+                if let cached = await cache.load(request: request.speech, environment: namespace) {
                     try Task.checkCancellation()
                     guard !flight.isCancelled else { return }
                     flight.audio = cached

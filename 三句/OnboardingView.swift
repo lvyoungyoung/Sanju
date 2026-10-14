@@ -22,14 +22,14 @@ enum OnboardingProgress {
 }
 
 enum OnboardingPage: Int, CaseIterable, Identifiable {
-    case photo, expression, practice
+    case photo, expression, flip
     var id: Int { rawValue }
 
     var title: String {
         switch self {
         case .photo: L10n.string("onboarding.photo.title", "每张照片都有触动你的地方，它可以是一处风景，一种味道，一种感觉。")
         case .expression: L10n.string("onboarding.expression.title", "用英语来描述照片里触动你的地方。")
-        case .practice: L10n.string("onboarding.practice.title", "把“这句真好”，\n练成“这句我会”。")
+        case .flip: L10n.string("onboarding.flip.title", "一边翻相册，\n一边听地道表达。")
         }
     }
 
@@ -37,7 +37,7 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
         switch self {
         case .photo: L10n.string("onboarding.photo.body", "你拍下的生活，就是最值得学习的内容。")
         case .expression: L10n.string("onboarding.expression.body", "收藏最触动你的那一句，让你的感觉帮助你记忆。")
-        case .practice: L10n.string("onboarding.practice.body", "围绕熟悉的画面反复练习，让想说的话，慢慢变成自己的表达。")
+        case .flip: L10n.string("onboarding.flip.body", "反复听与自己生活有关的表达，让熟悉的画面帮你记住。")
         }
     }
 
@@ -45,7 +45,7 @@ enum OnboardingPage: Int, CaseIterable, Identifiable {
         switch self {
         case .photo: L10n.string("onboarding.photo.artwork", "翻看相册，选中并展开一张阳光下的咖啡馆照片。")
         case .expression: L10n.string("onboarding.expression.artwork", "同一张照片有三种表达，选中并收藏了 I could sit here all afternoon and do nothing. 我可以在这里坐一下午，什么也不做。")
-        case .practice: L10n.string("onboarding.practice.artwork", "填空演示：从 I could sit here all afternoon and do nothing. 中挖去 sit、afternoon 和 nothing，再依次选词补全。")
+        case .flip: L10n.string("onboarding.flip.artwork", "翻一翻演示：咖啡馆、徒步和孩子的照片依次出现，每张照片搭配对应的英语表达，翻过后再次遇见。")
         }
     }
 }
@@ -81,7 +81,7 @@ struct OnboardingView: View {
                         ScrollView(showsIndicators: false) {
                             OnboardingPageContent(
                                 page: item,
-                                artworkHeight: item == .practice
+                                artworkHeight: item == .flip
                                     ? min(340, max(250, geometry.size.height * 0.43))
                                     : min(300, max(200, geometry.size.height * 0.34)),
                                 isActive: item == page
@@ -120,7 +120,7 @@ struct OnboardingView: View {
                         }
                     } label: {
                         HStack {
-                            Text(page == .practice
+                            Text(page == .flip
                                  ? L10n.string("onboarding.start", "从我的照片开始")
                                  : L10n.string("onboarding.next", "下一页"))
                             Spacer()
@@ -151,8 +151,9 @@ struct OnboardingPageContent: View {
     let artworkHeight: CGFloat
     var isActive = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.scenePhase) private var scenePhase
-    @State private var practicePhase: OnboardingPracticePhase = .completeSentence
+    @State private var flipDemo = OnboardingFlipDemo()
     @State private var albumPhase: OnboardingAlbumPhase = .album
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 30.0
     @ScaledMetric(relativeTo: .title2) private var storyTitleSize = 24.0
@@ -161,8 +162,8 @@ struct OnboardingPageContent: View {
         page == .photo && isActive && !reduceMotion && scenePhase == .active
     }
 
-    private var shouldAnimatePractice: Bool {
-        page == .practice && isActive && !reduceMotion && scenePhase == .active
+    private var shouldAnimateFlip: Bool {
+        page == .flip && isActive && !reduceMotion && !voiceOverEnabled && scenePhase == .active
     }
 
     var body: some View {
@@ -178,7 +179,7 @@ struct OnboardingPageContent: View {
                     .allowsHitTesting(false)
             }
             Text(page.title)
-                .font(.system(size: page == .practice ? titleSize : storyTitleSize, weight: .bold))
+                .font(.system(size: page == .flip ? titleSize : storyTitleSize, weight: .bold))
                 .foregroundStyle(AppTextColor.title)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -210,20 +211,25 @@ struct OnboardingPageContent: View {
                 return
             }
         }
-        .task(id: shouldAnimatePractice) {
-            practicePhase = .completeSentence
-            guard shouldAnimatePractice else {
-                practicePhase = .solved
-                return
+        .task(id: shouldAnimateFlip) {
+            guard page == .flip else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                flipDemo = OnboardingFlipDemo()
+                flipDemo.phase = reduceMotion || voiceOverEnabled ? .familiar : .listening
             }
+            guard shouldAnimateFlip else { return }
             do {
-                try await Task.sleep(for: .seconds(1.2))
-                withAnimation(.easeInOut(duration: 0.25)) { practicePhase = .blank }
-                try await Task.sleep(for: .seconds(1))
-                for phase in [OnboardingPracticePhase.firstWord, .secondWord, .solved] {
-                    try await Task.sleep(for: .milliseconds(700))
-                    withAnimation(.easeInOut(duration: 0.25)) { practicePhase = phase }
+                // Promote the next card only after the outgoing card has left the stage.
+                for _ in OnboardingFlipDemo.cards {
+                    try await Task.sleep(for: .milliseconds(1600))
+                    withAnimation(.easeInOut(duration: 0.4)) { flipDemo.phase = .swiping }
+                    try await Task.sleep(for: .milliseconds(450))
+                    withTransaction(transaction) { flipDemo.advance() }
                 }
+                try await Task.sleep(for: .milliseconds(1600))
+                withAnimation(.easeInOut(duration: 0.25)) { flipDemo.phase = .familiar }
             } catch {
                 // Switching pages or leaving the app cancels this visual-only demo.
                 return
@@ -238,48 +244,9 @@ struct OnboardingPageContent: View {
             OnboardingAlbumArtwork(phase: albumPhase)
         case .expression:
             OnboardingExpressionArtwork(isActive: isActive)
-        case .practice:
-            VStack(spacing: 16) {
-                photo.frame(maxHeight: .infinity)
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(practicePhase.sentence)
-                        .font(.system(size: 21, weight: .semibold))
-                        .foregroundStyle(practicePhase == .solved ? AppPalette.accentText : AppTextColor.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(minHeight: 84, alignment: .leading)
-                    HStack(spacing: 8) {
-                        ForEach(OnboardingPracticePhase.answers.indices, id: \.self) { index in
-                            word(OnboardingPracticePhase.answers[index], selected: index < practicePhase.filledWordCount)
-                        }
-                    }
-                }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(AppPalette.apricot, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
-            }
+        case .flip:
+            OnboardingFlipArtwork(demo: flipDemo, isAnimating: shouldAnimateFlip)
         }
-    }
-
-    private var photo: some View {
-        GeometryReader { proxy in
-            Image("OnboardingCafe")
-                .resizable()
-                .scaledToFill()
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
-        }
-        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-    }
-
-    private func word(_ text: String, selected: Bool) -> some View {
-        Text(text)
-            .font(.system(size: 16, weight: .semibold))
-            .lineLimit(1)
-            .minimumScaleFactor(0.75)
-            .foregroundStyle(selected ? AppPalette.onAccent : AppTextColor.secondary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(selected ? AppPalette.accent : AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.small))
     }
 }
 
@@ -497,24 +464,101 @@ struct OnboardingAlbumArtwork: View {
     }
 }
 
-enum OnboardingPracticePhase: CaseIterable {
-    case completeSentence, blank, firstWord, secondWord, solved
+enum OnboardingFlipPhase: CaseIterable {
+    case listening, swiping, repeated, familiar
 
-    static let answers = ["sit", "afternoon", "nothing"]
+    var isListening: Bool { self == .listening || self == .repeated }
+}
 
-    var filledWordCount: Int {
-        switch self {
-        case .completeSentence, .blank: 0
-        case .firstWord: 1
-        case .secondWord: 2
-        case .solved: 3
-        }
+struct OnboardingFlipDemo {
+    struct Card {
+        let image: String
+        let sentence: String
     }
 
-    var sentence: String {
-        guard self != .completeSentence else { return OnboardingExpressionDemo.feelingSentence }
-        return Self.answers.dropFirst(filledWordCount).reduce(OnboardingExpressionDemo.feelingSentence) { sentence, word in
-            sentence.replacingOccurrences(of: word, with: "____")
+    static let cards = [
+        Card(image: "OnboardingCafe", sentence: OnboardingExpressionDemo.feelingSentence),
+        Card(image: "LoginPreviewHiking", sentence: "Let's take our time and enjoy the view."),
+        Card(image: "LoginPreviewToddler", sentence: "You look so happy with your little bear.")
+    ]
+
+    private(set) var index = 0
+    var phase: OnboardingFlipPhase = .listening
+    var nextIndex: Int { (index + 1) % Self.cards.count }
+    var swipeDirection: CGFloat { index.isMultiple(of: 2) ? -1 : 1 }
+
+    mutating func advance() {
+        index = nextIndex
+        phase = .repeated
+    }
+}
+
+struct OnboardingFlipArtwork: View {
+    let demo: OnboardingFlipDemo
+    var isAnimating = false
+
+    private var phase: OnboardingFlipPhase { demo.phase }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            GeometryReader { geometry in
+                ZStack {
+                    ForEach(OnboardingFlipDemo.cards.indices, id: \.self) { index in
+                        let isFront = index == demo.index
+                        let isNext = index == demo.nextIndex
+                        let isLeaving = isFront && phase == .swiping
+                        let isRaised = isFront || (isNext && phase == .swiping)
+                        card(OnboardingFlipDemo.cards[index])
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .scaleEffect(isRaised ? 1 : 0.94, anchor: .bottom)
+                            .rotationEffect(.degrees(isLeaving ? Double(demo.swipeDirection) * 9 : 0))
+                            .offset(x: isLeaving ? demo.swipeDirection * geometry.size.width * 1.3 : 0,
+                                    y: isRaised ? 0 : 10)
+                            .opacity(isFront || isNext ? 1 : 0)
+                            .zIndex(isFront ? 2 : (isNext ? 1 : 0))
+                    }
+                }
+            }
+            .padding(.bottom, 10)
+            HStack(spacing: 24) {
+                Label(L10n.string("album_flip.again", "再看看"), systemImage: "arrow.uturn.backward")
+                    .foregroundStyle(phase == .swiping && demo.swipeDirection < 0 ? AppPalette.accentText : AppTextColor.secondary)
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 18))
+                    .foregroundStyle(phase.isListening ? AppPalette.accentText : AppTextColor.tertiary)
+                    .symbolEffect(.variableColor.iterative, options: .repeating,
+                                  isActive: isAnimating && phase.isListening)
+                Label(L10n.string("album_flip.familiar", "熟悉了"), systemImage: "checkmark")
+                    .foregroundStyle(phase == .familiar || (phase == .swiping && demo.swipeDirection > 0)
+                                     ? AppPalette.accentText : AppTextColor.secondary)
+            }
+            .font(.system(.subheadline, weight: .medium))
+            .frame(minHeight: 36)
         }
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .clipped()
+    }
+
+    private func card(_ item: OnboardingFlipDemo.Card) -> some View {
+        VStack(spacing: 0) {
+            GeometryReader { geometry in
+                Image(item.image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+            }
+            Text(item.sentence)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(AppTextColor.primary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .frame(height: 112, alignment: .topLeading)
+        }
+        .background(AppSurfaceColor.card)
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
     }
 }

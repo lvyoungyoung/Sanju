@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - "supabase/functions/**"
+      - "supabase/migrations/**"
+      - "contracts/languages.v1.json"
+      - "scripts/generate-language-catalog.mjs"
+      - "scripts/tests/multilingual*.ts"
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
@@ -29,6 +33,10 @@ on:
       - main
     paths:
       - "supabase/functions/**"
+      - "supabase/migrations/**"
+      - "contracts/languages.v1.json"
+      - "scripts/generate-language-catalog.mjs"
+      - "scripts/tests/multilingual*.ts"
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/deploy-edge-functions.sh"
@@ -71,14 +79,19 @@ on:
           - create-study-scene
           - delete-account
           - explain-sentence
+          - explain-sentence-v2
           - extract-study-topic-expressions
           - generate-memory-v2
+          - generate-memory-v3
+          - import-guest-memories-v1
           - process-generation-enrichment
           - migrate-guest-credits
           - moderate-image-v1
           - recover-guest-generation
+          - recover-generation-v2
           - review-study-scene
           - synthesize-speech
+          - synthesize-speech-v2
           - update-profile-avatar
 
 jobs:
@@ -120,6 +133,12 @@ jobs:
 
       - name: Test cleanup authorization, migration guards and purchase validation
         run: deno test --no-lock --allow-read scripts/tests/stability-boundaries.test.ts
+
+      - name: Test multilingual contracts and local database isolation
+        run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/multilingual*.ts
+
+      - name: Check generated language catalogs
+        run: node scripts/generate-language-catalog.mjs --check
 
   deploy:
     name: Deploy Edge Functions

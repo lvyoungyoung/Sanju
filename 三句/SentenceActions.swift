@@ -5,6 +5,17 @@ struct SentenceActions: View {
     let text: String
     let isFavorite: Bool
     let onFavorite: () -> Void
+    let request: SpeechRequest?
+
+    init(speech: SpeechService, text: String, isFavorite: Bool, onFavorite: @escaping () -> Void) {
+        self.speech = speech; self.text = text; self.isFavorite = isFavorite
+        self.onFavorite = onFavorite; request = nil
+    }
+
+    init(speech: SpeechService, request: SpeechRequest, isFavorite: Bool, onFavorite: @escaping () -> Void) {
+        self.speech = speech; self.request = request; text = request.text
+        self.isFavorite = isFavorite; self.onFavorite = onFavorite
+    }
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -17,7 +28,11 @@ struct SentenceActions: View {
 
     @ViewBuilder
     private var buttons: some View {
-        SentencePlaybackButton(speech: speech, text: text)
+        if let request {
+            SentencePlaybackButton(speech: speech, request: request)
+        } else {
+            SentencePlaybackButton(speech: speech, text: text)
+        }
         SentenceFavoriteButton(isFavorite: isFavorite, action: onFavorite)
     }
 }

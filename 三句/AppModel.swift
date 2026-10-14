@@ -24,8 +24,12 @@ enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
 
 struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
-    let english: String
-    let chinese: String
+    let targetText: String
+    let translationText: String
+    let contentVersion: Int
+    let learningMaterial: SentenceLearningMaterial?
+    var english: String { targetText }
+    var chinese: String { translationText }
     let learningTopicIDs: [String]
     let presentationGroup: SentencePresentationGroup
     var isFavorite: Bool
@@ -36,11 +40,15 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         chinese: String,
         learningTopicIDs: [String] = [],
         presentationGroup: SentencePresentationGroup = .whatISee,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        contentVersion: Int = 1,
+        learningMaterial: SentenceLearningMaterial? = nil
     ) {
         self.id = id
-        self.english = english
-        self.chinese = chinese
+        self.targetText = english
+        self.translationText = chinese
+        self.contentVersion = contentVersion
+        self.learningMaterial = learningMaterial
         self.learningTopicIDs = learningTopicIDs
         self.presentationGroup = presentationGroup
         self.isFavorite = isFavorite
@@ -50,6 +58,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case id
         case english
         case chinese
+        case targetText, translationText, contentVersion, learningMaterial
         case learningTopicIDs
         case presentationGroup
         case isFavorite
@@ -58,11 +67,41 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        english = try container.decode(String.self, forKey: .english)
-        chinese = try container.decode(String.self, forKey: .chinese)
+        if container.contains(.targetText) || container.contains(.contentVersion) {
+            contentVersion = try container.decode(Int.self, forKey: .contentVersion)
+            guard contentVersion == 1 else { throw LanguageContractError.unsupportedVersion }
+            targetText = try container.decode(String.self, forKey: .targetText)
+            translationText = try container.decode(String.self, forKey: .translationText)
+            learningMaterial = try container.decodeIfPresent(SentenceLearningMaterial.self, forKey: .learningMaterial)
+        } else {
+            targetText = try container.decode(String.self, forKey: .english)
+            translationText = try container.decode(String.self, forKey: .chinese)
+            contentVersion = 1
+            learningMaterial = nil
+        }
         learningTopicIDs = try container.decodeIfPresent([String].self, forKey: .learningTopicIDs) ?? []
         presentationGroup = try container.decodeIfPresent(SentencePresentationGroup.self, forKey: .presentationGroup) ?? .whatISee
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+    }
+
+    init(id: UUID = UUID(), targetText: String, translationText: String, contentVersion: Int = 1,
+         learningMaterial: SentenceLearningMaterial? = nil, learningTopicIDs: [String] = [],
+         presentationGroup: SentencePresentationGroup = .whatISee, isFavorite: Bool = false) {
+        self.init(id: id, english: targetText, chinese: translationText, learningTopicIDs: learningTopicIDs,
+                  presentationGroup: presentationGroup, isFavorite: isFavorite,
+                  contentVersion: contentVersion, learningMaterial: learningMaterial)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(targetText, forKey: .targetText)
+        try c.encode(translationText, forKey: .translationText)
+        try c.encode(contentVersion, forKey: .contentVersion)
+        try c.encodeIfPresent(learningMaterial, forKey: .learningMaterial)
+        try c.encode(learningTopicIDs, forKey: .learningTopicIDs)
+        try c.encode(presentationGroup, forKey: .presentationGroup)
+        try c.encode(isFavorite, forKey: .isFavorite)
     }
 }
 
@@ -74,6 +113,7 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
     var syncedToAccount: Bool
     var tags: [String]
     var sentences: [SentenceRecord]
+    let context: MemoryContentContext
 
     init(
         id: UUID = UUID(),
@@ -82,7 +122,8 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         remoteImagePath: String? = nil,
         syncedToAccount: Bool = false,
         tags: [String] = [],
-        sentences: [SentenceRecord]
+        sentences: [SentenceRecord],
+        context: MemoryContentContext = .legacyEnglish
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -91,6 +132,7 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         self.syncedToAccount = syncedToAccount
         self.tags = tags
         self.sentences = sentences
+        self.context = context
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -101,6 +143,7 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         case syncedToAccount
         case tags
         case sentences
+        case context
     }
 
     init(from decoder: Decoder) throws {
@@ -112,6 +155,12 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         syncedToAccount = try container.decode(Bool.self, forKey: .syncedToAccount)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         sentences = try container.decode([SentenceRecord].self, forKey: .sentences)
+        context = try container.decodeIfPresent(MemoryContentContext.self, forKey: .context) ?? .legacyEnglish
+        for sentence in sentences {
+            if let material = sentence.learningMaterial {
+                try material.validate(targetText: sentence.targetText, language: context.targetLanguage)
+            }
+        }
     }
 }
 
@@ -286,6 +335,10 @@ struct SentenceStudyQueueItem: Identifiable, Hashable {
     let wrongCount: Int
     let lastResult: SentenceStudyResult?
     let nextReviewAt: Date?
+    var context: MemoryContentContext = .legacyEnglish
+    var learningMaterial: SentenceLearningMaterial? = nil
+    var targetText: String { english }
+    var translationText: String { chinese }
 
     var id: UUID { sentenceID }
 }
@@ -301,6 +354,7 @@ struct PendingGeneratedMemoryImage: Codable, Hashable {
     let guestJobID: String?
     let clientRequestID: String?
     let imageData: Data
+    var snapshot: GenerationRequestSnapshot? = nil
 }
 
 struct PendingFavoriteChange: Codable, Hashable {
@@ -462,6 +516,14 @@ final class AppModel: ObservableObject {
     @Published var memories: [MemoryEntry] = []
     @Published var remainingCredits: Int = AppModel.initialInstallCredits
     @Published var englishLevel: EnglishLevel = .simple
+    @Published var learningPreferences = LearningPreferences.legacy()
+    @Published var languageCapabilities = LanguageCapabilities.unavailable
+    @Published var studyLanguage: LearningLanguage = .english
+    @Published var languagePreferenceError: String?
+    var learningPreferenceSync: LearningPreferenceSync?
+    var activeStudySession: StudySessionState?
+    var studyActivationStore: StudyActivationStore?
+    var speechAccountRevision = 0
     @Published var isLearningReminderEnabled = false
     @Published var learningReminderHour = 20
     @Published var learningReminderMinute = 30
@@ -509,6 +571,7 @@ final class AppModel: ObservableObject {
     @Published var draftGeneratedMemoryID: UUID?
     @Published var selectedTab: AppTab = .newLearning
     @Published var memoriesNavigationPath: [MemoryNavigationRoute] = []
+    @Published var favoritesNavigationPath: [FavoriteSentenceRoute] = []
     @Published var profileNavigationPath: [ProfileNavigationRoute] = []
 
     let speech = SpeechService()
@@ -534,6 +597,10 @@ final class AppModel: ObservableObject {
             let previousSession = oldValue ?? loadStoredSession()
             if previousSession?.userID != supabaseSession?.userID || previousSession?.isAnonymous != supabaseSession?.isAnonymous {
                 accountRequests.invalidate()
+                speechAccountRevision += 1
+                speech.accountDidChange()
+                activeStudySession = nil
+                languageCapabilities = .unavailable
                 sessionRefreshCoordinator.cancel()
                 favoriteChangeSync.cancel()
                 memorySyncState = MemorySyncState()
@@ -541,9 +608,11 @@ final class AppModel: ObservableObject {
             let speechOwner = supabaseSession.flatMap { $0.isAnonymous ? nil : $0.userID }
             speechPreferenceSync?.activate(userID: speechOwner)
             generationPreferenceSync?.activate(userID: speechOwner)
+            learningPreferenceSync?.activate(userID: speechOwner)
             albumFlipHistorySync?.activate(userID: speechOwner)
             if oldValue?.userID != supabaseSession?.userID {
                 generationPreferenceSync?.refresh()
+                learningPreferenceSync?.refresh()
             }
             if let previousOwner = oldValue?.userID, previousOwner != supabaseSession?.userID {
                 speech.cancelAlbumSpeechPrefetch()
@@ -581,6 +650,7 @@ final class AppModel: ObservableObject {
         self.supabaseService = supabaseService ?? SupabaseService()
         configureAlbumFlipHistorySync()
         configureSpeechPreferenceSync()
+        speech.accountRevisionProvider = { [weak self] in self?.speechAccountRevision ?? 0 }
         speech.ownerProvider = { [weak self] in
             guard let self else { return "local" }
             return (self.supabaseSession ?? self.loadStoredSession())?.userID ?? "local"
@@ -600,6 +670,7 @@ final class AppModel: ObservableObject {
         handleFreshInstallIfNeeded()
         loadPersistedState()
         configureGenerationPreferenceSync()
+        configureLearningPreferenceSync()
         if loadStoredSession()?.isAnonymous == false {
             isRestoringAuthenticatedSession = true
         }
@@ -699,6 +770,7 @@ final class AppModel: ObservableObject {
         albumFlipHistorySync?.refresh()
         speechPreferenceSync?.refresh()
         generationPreferenceSync?.refresh()
+        learningPreferenceSync?.refresh()
         guard foregroundSyncTask == nil else { return }
 
         foregroundSyncTask = Task { @MainActor [weak self] in
@@ -730,12 +802,14 @@ final class AppModel: ObservableObject {
     func openNewLearningFromExternalLink() {
         selectedTab = .newLearning
         memoriesNavigationPath = []
+        favoritesNavigationPath = []
         profileNavigationPath = []
     }
 
     func openMemoryFromExternalLink(_ memoryID: UUID) {
         selectedTab = .memories
         memoriesNavigationPath = []
+        favoritesNavigationPath = []
         profileNavigationPath = []
 
         Task { @MainActor [weak self] in

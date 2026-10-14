@@ -4,6 +4,7 @@ import UIKit
 
 struct AlbumFlipFavoriteFeedbackView: View {
     let isFavorite: Bool
+    var showsDoubleTapHint = true
 
     var body: some View {
         VStack(spacing: AppSpacing.small) {
@@ -16,7 +17,7 @@ struct AlbumFlipFavoriteFeedbackView: View {
             .font(.headline)
             .foregroundStyle(AppPalette.accentText)
 
-            if isFavorite {
+            if isFavorite && showsDoubleTapHint {
                 Text(L10n.string("album_flip.favorite_feedback_hint", "双击也可以收藏哦"))
                     .font(.caption)
                     .foregroundStyle(AppTextColor.tertiary)
@@ -62,6 +63,7 @@ struct AlbumFlipSentenceCard<Photo: View>: View {
     let size: CGSize
     let showsTranslation: Bool
     let onToggleTranslation: () -> Void
+    var showsJapaneseReadings = true
     @ViewBuilder var photo: () -> Photo
 
     var body: some View {
@@ -73,14 +75,16 @@ struct AlbumFlipSentenceCard<Photo: View>: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(item.sentence.english)
+                    Text(sentenceText: item.sentence.targetText, language: item.context.teachingLocale.rawValue)
                         .font(.custom("AvenirNext-DemiBold", size: 23, relativeTo: .title3))
                         .foregroundStyle(AppTextColor.primary)
                         .lineSpacing(4)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    SentenceReadingView(sentence: item.sentence, context: item.context, isEnabled: showsJapaneseReadings)
+
                     if showsTranslation {
-                        Text(item.sentence.chinese)
+                        Text(sentenceText: item.sentence.translationText, language: item.context.translationLanguage.rawValue)
                             .font(.body)
                             .foregroundStyle(AppTextColor.secondary)
                             .fixedSize(horizontal: false, vertical: true)

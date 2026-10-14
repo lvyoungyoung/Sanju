@@ -10,6 +10,11 @@ import Foundation
 protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServicing {
     var isConfigured: Bool { get }
 
+    func generateMemorySentences(session: SupabaseSession, imageData: Data, spec: GenerationSpec,
+                                 guestJobID: String?, clientRequestID: String?) async throws -> SupabaseGenerateMemoryResult
+    func recoverGeneration(session: SupabaseSession, imageData: Data, guestJobID: String?,
+                           clientRequestID: String?) async throws -> SupabaseGenerateMemoryResult?
+
     func sentenceExplanation(session: SupabaseSession, request: SentenceExplanationRequest) async throws -> SentenceExplanation?
 
     func fetchAlbumFlipProgress(session: SupabaseSession) async throws -> [AlbumFlipProgress]
@@ -82,6 +87,7 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
     func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot?
     func fetchStudySceneSuggestionTopicIDs(session: SupabaseSession) async throws -> Set<String>
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry
+    func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry, guestAccessToken: String?) async throws -> MemoryEntry
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int
     func fetchSentenceStudyQueue(
@@ -135,6 +141,8 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
         session: SupabaseSession,
         progressRecords: [LocalSentenceStudyProgress]
     ) async throws -> Set<SentenceStudyProgressKey>
+    func mergeLocalSentenceStudyProgress(session: SupabaseSession, progressRecords: [LocalSentenceStudyProgress],
+        activations: [StudyActivationStore.Activation]) async throws -> Set<SentenceStudyProgressKey>
     func updateSentenceFavorite(
         session: SupabaseSession,
         sentenceID: UUID,
@@ -148,6 +156,22 @@ protocol SupabaseServicing: StudyOverviewFetching, StudySceneMatchSettingsServic
 }
 
 extension SupabaseServicing {
+    func mergeLocalSentenceStudyProgress(session: SupabaseSession, progressRecords: [LocalSentenceStudyProgress],
+        activations: [StudyActivationStore.Activation]) async throws -> Set<SentenceStudyProgressKey> {
+        throw URLError(.unsupportedURL)
+    }
+    func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry, guestAccessToken: String?) async throws -> MemoryEntry {
+        throw URLError(.unsupportedURL)
+    }
+    func generateMemorySentences(session: SupabaseSession, imageData: Data, spec: GenerationSpec,
+                                 guestJobID: String?, clientRequestID: String?) async throws -> SupabaseGenerateMemoryResult {
+        throw URLError(.unsupportedURL)
+    }
+
+    func recoverGeneration(session: SupabaseSession, imageData: Data, guestJobID: String?,
+                           clientRequestID: String?) async throws -> SupabaseGenerateMemoryResult? {
+        throw URLError(.unsupportedURL)
+    }
     func sentenceExplanation(session: SupabaseSession, request: SentenceExplanationRequest) async throws -> SentenceExplanation? {
         throw URLError(.unsupportedURL)
     }
@@ -193,12 +217,20 @@ extension SupabaseServicing {
 }
 
 struct SupabaseService: SupabaseServicing {
-    private let session: URLSession = .shared
+    private let session: URLSession
+    private let configuredBaseURL: URL?
+    private let configuredPublishableKey: String?
     private let memoryBucket = "memories"
     private let authRequestTimeout: TimeInterval = 90
-    private let memoryFetchPageSize = 100
+
+    init(session: URLSession = .shared, baseURL: URL? = nil, publishableKey: String? = nil) {
+        self.session = session
+        configuredBaseURL = baseURL
+        configuredPublishableKey = publishableKey
+    }
 
     private var baseURL: URL? {
+        if let configuredBaseURL { return configuredBaseURL }
         guard let raw = Bundle.main.supabaseURL else {
             return nil
         }
@@ -206,7 +238,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     private var publishableKey: String? {
-        Bundle.main.supabasePublishableKey
+        configuredPublishableKey ?? Bundle.main.supabasePublishableKey
     }
 
     var isConfigured: Bool {
@@ -518,11 +550,13 @@ struct SupabaseService: SupabaseServicing {
             throw SupabaseServiceError.invalidResponse
         }
 
-        let sentences = response.memory.sentences.compactMap { sentence -> SentenceRecord? in
-            let sentenceID = sentence.id.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let sentences = try response.memory.sentences.map { sentence -> SentenceRecord in
+            guard let sentenceID = sentence.id.flatMap(UUID.init(uuidString:)) else {
+                throw SupabaseServiceError.invalidResponse
+            }
             let english = sentence.english.trimmingCharacters(in: .whitespacesAndNewlines)
             let chinese = sentence.chinese.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !english.isEmpty, !chinese.isEmpty else { return nil }
+            guard !english.isEmpty, !chinese.isEmpty else { throw SupabaseServiceError.invalidResponse }
             return SentenceRecord(
                 id: sentenceID,
                 english: english,
@@ -594,11 +628,13 @@ struct SupabaseService: SupabaseServicing {
             throw SupabaseServiceError.invalidResponse
         }
 
-        let sentences = memory.sentences.compactMap { sentence -> SentenceRecord? in
-            let sentenceID = sentence.id.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let sentences = try memory.sentences.map { sentence -> SentenceRecord in
+            guard let sentenceID = sentence.id.flatMap(UUID.init(uuidString:)) else {
+                throw SupabaseServiceError.invalidResponse
+            }
             let english = sentence.english.trimmingCharacters(in: .whitespacesAndNewlines)
             let chinese = sentence.chinese.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !english.isEmpty, !chinese.isEmpty else { return nil }
+            guard !english.isEmpty, !chinese.isEmpty else { throw SupabaseServiceError.invalidResponse }
             return SentenceRecord(
                 id: sentenceID,
                 english: english,
@@ -700,9 +736,10 @@ struct SupabaseService: SupabaseServicing {
         var records: [AlbumFlipProgress] = []
         while true {
             let request = try makeRequest(
-                path: "/rest/v1/album_flip_progress?select=memory_id,sentence_id,last_event_id,last_feedback,last_feedback_at,familiarity_level,last_familiar_at&order=sentence_id.asc",
-                method: "GET", bearerToken: session.accessToken,
-                additionalHeaders: ["Range-Unit": "items", "Range": "\(records.count)-\(records.count + 99)"]
+                path: "/rest/v1/rpc/get_album_flip_progress_v2?order=sentence_id.asc",
+                method: "POST", bearerToken: session.accessToken,
+                additionalHeaders: ["Range-Unit": "items", "Range": "\(records.count)-\(records.count + 99)"],
+                body: [String: String]()
             )
             let page: [AlbumFlipProgress] = try await perform(request)
             records.append(contentsOf: page)
@@ -719,41 +756,13 @@ struct SupabaseService: SupabaseServicing {
              "sentence_id": event.sentenceID.uuidString, "feedback": event.feedback.rawValue,
              "occurred_at": formatter.string(from: event.occurredAt), "time_zone": event.timeZoneID]
         }
-        let request = try makeRequest(path: "/rest/v1/rpc/sync_album_flip_feedback", method: "POST",
+        let request = try makeRequest(path: "/rest/v1/rpc/sync_album_flip_feedback_v2", method: "POST",
                                       bearerToken: session.accessToken, body: ["p_events": payload])
         return try await perform(request)
     }
 
     func fetchMemories(session: SupabaseSession) async throws -> [SupabaseMemoryRecord] {
-        let select = "id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,learning_topic_ids,presentation_group,is_favorite)"
-        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
-        let path = "/rest/v1/memories?select=\(encodedSelect)&order=created_at.desc"
-        var allRecords: [SupabaseMemoryRecord] = []
-        var lowerBound = 0
-
-        while true {
-            let upperBound = lowerBound + memoryFetchPageSize - 1
-            let request = try makeRequest(
-                path: path,
-                method: "GET",
-                bearerToken: session.accessToken,
-                additionalHeaders: [
-                    "Range-Unit": "items",
-                    "Range": "\(lowerBound)-\(upperBound)"
-                ]
-            )
-
-            let page: [SupabaseMemoryRecord] = try await perform(request)
-            allRecords.append(contentsOf: page)
-
-            guard page.count == memoryFetchPageSize else {
-                break
-            }
-
-            lowerBound += memoryFetchPageSize
-        }
-
-        return allRecords
+        try await fetchContentMemories(session: session)
     }
 
     func fetchStudySceneSuggestionTopicIDs(session: SupabaseSession) async throws -> Set<String> {
@@ -793,68 +802,7 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry {
-        let memoryID = memory.id
-        let imagePath = "\(session.userID)/\(memoryID.uuidString.lowercased()).jpg"
-
-        try await uploadMemoryImage(session: session, path: imagePath, data: memory.imageData)
-
-        let insertMemoryRequest = try makeRequest(
-            path: "/rest/v1/memories",
-            method: "POST",
-            bearerToken: session.accessToken,
-            additionalHeaders: [
-                "Prefer": "return=representation,resolution=merge-duplicates"
-            ],
-            body: [
-                SupabaseMemoryInsertPayload(
-                    id: memoryID.uuidString.lowercased(),
-                    userID: session.userID,
-                    imagePath: imagePath,
-                    createdAt: memory.createdAt,
-                    tags: memory.tags
-                )
-            ]
-        )
-
-        let insertedMemories: [SupabaseInsertedMemoryRecord] = try await perform(insertMemoryRequest)
-        guard let insertedMemory = insertedMemories.first else {
-            throw SupabaseServiceError.invalidResponse
-        }
-
-        let sentencePayloads = SupabaseMemorySentenceInsertPayload.memoryCopy(for: memory)
-
-        let insertSentenceRequest = try makeRequest(
-            path: "/rest/v1/memory_sentences",
-            method: "POST",
-            bearerToken: session.accessToken,
-            additionalHeaders: [
-                "Prefer": "resolution=merge-duplicates"
-            ],
-            body: sentencePayloads
-        )
-
-        _ = try await performWithoutBody(insertSentenceRequest)
-
-        let migratedSentences = memory.sentences.enumerated().map { index, sentence in
-            SentenceRecord(
-                id: UUID(uuidString: sentencePayloads[index].id) ?? sentence.id,
-                english: sentence.english,
-                chinese: sentence.chinese,
-                learningTopicIDs: sentence.learningTopicIDs,
-                presentationGroup: sentence.presentationGroup,
-                isFavorite: sentence.isFavorite
-            )
-        }
-
-        return MemoryEntry(
-            id: memoryID,
-            createdAt: insertedMemory.createdAt,
-            imageData: memory.imageData,
-            remoteImagePath: imagePath,
-            syncedToAccount: true,
-            tags: memory.tags,
-            sentences: migratedSentences
-        )
+        try await importContentMemory(session: session, memory: memory)
     }
 
     private func isSupportedGeneratedSentenceCount(_ count: Int) -> Bool {
@@ -862,33 +810,15 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchMemoriesCount(session: SupabaseSession) async throws -> Int {
-        let request = try makeCountRequest(
-            path: "/rest/v1/memories?select=id",
-            bearerToken: session.accessToken
-        )
-        return try await performCount(request)
+        try await fetchContentMemories(session: session).count
     }
 
     func fetchMemorySentencesCount(session: SupabaseSession) async throws -> Int {
-        let select = "id,memories!inner(id)"
-        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
-        let path = "/rest/v1/memory_sentences?select=\(encodedSelect)&memories.user_id=eq.\(session.userID)"
-        let request = try makeCountRequest(
-            path: path,
-            bearerToken: session.accessToken
-        )
-        return try await performCount(request)
+        try await fetchContentMemories(session: session).reduce(0) { $0 + $1.sentences.count }
     }
 
     func fetchFavoriteSentencesCount(session: SupabaseSession) async throws -> Int {
-        let select = "id,memories!inner(id)"
-        let encodedSelect = select.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? select
-        let path = "/rest/v1/memory_sentences?select=\(encodedSelect)&is_favorite=eq.true&memories.user_id=eq.\(session.userID)"
-        let request = try makeCountRequest(
-            path: path,
-            bearerToken: session.accessToken
-        )
-        return try await performCount(request)
+        try await fetchContentMemories(session: session).reduce(0) { $0 + $1.sentences.filter(\.isFavorite).count }
     }
 
     func fetchMasteredSentenceCount(session: SupabaseSession) async throws -> Int {
@@ -1206,39 +1136,7 @@ struct SupabaseService: SupabaseServicing {
         session: SupabaseSession,
         progressRecords: [LocalSentenceStudyProgress]
     ) async throws -> Set<SentenceStudyProgressKey> {
-        guard !progressRecords.isEmpty else { return [] }
-
-        let timeZone = TimeZone.current
-        let items = progressRecords.map { progress in
-            SupabaseLocalSentenceStudyProgressMergeItem(
-                sentenceID: progress.sentenceID.uuidString.lowercased(),
-                studyScope: progress.studyTopic.rawValue,
-                learningStep: progress.learningStep,
-                masteredReviewCount: progress.masteredReviewCount,
-                correctCount: progress.correctCount,
-                wrongCount: progress.wrongCount,
-                lastResult: progress.lastResult?.rawValue,
-                lastStudiedAt: progress.lastStudiedAt,
-                lastStudiedOn: StudyCalendar.dayString(from: progress.lastStudiedAt ?? progress.lastStudiedDay, timeZone: timeZone),
-                nextReviewOn: StudyCalendar.dayString(from: progress.nextReviewDay, timeZone: timeZone) ?? StudyCalendar.dayString(from: Date(), timeZone: timeZone) ?? ""
-            )
-        }
-
-        let request = try makeRequest(
-            path: "/rest/v1/rpc/merge_local_sentence_study_progress",
-            method: "POST",
-            bearerToken: session.accessToken,
-            additionalHeaders: [StudyCalendar.timeZoneHeader: timeZone.identifier],
-            body: SupabaseLocalSentenceStudyProgressMergeRequest(items: items)
-        )
-        let records: [SupabaseMergedSentenceStudyProgressRecord] = try await perform(request)
-        return Set(records.compactMap { record in
-            guard let sentenceID = UUID(uuidString: record.sentenceID),
-                  let studyTopic = record.studyScope.flatMap(SentenceStudyTopic.init(rawValue:)) else {
-                return nil
-            }
-            return SentenceStudyProgressKey(sentenceID: sentenceID, studyTopic: studyTopic)
-        })
+        try await mergeLocalSentenceStudyProgress(session: session, progressRecords: progressRecords, activations: [])
     }
 
     func updateSentenceFavorite(
@@ -1246,14 +1144,9 @@ struct SupabaseService: SupabaseServicing {
         sentenceID: UUID,
         isFavorite: Bool
     ) async throws {
-        let request = try makeRequest(
-            path: "/rest/v1/memory_sentences?id=eq.\(sentenceID.uuidString.lowercased())",
-            method: "PATCH",
-            bearerToken: session.accessToken,
-            body: SupabaseSentenceFavoritePatchPayload(isFavorite: isFavorite)
-        )
-
-        _ = try await performWithoutBody(request)
+        let _: ContentMutationAcknowledgement = try await contentRPC(session: session,
+            name: "set_sentence_favorite_v2",
+            payload: ContentFavoritePayload(sentenceID: sentenceID, isFavorite: isFavorite))
     }
 
     func deleteMemory(
@@ -1261,28 +1154,21 @@ struct SupabaseService: SupabaseServicing {
         memoryID: UUID,
         imagePath: String?
     ) async throws {
-        // Remove the database record first. If storage cleanup later fails, the
-        // retry queue can safely remove an orphaned file without showing a
-        // broken memory on another device.
-        let dbRequest = try makeRequest(
-            path: "/rest/v1/memories?id=eq.\(memoryID.uuidString.lowercased())",
-            method: "DELETE",
-            bearerToken: session.accessToken
-        )
-        _ = try await performWithoutBody(dbRequest)
-
-        if let imagePath {
-            let storageRequest = try makeRequest(
-                path: "/storage/v1/object/\(memoryBucket)",
-                method: "DELETE",
-                bearerToken: session.accessToken,
-                body: SupabaseStorageRemoveRequest(prefixes: [imagePath])
-            )
-            _ = try await performWithoutBody(storageRequest)
-        }
+        // A stable operation key allows a queued retry to replay the database receipt.
+        // Storage cleanup is enqueued by the same server transaction.
+        let _: ContentMutationAcknowledgement = try await contentRPC(session: session,
+            name: "delete_memory_v2",
+            payload: ["p_memory_id": memoryID.uuidString.lowercased(),
+                      "p_operation_id": memoryID.uuidString.lowercased()])
     }
 
-    private func makeRequest<T: Encodable>(
+    func contentRPC<Response: Decodable>(session: SupabaseSession, name: String, payload: some Encodable) async throws -> Response {
+        let request = try makeRequest(path: "/rest/v1/rpc/\(name)", method: "POST",
+                                      bearerToken: session.accessToken, body: payload)
+        return try await perform(request)
+    }
+
+    func makeRequest<T: Encodable>(
         path: String,
         method: String,
         bearerToken: String?,
@@ -1296,7 +1182,7 @@ struct SupabaseService: SupabaseServicing {
         return request
     }
 
-    private func makeRequest(
+    func makeRequest(
         path: String,
         method: String,
         bearerToken: String?,
@@ -1435,7 +1321,7 @@ struct SupabaseService: SupabaseServicing {
         )
     }
 
-    private func perform<Response: Decodable>(_ request: URLRequest, retryOnTimeout: Int = 0) async throws -> Response {
+    func perform<Response: Decodable>(_ request: URLRequest, retryOnTimeout: Int = 0) async throws -> Response {
         let (data, response) = try await data(for: request, retryOnTimeout: retryOnTimeout)
         try validate(response: response, data: data)
         let decoder = JSONDecoder()
@@ -1444,6 +1330,8 @@ struct SupabaseService: SupabaseServicing {
         }
         do {
             return try decoder.decode(Response.self, from: data)
+        } catch let error as LanguageContractError {
+            throw error
         } catch {
             if Self.isHTMLDocument(data) {
                 debugLog("Decode failed with HTML response -> \(request.url?.absoluteString ?? "<missing-url>")")
@@ -1533,6 +1421,9 @@ struct SupabaseService: SupabaseServicing {
                 .replacingOccurrences(of: "\r", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "<non-utf8 response>"
             debugLog("HTTP \(httpResponse.statusCode) <- \(httpResponse.url?.absoluteString ?? "<missing-url>") :: \(String(rawText.prefix(500)))")
+            if MultilingualAPIError.code(in: rawText) != nil {
+                throw SupabaseServiceError.apiError(rawText)
+            }
             if httpResponse.statusCode == 429 {
                 throw SupabaseServiceError.apiError("rate_limit_exceeded")
             }
@@ -1565,6 +1456,18 @@ struct SupabaseService: SupabaseServicing {
     nonisolated private static func decodeFlexibleISO8601Date(from decoder: Decoder) throws -> Date {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
+
+        // ISO8601DateFormatter truncates fractions to milliseconds. Guest import identity
+        // includes PostgreSQL timestamps, so retain the full subsecond component ourselves.
+        if let range = value.range(of: #"\.\d+(?=Z$|[+-]\d{2}:\d{2}$)"#, options: .regularExpression),
+           let fraction = Double("0" + String(value[range])) {
+            var wholeSeconds = value
+            wholeSeconds.removeSubrange(range)
+            let formatter = ISO8601DateFormatter()
+            if let date = formatter.date(from: wholeSeconds) {
+                return Date(timeIntervalSince1970: date.timeIntervalSince1970 + fraction)
+            }
+        }
 
         let iso8601FractionalFormatter = ISO8601DateFormatter()
         iso8601FractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

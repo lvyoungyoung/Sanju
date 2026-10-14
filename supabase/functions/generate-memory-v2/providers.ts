@@ -21,7 +21,9 @@ export function usesDeepSeekGeneration(projectURL: string | undefined): boolean 
   }
 }
 
-export async function requestWithFallback(args: {
+export type ContentParser<T> = (content: string, format: GenerationFormat) => { sentences: T[]; tags: string[] } | null | Promise<{ sentences: T[]; tags: string[] } | null>
+
+export async function requestWithFallback<T = Sentence>(args: {
   imageBase64: string
   promptText: string
   generationFormat: GenerationFormat
@@ -32,10 +34,12 @@ export async function requestWithFallback(args: {
   deepseek?: { baseURL: string; apiKey: string }
   fetcher: typeof fetch
   timing?: GenerationTiming
+  parseContent?: ContentParser<T>
+  maxCompletionTokens?: number
 }): Promise<
   | {
       ok: true
-      sentences: Sentence[]
+      sentences: T[]
       tags: string[]
       provider: ProviderName
       mimoFailureReason: string | null
@@ -76,7 +80,7 @@ export async function requestWithFallback(args: {
     thinking: {
       type: "disabled",
     },
-    max_completion_tokens: 4096,
+    max_completion_tokens: args.maxCompletionTokens ?? 4096,
   }
 
   let deepseekFailure: string | null = null
@@ -92,11 +96,12 @@ export async function requestWithFallback(args: {
           mimoRequestBody.messages[1],
         ],
         thinking: { type: "disabled" },
-        max_tokens: 4096,
+        max_tokens: args.maxCompletionTokens ?? 4096,
       },
       args.generationFormat,
       args.fetcher,
-      "deepseek"
+      "deepseek",
+      args.parseContent
     )
     args.timing?.start("model_result")
     if (deepseekResult.ok) return { ...deepseekResult, mimoFailureReason: null }
@@ -115,7 +120,9 @@ export async function requestWithFallback(args: {
     args.mimoApiKey,
     mimoRequestBody,
     args.generationFormat,
-    args.fetcher
+    args.fetcher,
+    "mimo",
+    args.parseContent
   )
 
   args.timing?.start("model_result")
@@ -151,6 +158,7 @@ export async function requestWithFallback(args: {
   }
 
   const kimiRequestBody = {
+    ...(args.maxCompletionTokens ? { max_completion_tokens: args.maxCompletionTokens } : {}),
     model: "kimi-k2.5",
     messages: [
       {
@@ -184,7 +192,8 @@ export async function requestWithFallback(args: {
     args.kimiApiKey,
     kimiRequestBody,
     args.generationFormat,
-    args.fetcher
+    args.fetcher,
+    args.parseContent
   )
 
   args.timing?.start("model_result")
@@ -216,15 +225,16 @@ export async function requestWithFallback(args: {
   }
 }
 
-async function requestPrimaryModelOnce(
+async function requestPrimaryModelOnce<T = Sentence>(
   baseURL: string,
   apiKey: string,
   requestBody: unknown,
   generationFormat: GenerationFormat,
   fetcher: typeof fetch,
-  provider: "mimo" | "deepseek" = "mimo"
+  provider: "mimo" | "deepseek" = "mimo",
+  parseContent?: ContentParser<T>
 ): Promise<
-  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
+  | { ok: true; sentences: T[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -332,7 +342,7 @@ async function requestPrimaryModelOnce(
     }
   }
 
-  const generatedContent = parseGeneratedContent(content, generationFormat)
+  const generatedContent = await (parseContent ?? (parseGeneratedContent as ContentParser<T>))(content, generationFormat)
   if (!generatedContent) {
     return {
       ok: false,
@@ -357,14 +367,15 @@ async function requestPrimaryModelOnce(
   }
 }
 
-async function requestKimiOnce(
+async function requestKimiOnce<T = Sentence>(
   kimiBaseURL: string,
   kimiApiKey: string,
   requestBody: unknown,
   generationFormat: GenerationFormat,
-  fetcher: typeof fetch
+  fetcher: typeof fetch,
+  parseContent?: ContentParser<T>
 ): Promise<
-  | { ok: true; sentences: Sentence[]; tags: string[]; provider: ProviderName }
+  | { ok: true; sentences: T[]; tags: string[]; provider: ProviderName }
   | {
       ok: false
       provider: ProviderName
@@ -458,7 +469,7 @@ async function requestKimiOnce(
     }
   }
 
-  const generatedContent = parseGeneratedContent(content, generationFormat)
+  const generatedContent = await (parseContent ?? (parseGeneratedContent as ContentParser<T>))(content, generationFormat)
   if (!generatedContent) {
     return {
       ok: false,

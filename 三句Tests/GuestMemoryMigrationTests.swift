@@ -55,8 +55,8 @@ final class GuestMemoryMigrationTests: XCTestCase {
             tags: nil,
             sentences: []
         )
-        let remoteMemories = manager.makeRemoteMemories(from: [incompleteRecord])
-        XCTAssertTrue(remoteMemories.isEmpty)
+        XCTAssertThrowsError(try manager.makeRemoteMemories(from: [incompleteRecord]))
+        let remoteMemories: [MemoryEntry] = []
         let result = manager.reconcileLocalMemories(
             localMemories: [memory], remoteMemories: remoteMemories, sessionUserID: "current-user"
         )

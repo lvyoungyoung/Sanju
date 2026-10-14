@@ -1,4 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { consumeMemoryImageCleanup } from "../_shared/memory-image-cleanup.ts"
+import { fetchWithinDeadline } from "../_shared/fetch-with-timeout.ts"
 
 Deno.serve(async (req) => {
   try {
@@ -19,7 +21,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Service role authorization required" }, 401)
     }
 
-    const adminClient = createClient(supabaseUrl, serviceRoleKey)
+    const deadline = Date.now() + 60_000
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      global: { fetch: (input, init) => fetchWithinDeadline(Math.min(deadline, Date.now() + 10_000))(input, init) },
+    })
+    // Drain persistent deletions even when there are no expired guest jobs.
+    const memoryCleanup = await consumeMemoryImageCleanup(adminClient)
 
     const { data: expiredJobs, error: loadError } = await adminClient
       .from("guest_generation_jobs")
@@ -68,12 +75,13 @@ Deno.serve(async (req) => {
     }
 
     return jsonResponse({
-      success: true,
+      success: memoryCleanup.failed === 0,
       deletedJobs,
       deletedImages,
       // A bounded batch avoids oversized REST URLs. An authorized caller may repeat it.
-      hasMore: jobs.length === 100,
-    })
+      hasMore: jobs.length === 100 || memoryCleanup.hasMore,
+      ...(memoryCleanup.claimed > 0 ? { memoryCleanup } : {}),
+    }, memoryCleanup.failed > 0 ? 500 : 200)
   } catch (error) {
     return jsonResponse(
       {

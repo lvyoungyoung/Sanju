@@ -28,7 +28,10 @@ struct SpeechSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.section) {
                 VStack(alignment: .leading, spacing: 12) {
-                    sectionTitle(L10n.string("speech.settings.voice", "朗读音色"))
+                    sectionTitle(L10n.string("speech.settings.english_voice", "英文朗读音色"))
+                    Text(L10n.string("speech.settings.english_scope", "以下音色和试听仅用于英文。日语、西班牙语和法语按句子语言朗读，不受此选择影响。"))
+                        .font(.footnote)
+                        .foregroundStyle(AppTextColor.secondary)
                     VStack(spacing: 0) {
                         ForEach(SpeechVoice.allCases) { voice in
                             voiceRow(voice)
@@ -54,6 +57,13 @@ struct SpeechSettingsView: View {
         .onDisappear {
             if hasPreviewed { speech.stop() }
         }
+    }
+
+    static func voiceSummary(for language: LearningLanguage, voice: SpeechVoice) -> String {
+        if language == .english {
+            return L10n.string("speech.settings.english_voice_summary", "英文 · %@", voice.rawValue)
+        }
+        return L10n.string("speech.settings.sentence_language_summary", "跟随句子语言")
     }
 
     private func sectionTitle(_ title: String) -> some View {

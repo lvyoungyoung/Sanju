@@ -2,8 +2,8 @@ import Foundation
 import WidgetKit
 
 enum MemoryWidgetSnapshotStore {
-    static let appGroupID = "group.com.yanglv.sanju"
-    static let widgetKind = "SanjuMemoryWidget"
+    nonisolated static let appGroupID = "group.com.yanglv.sanju"
+    nonisolated static let widgetKind = "SanjuMemoryWidget"
 
     private static let snapshotFileName = "memory-widget-snapshot.json"
     private static let imageDirectoryName = "memory-widget-images"
@@ -13,6 +13,7 @@ enum MemoryWidgetSnapshotStore {
     )
 
     struct Snapshot: Codable {
+        var schemaVersion = 2
         let generatedAt: Date
         let items: [Item]
     }
@@ -21,8 +22,12 @@ enum MemoryWidgetSnapshotStore {
         let id: String
         let memoryID: String
         let createdAt: Date
-        let english: String
-        let chinese: String
+        let targetText: String
+        let translationText: String
+        let targetLanguage: String
+        let translationLanguage: String
+        let teachingLocale: String
+        let contentVersion: Int
         let imageFileName: String?
     }
 
@@ -85,8 +90,12 @@ enum MemoryWidgetSnapshotStore {
                         id: sentence.id.uuidString.lowercased(),
                         memoryID: memory.id.uuidString.lowercased(),
                         createdAt: memory.createdAt,
-                        english: sentence.english,
-                        chinese: sentence.chinese,
+                        targetText: sentence.targetText,
+                        translationText: sentence.translationText,
+                        targetLanguage: memory.context.targetLanguage.rawValue,
+                        translationLanguage: memory.context.translationLanguage.rawValue,
+                        teachingLocale: memory.context.teachingLocale.rawValue,
+                        contentVersion: sentence.contentVersion,
                         imageFileName: fileName
                     )
                 )

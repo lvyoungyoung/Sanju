@@ -37,7 +37,8 @@ final class OnboardingTests: XCTestCase {
 
     func testExactlyThreePages() {
         XCTAssertEqual(OnboardingPage.allCases.count, 3)
-        XCTAssertNil(OnboardingPage(rawValue: OnboardingPage.practice.rawValue + 1))
+        XCTAssertEqual(OnboardingPage.allCases.last, .flip)
+        XCTAssertNil(OnboardingPage(rawValue: OnboardingPage.flip.rawValue + 1))
     }
 
     func testStoryPhotoIsBundledForOfflineIntroduction() {
@@ -47,15 +48,81 @@ final class OnboardingTests: XCTestCase {
         }
     }
 
-    func testPracticeDemonstrationReturnsToTheChosenSentence() {
-        XCTAssertEqual(OnboardingPracticePhase.completeSentence.sentence, OnboardingExpressionDemo.sentences[2])
-        XCTAssertEqual(OnboardingPracticePhase.blank.sentence, "I could ____ here all ____ and do ____.")
-        XCTAssertEqual(OnboardingPracticePhase.firstWord.sentence, "I could sit here all ____ and do ____.")
-        XCTAssertEqual(OnboardingPracticePhase.secondWord.sentence, "I could sit here all afternoon and do ____.")
-        XCTAssertEqual(OnboardingPracticePhase.solved.sentence, OnboardingPracticePhase.completeSentence.sentence)
-        for phase in [OnboardingPracticePhase.blank, .firstWord, .secondWord, .solved] {
-            let blanks = phase.sentence.components(separatedBy: "____").count - 1
-            XCTAssertEqual(blanks, OnboardingPracticePhase.answers.count - phase.filledWordCount)
+    func testFlippingUsesThreeMatchingPhotosAndReturnsToTheFirstExpression() {
+        var demo = OnboardingFlipDemo()
+        XCTAssertEqual(OnboardingFlipDemo.cards.count, 3)
+        XCTAssertEqual(Set(OnboardingFlipDemo.cards.map(\.image)).count, 3)
+        XCTAssertEqual(Set(OnboardingFlipDemo.cards.map(\.sentence)).count, 3)
+        XCTAssertEqual(OnboardingFlipDemo.cards[0].sentence, OnboardingExpressionDemo.sentences[2])
+        for index in OnboardingFlipDemo.cards.indices {
+            XCTAssertEqual(demo.index, index)
+            XCTAssertNotNil(UIImage(named: OnboardingFlipDemo.cards[index].image))
+            let nextIndex = demo.nextIndex
+            demo.phase = .swiping
+            demo.advance()
+            XCTAssertEqual(demo.index, nextIndex)
+            XCTAssertEqual(demo.phase, .repeated)
+        }
+        XCTAssertEqual(demo.index, 0)
+        XCTAssertTrue(OnboardingFlipPhase.listening.isListening)
+        XCTAssertTrue(OnboardingFlipPhase.repeated.isListening)
+        XCTAssertFalse(OnboardingFlipPhase.swiping.isListening)
+        XCTAssertFalse(OnboardingFlipPhase.familiar.isListening)
+    }
+
+    func testFlipFramesRenderInBothThemes() throws {
+        for scheme in [ColorScheme.light, .dark] {
+            for phase in OnboardingFlipPhase.allCases {
+                var demo = OnboardingFlipDemo()
+                demo.phase = phase
+                try capture(
+                    OnboardingFlipArtwork(demo: demo).frame(height: 300).padding(24),
+                    scheme: scheme, name: "Flip-\(phase)-\(scheme)"
+                )
+            }
+        }
+    }
+
+    func testFlipCopyExplainsListeningAndPersonalRepetitionInBothLanguages() throws {
+        for (language, titleWords, bodyWords) in [
+            ("zh-Hans", ["翻相册", "听地道表达"], ["反复听", "自己生活"]),
+            ("en", ["your photos", "natural expressions"], ["your own life", "again and again"])
+        ] {
+            let path = try XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))
+            let bundle = try XCTUnwrap(Bundle(path: path))
+            let title = bundle.localizedString(forKey: "onboarding.flip.title", value: nil, table: nil)
+            let body = bundle.localizedString(forKey: "onboarding.flip.body", value: nil, table: nil)
+            for word in titleWords { XCTAssertTrue(title.contains(word)) }
+            for word in bodyWords { XCTAssertTrue(body.contains(word)) }
+        }
+    }
+
+    func testFlipAnimationFinishes() throws {
+        try capture(
+            OnboardingView(initialPage: .flip, onFinish: {}).environment(\.scenePhase, .active),
+            scheme: .light, name: "Flip-animation-finished", delay: 8,
+            size: CGSize(width: 393, height: 852)
+        )
+    }
+
+    func testFlipAnimationHandoffFrames() throws {
+        for delay in [1.8, 3.85] {
+            try capture(
+                OnboardingView(initialPage: .flip, onFinish: {}).environment(\.scenePhase, .active),
+                scheme: .light, name: "Flip-handoff-\(delay)", delay: delay,
+                size: CGSize(width: 393, height: 852)
+            )
+        }
+    }
+
+    func testFlipNextPhotosRenderInBothThemes() throws {
+        var demo = OnboardingFlipDemo()
+        for index in OnboardingFlipDemo.cards.indices {
+            for scheme in [ColorScheme.light, .dark] {
+                try capture(OnboardingFlipArtwork(demo: demo).frame(height: 300).padding(24),
+                            scheme: scheme, name: "Flip-photo-\(index)-\(scheme)")
+            }
+            demo.advance()
         }
     }
 

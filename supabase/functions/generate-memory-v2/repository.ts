@@ -4,6 +4,12 @@ import { serializeGenerationError, truncateDiagnosticText, jsonResponse, generat
 const GENERATION_CONCURRENCY_LIMIT = 50
 const GENERATION_SLOT_TTL_SECONDS = 180
 
+export function isDefiniteGenerationRollback(error: { code?: string }): boolean {
+  // Connection failures and statement_completion_unknown cannot prove rollback.
+  const code = error.code ?? ""
+  return /^(22|23|42)[0-9A-Z]{3}$/.test(code) || ["P0001", "40001", "40P01", "57014"].includes(code)
+}
+
 export async function finalizeAuthenticatedGeneration(
   adminClient: any,
   args: {
@@ -39,7 +45,7 @@ export async function finalizeAuthenticatedGeneration(
   })
 
   if (error) {
-    return { ...buildRpcErrorResponse(error, "Authenticated finalize failed"), outcomeUnknown: !/^[0-9A-Z]{5}$/.test(error.code ?? "") }
+    return { ...buildRpcErrorResponse(error, "Authenticated finalize failed"), outcomeUnknown: !isDefiniteGenerationRollback(error) }
   }
 
   return {
@@ -79,7 +85,7 @@ export async function finalizeGuestGeneration(
   })
 
   if (error) {
-    return { ...buildRpcErrorResponse(error, "Guest finalize failed"), outcomeUnknown: !/^[0-9A-Z]{5}$/.test(error.code ?? "") }
+    return { ...buildRpcErrorResponse(error, "Guest finalize failed"), outcomeUnknown: !isDefiniteGenerationRollback(error) }
   }
 
   return {
@@ -167,7 +173,7 @@ export async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
 ): Promise<Response | null> {
   const { data: job, error: jobError } = await adminClient
     .from("generation_jobs")
-    .select("status, memory_id, remaining_credits")
+    .select("status, memory_id, remaining_credits, request_schema_version")
     .eq("client_request_id", args.clientRequestID)
     .eq("user_id", args.userID)
     .maybeSingle()
@@ -176,6 +182,7 @@ export async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
     console.error("[generate-memory-v2] generation lookup failed", jobError.message)
     return generationPendingResponse(true)
   }
+  if (job?.request_schema_version && job.request_schema_version !== 1) return jsonResponse({ error: "Use versioned recovery", code: "request_context_mismatch" }, 409)
   if (job?.status !== "completed") return null
   if (!job.memory_id) return jsonResponse({ error: "生成结果已不可用。", code: "generation_result_unavailable" }, 410)
 
@@ -242,7 +249,7 @@ export async function loadCompletedGuestGenerationResponseIfNeeded(
 ): Promise<Response | null> {
   const { data: completedJob, error: completedJobError } = await adminClient
     .from("guest_generation_jobs")
-    .select("id, created_at, remaining_credits, sentences, provider, tags")
+    .select("id, created_at, remaining_credits, sentences, provider, tags, request_schema_version")
     .eq("id", args.guestJobID)
     .eq("user_id", args.userID)
     .maybeSingle()
@@ -252,6 +259,7 @@ export async function loadCompletedGuestGenerationResponseIfNeeded(
     return generationPendingResponse(true)
   }
 
+  if (completedJob?.request_schema_version && completedJob.request_schema_version !== 1) return jsonResponse({ error: "Use versioned recovery", code: "request_context_mismatch" }, 409)
   const sentences = Array.isArray(completedJob?.sentences) ? completedJob.sentences : []
   if (!hasSupportedStoredSentenceCount(sentences.length, args.generationFormat)) {
     return generationPendingResponse(true)

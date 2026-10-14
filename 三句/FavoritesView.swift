@@ -6,19 +6,26 @@ struct FavoritesView: View {
     private struct RefreshIdentity: Hashable {
         let accountRevision: UUID
         let sentenceIDs: Set<UUID>
+        let language: LearningLanguage
+        let isOnline: Bool
+        let isRestoring: Bool
     }
 
     private var favoriteItems: [FavoriteSentenceListItem] {
         FavoriteSentenceListItem.makeItems(
             memories: appModel.memories,
-            studyCounts: appModel.favoriteSentenceStudyCounts
+            studyCounts: appModel.favoriteSentenceStudyCounts,
+            language: appModel.studyLanguage
         )
     }
 
     private var refreshIdentity: RefreshIdentity {
         RefreshIdentity(
             accountRevision: appModel.accountRequests.revision,
-            sentenceIDs: Set(favoriteItems.map(\.id))
+            sentenceIDs: Set(favoriteItems.map(\.id)),
+            language: appModel.studyLanguage,
+            isOnline: appModel.isNetworkAvailable,
+            isRestoring: appModel.isRestoringAuthenticatedSession
         )
     }
 
@@ -35,6 +42,21 @@ struct FavoritesView: View {
         GeometryReader { geometry in
             ScrollView(showsIndicators: false) {
                 VStack(spacing: AppSpacing.section) {
+                    Picker(L10n.string("study.language", "学习语言"), selection: Binding(
+                        get: { appModel.studyLanguage },
+                        set: { appModel.selectStudyLanguage($0) }
+                    )) {
+                        ForEach(LearningLanguage.allCases, id: \.self) { language in
+                            Text(language.displayTitle).tag(language)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(appModel.isLoadingSentenceStudyQueue)
+                    .accessibilityIdentifier("favorites.language_filter")
+                    if let message = appModel.studySyncStatusText {
+                        Text(message).font(.caption).foregroundStyle(AppTextColor.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     switch contentState {
                     case .content:
                         studyOverview
@@ -98,7 +120,9 @@ struct FavoritesView: View {
         }) {
             SentenceStudySessionView(
                 queue: appModel.sentenceStudyQueue,
-                startsInReviewMode: appModel.isRepeatingSentenceStudyQueue
+                startsInReviewMode: appModel.isRepeatingSentenceStudyQueue,
+                seed: appModel.activeStudySession?.seed ?? 0,
+                initialTodayCount: appModel.sentenceStudyTodayCount
             )
             .environmentObject(appModel)
         }
@@ -110,7 +134,7 @@ struct FavoritesView: View {
             studiedCount: appModel.sentenceStudyTodayCount,
             buttonTitle: studyButtonTitle,
             isPreparing: appModel.isLoadingSentenceStudyQueue,
-            canStart: appModel.canStartSentenceStudy,
+            canStart: appModel.canStartSentenceStudy && appModel.studyOverviewLoadState == .loaded,
             isCompact: true
         ) {
             Task { await appModel.startSentenceStudy() }
@@ -151,6 +175,11 @@ struct FavoritesView: View {
     }
 }
 
+struct FavoriteSentenceRoute: Hashable {
+    let memoryID: UUID
+    let sentenceID: UUID
+}
+
 struct FavoriteSentenceListItem: Identifiable, Hashable {
     let favorite: FavoriteSentence
     let createdAt: Date
@@ -158,8 +187,9 @@ struct FavoriteSentenceListItem: Identifiable, Hashable {
 
     var id: UUID { favorite.id }
 
-    static func makeItems(memories: [MemoryEntry], studyCounts: [UUID: Int]) -> [Self] {
-        memories.sorted { $0.createdAt > $1.createdAt }.flatMap { memory in
+    static func makeItems(memories: [MemoryEntry], studyCounts: [UUID: Int], language: LearningLanguage? = nil) -> [Self] {
+        memories.filter { language == nil || $0.context.targetLanguage == language }
+            .sorted { $0.createdAt > $1.createdAt }.flatMap { memory in
             memory.sentences.filter(\.isFavorite).map { sentence in
                 Self(
                     favorite: FavoriteSentence(memoryID: memory.id, sentence: sentence),
@@ -177,17 +207,14 @@ struct FavoriteSentenceCard: View {
     private let thumbnailSide: CGFloat = 68
 
     var body: some View {
-        NavigationLink {
-            SentenceDetailView(memoryID: item.favorite.memoryID, sentenceID: item.id)
-                .toolbar(.visible, for: .navigationBar)
-        } label: {
+        NavigationLink(value: FavoriteSentenceRoute(memoryID: item.favorite.memoryID, sentenceID: item.id)) {
             HStack(spacing: AppSpacing.xLarge) {
                 FavoriteSentenceThumbnail(memoryID: item.favorite.memoryID)
                     .frame(width: thumbnailSide, height: thumbnailSide)
                     .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.small, style: .continuous))
                     .accessibilityHidden(true)
 
-                Text(item.favorite.sentence.english)
+                Text(item.favorite.sentence.targetText)
                     .font(AppTypography.sentence)
                     .foregroundStyle(AppTextColor.primary)
                     .multilineTextAlignment(.leading)

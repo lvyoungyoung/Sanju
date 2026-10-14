@@ -4,6 +4,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var isShowingPurchaseSheet = false
+    @State private var isShowingLanguageSettings = false
     @State private var isShowingWidgetSetupSheet = false
     @State private var isShowingSignOutAlert = false
     @State private var isShowingDeleteAccountAlert = false
@@ -77,6 +78,9 @@ struct ProfileView: View {
             .padding(.horizontal, AppSpacing.section)
             .padding(.top, AppSpacing.xLarge)
             .padding(.bottom, AppSpacing.section)
+        }
+        .sheet(isPresented: $isShowingLanguageSettings) {
+            LearningLanguageSettingsView().environmentObject(appModel)
         }
         .background(ProfileCardStyle.page)
         .toolbar(.hidden, for: .navigationBar)
@@ -312,12 +316,23 @@ struct ProfileView: View {
                     Label(L10n.string("profile.preference.english_level", "难度"), systemImage: "slider.horizontal.3")
                         .font(.body.weight(.medium))
                         .foregroundStyle(AppTextColor.primary)
-                    EnglishLevelPicker(selection: englishLevelBinding)
+                    Picker(L10n.string("profile.preference.english_level", "难度"), selection: Binding(
+                        get: { appModel.learningPreferences.level(for: appModel.learningSelection.targetLanguage) },
+                        set: { appModel.selectLearningLevel($0) }
+                    )) {
+                        ForEach(LearningLevel.selectable) { Text($0.displayTitle).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
                 }
                 .padding(20)
 
                 settingsDivider
-                ProfileSpeechSettingsLink(speech: appModel.speech)
+                Button { isShowingLanguageSettings = true } label: {
+                    ProfileSettingsRow(title: L10n.string("language.settings", "语言设置"), systemImage: "globe")
+                }
+                .buttonStyle(.plain)
+                settingsDivider
+                ProfileSpeechSettingsLink(speech: appModel.speech, targetLanguage: appModel.learningSelection.targetLanguage)
                 settingsDivider
 
                 LearningReminderSetupCard(
@@ -708,13 +723,14 @@ struct ProfileSettingsRow: View {
 
 struct ProfileSpeechSettingsLink: View {
     @ObservedObject var speech: SpeechService
+    var targetLanguage: LearningLanguage = .english
 
     var body: some View {
         NavigationLink(value: ProfileNavigationRoute.speechSettings) {
             ProfileSettingsRow(
                 title: L10n.string("speech.settings.title", "朗读设置"),
                 systemImage: "speaker.wave.2",
-                value: speech.selectedVoice.rawValue
+                value: SpeechSettingsView.voiceSummary(for: targetLanguage, voice: speech.selectedVoice)
             )
         }
         .buttonStyle(.plain)
