@@ -105,6 +105,38 @@ async function login(db: PGlite, user = alice) {
     `reset role; set role authenticated; set test.user_id='${user}'; set test.anonymous='false';`,
   );
 }
+
+Deno.test("multilingual DB: rollout migration enables all ten pairs without changing content or privileges", async () => {
+  const db = await setup();
+  const rollout = await Deno.readTextFile(new URL("20261014000000_enable_multilingual_generation.sql", root));
+  try {
+    const before = await value(db, "get_language_capabilities_v1()");
+    strictEqual(before.combinations.length, 10);
+    strictEqual(before.combinations.filter((p: any) => p.canGenerate).length, 1);
+    await db.exec("reset role");
+    const snapshot = () => db.query(`select
+      (select jsonb_agg(to_jsonb(m) order by id) from memories m) as memories,
+      (select jsonb_agg(to_jsonb(s) order by id) from memory_sentences s) as sentences,
+      (select jsonb_agg(to_jsonb(p) order by id) from profiles p) as profiles,
+      (select jsonb_agg(to_jsonb(p) order by user_id,sentence_id) from sentence_study_progress p) as progress`);
+    const contentBefore = (await snapshot()).rows;
+    await db.exec(rollout);
+    await db.exec(rollout);
+    deepStrictEqual((await snapshot()).rows, contentBefore);
+    await login(db);
+    const after = await value(db, "get_language_capabilities_v1()");
+    deepStrictEqual(after, {
+      ...before,
+      combinations: before.combinations.map((p: any) => ({ ...p, canGenerate: true })),
+    });
+    await rejects(() => db.exec("update language_capabilities_v1 set can_generate=false"));
+    await db.exec("set test.anonymous='true'");
+    deepStrictEqual(await value(db, "get_language_capabilities_v1()"), after);
+  } finally {
+    await db.close();
+  }
+});
+
 async function value(db: PGlite, sql: string, params: unknown[] = []) {
   return (await db.query<{ result: any }>(`select ${sql} as result`, params))
     .rows[0].result;
