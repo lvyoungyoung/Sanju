@@ -1,12 +1,8 @@
-import { buildSentenceMetadataRules } from "../sentence-metadata.ts"
-import { normalizeSceneCategoryIDs } from "../scene-categories.ts"
 import { buildPhotoCategoryRules, normalizePhotoCategories } from "./photo-categories.ts"
 
 export interface Sentence {
   english: string
   chinese: string
-  learning_topic_ids: string[]
-  expression_purpose?: string
   presentation_group?: SentencePresentationGroup
 }
 
@@ -86,20 +82,18 @@ ${englishLevel === "高级" ? '高级场景表达每句尽量 8 到 18 个英文
 截图、界面、图表、股票、网页、文档等信息图，场景表达只说看到、记录或分享信息，不分析数据或涨跌。
 仅 scene_and_feelings 必须前两句陈述、第三句疑问，以 ? 结尾，中文也用问句。两组的问题均遵守难度，不附答案或新增字段。
 
-${buildSentenceMetadataRules()}
-
 ${buildPhotoCategoryRules(false)}
 
 你必须严格遵守以下输出规则：
 1. 回复必须是一个 JSON 对象，不能是字符串、markdown 或代码块
 2. 顶层字段必须且只能是 image_descriptions、scene_and_feelings 和 tags；tags 是照片分类 ID 数组
 3. image_descriptions 和 scene_and_feelings 都必须恰好有 3 项
-4. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段
+4. 每一项必须且只能包含 english 和 chinese 两个字段
 5. 每句中文控制在 ${englishLevel === "启蒙" ? "3 到 15" : "8 到 30"} 个汉字之间
 6. 不要输出任何多余字段或 JSON 前后的任何字符
 
 严格按照下面的格式返回：
-{"image_descriptions":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"scene_and_feelings":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":[]}
+{"image_descriptions":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"scene_and_feelings":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":[]}
 `.trim()
   }
 
@@ -108,8 +102,6 @@ ${buildPhotoCategoryRules(false)}
 ${englishLevelPrompt}
 ${naturalSpeechPrompt}
 ${difficultyPriorityPrompt}
-
-${buildSentenceMetadataRules()}
 
 ${buildPhotoCategoryRules(false)}
 
@@ -121,7 +113,7 @@ ${buildPhotoCategoryRules(false)}
 5. 不要写任何解释、前言、结尾、备注
 6. 顶层字段必须且只能是 sentences 和 tags；tags 是照片分类 ID 数组
 7. sentences 必须是长度为 3 的数组
-8. 每一项必须且只能包含 english、chinese、learning_topic_ids 和 expression_purpose 四个字段，必须显式写出 chinese 字段名，不能只写中文字符串
+8. 每一项必须且只能包含 english 和 chinese 两个字段，必须显式写出 chinese 字段名，不能只写中文字符串
 9. english、chinese 必须是非空字符串
 10. 不要输出任何多余字段
 11. 不要转义整个 JSON 对象
@@ -130,7 +122,7 @@ ${buildPhotoCategoryRules(false)}
 14. 如果图片里有文字或数字，可以适度提到 "a screen"、"a chart"、"some numbers" 这类概括性表达，但不要逐字抄录内容
 
 你必须严格按照下面这个格式返回：
-{"sentences":[{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."},{"english":"...","chinese":"...","learning_topic_ids":[],"expression_purpose":"..."}],"tags":[]}
+{"sentences":[{"english":"...","chinese":"..."},{"english":"...","chinese":"..."},{"english":"...","chinese":"..."}],"tags":[]}
 `.trim()
 }
 function parseSentences(content: string): Sentence[] | null {
@@ -268,30 +260,12 @@ function normalizeSentenceArray(
     .map((item: any) => ({
       english: String(item?.english ?? "").trim(),
       chinese: String(item?.chinese ?? "").trim(),
-      learning_topic_ids: normalizeLearningTopicIDs(item?.learning_topic_ids),
-      // Missing/invalid categories must not masquerade as an intentional empty classification.
-      expression_purpose: Array.isArray(item?.learning_topic_ids) &&
-          item.learning_topic_ids.length <= 2 &&
-          normalizeLearningTopicIDs(item.learning_topic_ids).length === item.learning_topic_ids.length
-        ? normalizeExpressionPurpose(item?.expression_purpose)
-        : undefined,
       ...(presentationGroup ? { presentation_group: presentationGroup } : {}),
     }))
     .filter(
       (item: Sentence) =>
         item.english && item.chinese
     )
-}
-
-function normalizeExpressionPurpose(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined
-  const purpose = value.trim().replace(/\s+/g, " ")
-  return purpose.length > 0 && purpose.length <= 240 && purpose.split(" ").length <= 30
-    ? purpose : undefined
-}
-
-function normalizeLearningTopicIDs(value: unknown): string[] {
-  return normalizeSceneCategoryIDs(value, 2)
 }
 
 function extractSentencesByPattern(content: string): Sentence[] | null {
@@ -306,7 +280,7 @@ function extractSentencesByPattern(content: string): Sentence[] | null {
     const chinese = decodeJSONStringFragment(match[2]).trim()
 
     if (english && chinese) {
-      matches.push({ english, chinese, learning_topic_ids: [] })
+      matches.push({ english, chinese })
     }
   }
 
@@ -326,7 +300,7 @@ function extractLooseSentencePairs(content: string): Sentence[] | null {
     const chinese = extractLooseChineseValue(tail)
 
     if (english && chinese) {
-      matches.push({ english, chinese, learning_topic_ids: [] })
+      matches.push({ english, chinese })
     }
   }
 
@@ -421,7 +395,6 @@ export function toClientSentences(
       id: !isUUID(sentence?.id) ? crypto.randomUUID() : sentence.id,
       english: String(sentence?.english ?? "").trim(),
       chinese: String(sentence?.chinese ?? "").trim(),
-      learning_topic_ids: normalizeLearningTopicIDs(sentence?.learning_topic_ids),
       is_favorite: sentence?.is_favorite === true,
     }
 

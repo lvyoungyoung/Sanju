@@ -11,7 +11,6 @@ final class GuestMemoryMigrationTests: XCTestCase {
                                                   imagePath: "test-owner/photo.jpg", createdAt: memory.createdAt, tags: memory.tags)
         let row = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any])
         XCTAssertEqual(row["tags"] as? [String], memory.tags)
-        XCTAssertEqual(SupabaseMemorySentenceInsertPayload.memoryCopy(for: memory).map(\.learningTopicIDs), memory.sentences.map(\.learningTopicIDs))
     }
     func testSixSentenceMigrationUsesDatabasePositionsZeroThroughFive() throws {
         let memory = makeMemory(sentenceCount: 6)
@@ -21,6 +20,7 @@ final class GuestMemoryMigrationTests: XCTestCase {
         let rows = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
         XCTAssertEqual(rows.compactMap { $0["sort_order"] as? Int }, Array(0..<6))
         XCTAssertTrue(rows.allSatisfy { (0..<6).contains($0["sort_order"] as? Int ?? -1) })
+        XCTAssertTrue(rows.allSatisfy { $0["learning_topic_ids"] == nil && $0["expression_purpose"] == nil })
     }
 
     func testThreeSentenceMigrationRemainsSupported() {
@@ -41,7 +41,6 @@ final class GuestMemoryMigrationTests: XCTestCase {
             XCTAssertEqual(payload.chinese, sentence.chinese)
             XCTAssertEqual(payload.presentationGroup, sentence.presentationGroup.rawValue)
             XCTAssertEqual(payload.isFavorite, sentence.isFavorite)
-            XCTAssertEqual(payload.learningTopicIDs, sentence.learningTopicIDs)
         }
     }
 

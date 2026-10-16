@@ -465,7 +465,6 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
     let sortOrder: Int
     let english: String
     let chinese: String
-    let learningTopicIDs: [String]
     let presentationGroup: String
     let isFavorite: Bool
 
@@ -478,7 +477,6 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
                 sortOrder: index,
                 english: sentence.english,
                 chinese: sentence.chinese,
-                learningTopicIDs: sentence.learningTopicIDs,
                 presentationGroup: sentence.presentationGroup.rawValue,
                 isFavorite: sentence.isFavorite
             )
@@ -491,7 +489,6 @@ struct SupabaseMemorySentenceInsertPayload: Encodable {
         case sortOrder = "sort_order"
         case english
         case chinese
-        case learningTopicIDs = "learning_topic_ids"
         case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
     }

@@ -28,7 +28,7 @@ final class LearningTopicsTests: XCTestCase {
         XCTAssertNil(LearningTopic.topic(matchingName: "餐饮与烹饪"))
     }
 
-    func testTwoSceneIDsSurviveCloudDecodingAndLocalPersistence() throws {
+    func testLegacySceneIDsAreDiscardedOnNextLocalSave() throws {
         let ids = ["sports_and_outdoors", "family_time"]
         let sentenceID = UUID()
         let payload = """
@@ -39,9 +39,9 @@ final class LearningTopicsTests: XCTestCase {
         let local = SentenceRecord(id: sentenceID, english: remote.english, chinese: remote.chinese, learningTopicIDs: remote.learningTopicIDs ?? [])
         let restored = try JSONDecoder().decode(SentenceRecord.self, from: JSONEncoder().encode(local))
         XCTAssertEqual(restored.id, sentenceID)
-        XCTAssertEqual(restored.learningTopicIDs, ids)
+        XCTAssertEqual(restored.learningTopicIDs, [])
         XCTAssertFalse(restored.isFavorite)
         let suggestedTopics = LearningTopic.all.filter { Set(restored.learningTopicIDs).contains($0.id) }
-        XCTAssertEqual(Set(suggestedTopics.map(\.id)), Set(ids))
+        XCTAssertTrue(suggestedTopics.isEmpty)
     }
 }

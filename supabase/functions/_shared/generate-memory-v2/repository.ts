@@ -199,7 +199,6 @@ export async function loadCompletedAuthenticatedGenerationResponseIfNeeded(
         id,
         english,
         chinese,
-        learning_topic_ids,
         presentation_group,
         is_favorite,
         sort_order

@@ -25,7 +25,6 @@ export interface SentenceContent {
   targetText: string
   translationText: string
   contentVersion: 1
-  learningTopicIDs: string[]
   presentationGroup: "what_i_see" | "what_i_say"
   isFavorite: boolean
   learningMaterial?: LearningMaterial
@@ -107,13 +106,12 @@ export async function validateSentence(value: unknown, context: ContentContext):
   const targetText = boundedText(s.targetText)
   const translationText = boundedText(s.translationText)
   if (s.contentVersion !== 1 || !["what_i_see", "what_i_say"].includes(s.presentationGroup) ||
-      typeof s.isFavorite !== "boolean" || !Array.isArray(s.learningTopicIDs) || s.learningTopicIDs.length > 2 ||
-      s.learningTopicIDs.some((id: unknown) => typeof id !== "string" || !/^[a-z][a-z0-9_]{0,79}$/.test(id))) {
+      typeof s.isFavorite !== "boolean") {
     throw new ContractError("invalid_content")
   }
   if (context.targetLanguage !== "en" && !s.learningMaterial) throw new ContractError("learning_material_required")
   const learningMaterial = s.learningMaterial == null ? undefined : await validateLearningMaterial(s.learningMaterial, targetText, context.targetLanguage === "ja")
   if (context.targetLanguage !== "en" && !learningMaterial?.segments.some(s => s.canBlank)) throw new ContractError("invalid_learning_material")
-  return { id: uuid(s.id), targetText, translationText, contentVersion: 1, learningTopicIDs: [...new Set<string>(s.learningTopicIDs)],
+  return { id: uuid(s.id), targetText, translationText, contentVersion: 1,
     presentationGroup: s.presentationGroup, isFavorite: s.isFavorite, ...(learningMaterial ? { learningMaterial } : {}) }
 }

@@ -41,7 +41,7 @@ export async function persistMultilingualResult(args: {
   client: any; cleanupClient: any; userID: string; anonymous: boolean; prepared: PreparedGeneration;
   guestImagePath: string | null; imageBytes: Uint8Array; createdAt: string;
   completion: { sentences: GeneratedSentence[]; tags: string[]; provider: string };
-  onFinalizationStarted: (scope: {userID: string; memoryID: string} | {userID: string; guestJobID: string}) => void;
+  onFinalizationStarted: () => void;
 }): Promise<Response> {
   const { client, cleanupClient, prepared, userID, anonymous, completion } = args
   const memoryID = anonymous ? prepared.requestID : crypto.randomUUID()
@@ -51,11 +51,10 @@ export async function persistMultilingualResult(args: {
     if (error) throw new Error("Image upload failed")
   }
   const memory: MemoryContent = { schemaVersion: 2, id: memoryID, imagePath, createdAt: args.createdAt,
-    tags: completion.tags, context: contentContext(prepared.spec), sentences: completion.sentences.map(({expressionPurpose: _, ...s}) => s) }
-  args.onFinalizationStarted(anonymous ? { userID, guestJobID: prepared.requestID } : { userID, memoryID })
+    tags: completion.tags, context: contentContext(prepared.spec), sentences: completion.sentences }
+  args.onFinalizationStarted()
   const { data, error } = await client.rpc("finalize_generation_job_v3", { p_user_id: userID, p_request_id: prepared.requestID,
-    p_is_anonymous: anonymous, p_request_fingerprint: prepared.fingerprint, p_memory: memory, p_provider: completion.provider,
-    p_expression_purposes: completion.sentences.map(s => s.expressionPurpose) })
+    p_is_anonymous: anonymous, p_request_fingerprint: prepared.fingerprint, p_memory: memory, p_provider: completion.provider })
   if (error) {
     // A transport error cannot prove rollback. Leave the image and job for recovery.
     if (!isDefiniteGenerationRollback(error)) return generationPendingResponse(true)

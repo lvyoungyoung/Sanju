@@ -785,20 +785,8 @@ struct SupabaseService: SupabaseServicing {
     }
 
     func fetchGenerationEnrichmentTiming(session: SupabaseSession, memoryID: UUID?, guestJobID: String?) async throws -> GenerationEnrichmentSnapshot? {
-        #if DEBUG && STAGING
-        guard GenerationEnrichmentTiming.isStagingURL(baseURL?.absoluteString),
-              (memoryID == nil) != (guestJobID == nil) else { return nil }
-        var request = try makeRequest(
-            path: "/rest/v1/rpc/get_generation_enrichment_timing",
-            method: "POST",
-            bearerToken: session.accessToken,
-            body: ["p_memory_id": memoryID?.uuidString.lowercased(), "p_guest_job_id": guestJobID]
-        )
-        request.timeoutInterval = 5
-        return try await perform(request)
-        #else
+        // Sentence indexing was retired; do not poll the removed diagnostics RPC.
         return nil
-        #endif
     }
 
     func createMemoryCopy(session: SupabaseSession, memory: MemoryEntry) async throws -> MemoryEntry {

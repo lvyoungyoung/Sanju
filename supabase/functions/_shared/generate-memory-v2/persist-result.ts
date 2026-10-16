@@ -1,4 +1,3 @@
-import type { EnrichmentScope } from "../generation-enrichment.ts"
 import type { GenerationTiming } from "../generation-timing.ts"
 import { type Sentence, type GenerationFormat, type FinalizedSentence, toClientSentences } from "./content.ts"
 import { serializeGenerationError, jsonResponse, generationPendingResponse } from "./responses.ts"
@@ -19,7 +18,7 @@ interface PersistGeneratedResultContext {
   imageBytes: Uint8Array
   generationFormat: GenerationFormat
   completionResult: Extract<Awaited<ReturnType<typeof requestWithFallback<Sentence>>>, { ok: true }>
-  onFinalizationStarted: (scope: EnrichmentScope) => void
+  onFinalizationStarted: () => void
 }
 
 // Keep the finalization marker in the request owner: a transport error after
@@ -34,15 +33,13 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
     id: crypto.randomUUID(),
     english: sentence.english,
     chinese: sentence.chinese,
-    learning_topic_ids: sentence.learning_topic_ids,
-    expression_purpose: sentence.expression_purpose,
     presentation_group: sentence.presentation_group ?? "what_i_see",
     is_favorite: false,
   }))
 
   if (isAnonymous) {
     timing.start("finalize")
-    onFinalizationStarted({ userID: userID, guestJobID: guestJobID! })
+    onFinalizationStarted()
     const finalizeResult = await finalizeGuestGeneration(adminClient, {
       guestJobID: guestJobID!,
       userID: userID,
@@ -119,7 +116,7 @@ export async function persistGeneratedResult(context: PersistGeneratedResultCont
   }
 
   timing.start("finalize")
-  onFinalizationStarted({ userID: userID, memoryID })
+  onFinalizationStarted()
   const finalizeResult = await finalizeAuthenticatedGeneration(adminClient, {
     memoryID,
     userID: userID,

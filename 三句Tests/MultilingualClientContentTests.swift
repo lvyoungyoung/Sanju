@@ -24,6 +24,24 @@ final class MultilingualClientContentTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(dto)) as? [String: Any])
     }
 
+    func testContentWireDoesNotRequireOrUploadSentenceMetadata() throws {
+        let original = memory(.english)
+        let payload = try wire(original)
+        let sentences = try XCTUnwrap(payload["sentences"] as? [[String: Any]])
+        XCTAssertTrue(sentences.allSatisfy { $0["learningTopicIDs"] == nil && $0["expressionPurpose"] == nil })
+        let sentenceData = try JSONSerialization.data(withJSONObject: sentences[0])
+        let restored = try JSONDecoder().decode(SupabaseContentSentence.self, from: sentenceData)
+        XCTAssertEqual(restored.sentence, original.sentences[0])
+        var stale = sentences[0]
+        stale["learningTopicIDs"] = ["natural_scenery"]
+        stale["expressionPurpose"] = "Describe scenery."
+        let oldData = try JSONSerialization.data(withJSONObject: stale)
+        let decoded = try JSONDecoder().decode(SupabaseContentSentence.self, from: oldData)
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+        XCTAssertNil(encoded["learningTopicIDs"])
+        XCTAssertNil(encoded["expressionPurpose"])
+    }
+
     private func service(_ replies: [Any]) throws -> SupabaseService {
         ContentTestURLProtocol.configure(try replies.map { try JSONSerialization.data(withJSONObject: $0, options: .fragmentsAllowed) })
         let configuration = URLSessionConfiguration.ephemeral

@@ -5,5 +5,5 @@ Deno.serve(async (req) => {
   if (!key || req.headers.get("Authorization") !== `Bearer ${key}`) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
   }
-  return Response.json({ error: "Enrichment retries now start only when creating a study topic" }, { status: 410 })
+  return Response.json({ error: "Sentence enrichment has been retired" }, { status: 410 })
 })

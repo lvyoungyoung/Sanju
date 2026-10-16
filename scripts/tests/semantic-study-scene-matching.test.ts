@@ -2192,7 +2192,6 @@ Deno.test("active client and generation paths do not invoke paused AI review", a
   );
   strictEqual(endpoint.includes("reviewCandidates"), false);
   strictEqual(endpoint.includes("claim_study_scene_sentence_reviews"), false);
-  strictEqual(endpoint.includes("pendingCount: 0"), true);
-  strictEqual(endpoint.includes("user.is_anonymous"), true);
-  strictEqual(endpoint.includes('.eq("user_id", userID)'), true);
+  strictEqual(endpoint.includes("feature_retired"), true);
+  strictEqual(endpoint.includes("410"), true);
 });

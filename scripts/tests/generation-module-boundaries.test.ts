@@ -22,6 +22,7 @@ Deno.test("generation and theme stages form acyclic local module graphs", async 
       visited.add(file);
     }
     await visit(entry);
-    ok(visited.size >= 4, name);
+    if (name === "create-study-scene") strictEqual(visited.size, 1, "retired endpoint has no provider dependencies");
+    else ok(visited.size >= 4, name);
   }
 });

@@ -33,8 +33,8 @@ struct SupabaseContentMemory: Codable {
                                     createdAt: createdAt, tags: tags,
                                     sentences: sentences.enumerated().map { index, sentence in
             SupabaseMemorySentenceRecord(id: sentence.id.uuidString.lowercased(), sortOrder: index,
-                english: sentence.targetText, chinese: sentence.translationText,
-                learningTopicIDs: sentence.learningTopicIDs, presentationGroup: sentence.presentationGroup.rawValue,
+                english: sentence.targetText, chinese: sentence.translationText, learningTopicIDs: nil,
+                presentationGroup: sentence.presentationGroup.rawValue,
                 isFavorite: sentence.isFavorite, contentVersion: sentence.contentVersion,
                 learningMaterial: sentence.learningMaterial)
         }, context: context)
@@ -74,7 +74,6 @@ struct SupabaseContentSentence: Codable {
     let targetText: String
     let translationText: String
     let contentVersion: Int
-    let learningTopicIDs: [String]
     let presentationGroup: SentencePresentationGroup
     let isFavorite: Bool
     let learningMaterial: SentenceLearningMaterial?
@@ -84,7 +83,6 @@ struct SupabaseContentSentence: Codable {
         targetText = sentence.targetText
         translationText = sentence.translationText
         contentVersion = sentence.contentVersion
-        learningTopicIDs = sentence.learningTopicIDs
         presentationGroup = sentence.presentationGroup
         isFavorite = sentence.isFavorite
         learningMaterial = sentence.learningMaterial
@@ -106,7 +104,7 @@ struct SupabaseContentSentence: Codable {
     var sentence: SentenceRecord {
         SentenceRecord(id: id, targetText: targetText, translationText: translationText,
                        contentVersion: contentVersion, learningMaterial: learningMaterial,
-                       learningTopicIDs: learningTopicIDs, presentationGroup: presentationGroup,
+                       presentationGroup: presentationGroup,
                        isFavorite: isFavorite)
     }
 }

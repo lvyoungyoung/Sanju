@@ -49,7 +49,7 @@ Deno.test("multilingual generation: Japanese material digest, exact surfaces and
 
 Deno.test("multilingual generation: bounded parser validates both groups and provider fallback keeps the same spec", async () => {
   const sentences = Array.from({length:6}, (_,i) => ({targetText:"This is a cat.",translationText:"这是一只猫。",
-    presentationGroup:i<3?"what_i_see":"what_i_say",learningTopicIDs:["pets_and_animals"],expressionPurpose:"Describing a pet."}))
+    presentationGroup:i<3?"what_i_see":"what_i_say"}))
   const raw = JSON.stringify({sentences, tags:["pets_and_animals"]})
   const parsed = await parseMultilingualContent(raw, spec)
   strictEqual(parsed?.sentences.length, 6)
@@ -76,7 +76,7 @@ Deno.test("multilingual generation: Spanish and French produce exact accent/elis
     const segments=text.match(/[^\s.]+|\s+|\./gu)!.map((surface,i)=>({id:String(i),surface,
       kind:/^\s+$/.test(surface)?"whitespace":surface==="."?"punctuation":"word",canBlank:/[\p{L}]/u.test(surface)}))
     const sentences=Array.from({length:6},(_,i)=>({targetText:text,translationText:"练习句子。",
-      learningTopicIDs:[],presentationGroup:i<3?"what_i_see":"what_i_say",expressionPurpose:"Describing summer.",
+      presentationGroup:i<3?"what_i_see":"what_i_say",
       learningMaterial:{schemaVersion:1,policyVersion:1,segments}}))
     const raw=JSON.stringify({sentences,tags:[]})
     const parsed=await parseMultilingualContent(raw,course)

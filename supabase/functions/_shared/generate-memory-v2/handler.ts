@@ -1,6 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { fetchWithTimeout, fetchWithinDeadline } from "../fetch-with-timeout.ts"
-import { scheduleGenerationEnrichment, type EnrichmentScope } from "../generation-enrichment.ts"
 import type { GenerationTiming } from "../generation-timing.ts"
 import { type GenerationFormat, buildPromptText, selectSceneQuestionType } from "./content.ts"
 import { serializeGenerationError, decodeBase64, jsonResponse, normalizeOptionalUUID, isTimeoutError, generationPendingResponse } from "./responses.ts"
@@ -30,7 +29,6 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
   let authenticatedClientRequestID: string | null = null
   let ownedGuestJobID: string | null = null
   let generationUserID: string | null = null
-  let enrichmentScope: EnrichmentScope | null = null
   let ownsAuthenticatedJob = false
   let finalizationStarted = false
   let cleanupClient: any = null
@@ -445,7 +443,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       client: adminClient, cleanupClient, userID: user.id, anonymous: isAnonymous, prepared,
       guestImagePath, imageBytes, createdAt,
       completion: { ...completionResult, sentences: completionResult.sentences as GeneratedSentence[] },
-      onFinalizationStarted: (scope) => { finalizationStarted = true; enrichmentScope = scope },
+      onFinalizationStarted: () => { finalizationStarted = true },
     })
 
     return await persistGeneratedResult({
@@ -453,9 +451,8 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       guestJobID, guestImagePath, guestImageUploaded, createdAt,
       authenticatedClientRequestID, imageBytes, generationFormat,
       completionResult: { ...completionResult, sentences: completionResult.sentences as Sentence[] },
-      onFinalizationStarted: (scope) => {
+      onFinalizationStarted: () => {
         finalizationStarted = true
-        enrichmentScope = scope
       },
     })
   } catch (error) {
@@ -504,15 +501,6 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
             at: new Date().toISOString(),
           })
         )
-      }
-    }
-    // Finalization queued the indexing payload in the same transaction as the
-    // result and debit. Never wait for embeddings before delivering the result.
-    // Only this result's first attempt; no automatic repair is scheduled.
-    if (enrichmentScope) {
-      timing.start("background_dispatch")
-      try { scheduleGenerationEnrichment(enrichmentScope, req.headers.get("x-sanju-generation-trace-id") ?? undefined) } catch (error) {
-        console.error("[generate-memory-v2] could not start background indexing", String(error))
       }
     }
   }

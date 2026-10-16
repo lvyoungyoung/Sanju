@@ -1,5 +1,7 @@
 # Generation timing in Xcode
 
+> 2026-10-16 更新：句子分类、表达用途、向量与后台补全已退役，照片分类保留。当前契约、迁移和部署步骤见 [句子元数据退役](sentence-metadata-retirement.md)。下文相关旧设计仅作为历史记录，不应据此重新启用补全或匹配。
+
 Run a Debug client from Xcode and filter the console by `GenerationTiming`.
 Each tap has a UUID trace shared by client and server logs. Durations are
 milliseconds, measured with monotonic clocks. No photos, prompts, sentence text,

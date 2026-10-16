@@ -99,7 +99,6 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         try c.encode(translationText, forKey: .translationText)
         try c.encode(contentVersion, forKey: .contentVersion)
         try c.encodeIfPresent(learningMaterial, forKey: .learningMaterial)
-        try c.encode(learningTopicIDs, forKey: .learningTopicIDs)
         try c.encode(presentationGroup, forKey: .presentationGroup)
         try c.encode(isFavorite, forKey: .isFavorite)
     }

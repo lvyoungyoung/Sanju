@@ -5,10 +5,6 @@ import {
   SCENE_CATEGORY_IDS,
 } from "../../supabase/functions/_shared/scene-categories.ts";
 import {
-  buildSentenceMetadataRules,
-  parseSentenceMetadata,
-} from "../../supabase/functions/_shared/sentence-metadata.ts";
-import {
   buildPhotoCategoryRules,
   PHOTO_CATEGORIES,
 } from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
@@ -70,13 +66,6 @@ Deno.test("photos, sentences and category embeddings share one 25-category catal
 });
 
 Deno.test("each category has one grounded boundary and is listed once in the generation prompt", () => {
-  const rules = buildSentenceMetadataRules();
-  const catalog = [...rules.matchAll(/^([a-z_]+)：(.+)$/gm)]
-    .filter(([, id]) =>
-      id !== "learning_topic_ids" && id !== "expression_purpose"
-    );
-  deepStrictEqual(catalog.map(([, id]) => id), expected);
-  for (const [, , boundary] of catalog) ok(boundary.length >= 10);
   for (const format of ["legacy_v1", "dual_tabs_v1"] as const) {
     const prompt = buildPromptText("简单", format);
     ok(prompt.includes(buildPhotoCategoryRules(false)));
@@ -115,18 +104,13 @@ Deno.test("new categories survive generation parsing, metadata validation and cl
     );
     ok(parsed);
     deepStrictEqual(parsed.tags, [id]);
-    deepStrictEqual(parsed.sentences[0].learning_topic_ids, [id]);
-    const metadata = parseSentenceMetadata([{
-      sentence_id: "test",
-      ...sentence,
-    }], [{ id: "test", ...sentence }]);
-    deepStrictEqual(metadata[0].learning_topic_ids, [id]);
+    strictEqual((parsed.sentences[0] as any).learning_topic_ids, undefined);
     deepStrictEqual(
       toClientSentences(
         [{ id: crypto.randomUUID(), ...sentence }],
         "dual_tabs_v1",
       )[0].learning_topic_ids,
-      [id],
+      undefined,
     );
   }
 });
@@ -147,7 +131,7 @@ Deno.test("photo and sentence assignments stay independent; obsolete IDs have no
   );
   ok(parsed);
   deepStrictEqual(parsed.tags, ["restaurants_and_cafes"]);
-  deepStrictEqual(parsed.sentences[0].learning_topic_ids, ["food_and_drinks"]);
+  strictEqual((parsed.sentences[0] as any).learning_topic_ids, undefined);
   deepStrictEqual(
     normalizeSceneCategoryIDs([
       "sports_and_outdoors",

@@ -19,14 +19,6 @@ const timingHelper = new URL(
 ).href;
 const harness = `
 import { strictEqual } from "node:assert";
-import { buildSentenceMetadataRules } from ${
-  JSON.stringify(
-    new URL(
-      "../../supabase/functions/_shared/sentence-metadata.ts",
-      import.meta.url,
-    ).href,
-  )
-};
 import { GenerationTiming, withGenerationTiming } from ${
   JSON.stringify(timingHelper)
 };
@@ -312,16 +304,14 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(delivered.length, 6);
     strictEqual(
       delivered.every((s: any) =>
-        Array.isArray(s.learning_topic_ids) &&
-        s.learning_topic_ids.length === 1 &&
-        s.learning_topic_ids[0] === "pets_and_animals"
+        s.learning_topic_ids === undefined
       ),
       true,
     );
     strictEqual(state.finalizedSentences.length, 6);
     strictEqual(
       state.finalizedSentences.every((s: any) =>
-        s.expression_purpose === "Describing a cat."
+        s.expression_purpose === undefined
       ),
       true,
     );
@@ -334,10 +324,8 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
       undefined,
       "response must not await indexing",
     );
-    strictEqual(state.backgroundOwners.includes("owner"), true);
-    strictEqual(state.backgroundScopes.length, 1);
-    strictEqual(Boolean(state.backgroundScopes[0].guestJobID), anonymous);
-    strictEqual(Boolean(state.backgroundScopes[0].memoryID), !anonymous);
+    strictEqual(state.backgroundOwners.length, 0);
+    strictEqual(state.backgroundScopes.length, 0);
     if (anonymous) {
       strictEqual(state.guests.get(id).sentences[0].id, delivered[0].id);
     }
@@ -352,7 +340,7 @@ Deno.test("overlapping authenticated and guest requests run only one model and d
     strictEqual(state.balance, 9);
     strictEqual(
       state.backgroundScopes.length,
-      1,
+      0,
       "reading a completed result must not trigger compensation",
     );
   }
@@ -367,13 +355,13 @@ Deno.test("unknown photo tags never reach storage for either account or provider
       const result = await response.json();
       strictEqual(result.memory.tags.length, 0);
       strictEqual(result.memory.sentences.length, 6);
-      strictEqual(result.memory.sentences[0].learning_topic_ids[0], "pets_and_animals");
+      strictEqual(result.memory.sentences[0].learning_topic_ids, undefined);
       strictEqual(
         state.finalizedSentences[0].expression_purpose,
-        "Describing a cat.",
+        undefined,
       );
       strictEqual(state.debits, 1);
-      strictEqual(state.backgroundScopes.length, 1);
+      strictEqual(state.backgroundScopes.length, 0);
       strictEqual(state.modelRequests[0].model, "mimo-v2.6-flash");
       strictEqual(state.modelRequests[0].thinking.type, "disabled");
       strictEqual(state.modelRequests[0].max_completion_tokens, 4096);
@@ -426,9 +414,7 @@ Deno.test("photo categories persist independently and survive replay for all pro
         deepStrictEqual(state.finalizedTags, expected);
         strictEqual(result.memory.provider, provider);
         strictEqual(result.memory.sentences.length, legacy ? 3 : 6);
-        deepStrictEqual(result.memory.sentences[0].learning_topic_ids, [
-          "pets_and_animals",
-        ]);
+        strictEqual(result.memory.sentences[0].learning_topic_ids, undefined);
         const calls = state.calls;
         state.photoTags = ["natural_scenery"];
         const replay = await handler(makeRequest());
@@ -441,7 +427,7 @@ Deno.test("photo categories persist independently and survive replay for all pro
   }
 });
 
-Deno.test("missing auxiliary metadata keeps valid sentences and leaves repair to the background", async () => {
+Deno.test("valid sentences without auxiliary metadata never schedule indexing", async () => {
   for (const anonymous of [false, true]) {
     reset({ anonymous, missingMetadata: true });
     const response = await handler(request());
@@ -453,7 +439,7 @@ Deno.test("missing auxiliary metadata keeps valid sentences and leaves repair to
     );
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
-    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual(state.backgroundScopes.length, 0);
   }
 });
 
@@ -475,7 +461,6 @@ Deno.test("generation timing covers both account types without changing response
         "diagnostics",
         "read_result",
         "release_slot",
-        "background_dispatch",
         "total",
       ]
     ) {
@@ -526,15 +511,15 @@ Deno.test("rejection and fallback return timings; legacy clients do not receive 
   strictEqual((await fallback.json()).memory.provider, "kimi");
   strictEqual(
     state.finalizedSentences.every((s: any) =>
-      s.expression_purpose === "Describing a cat."
+      s.expression_purpose === undefined
     ),
     true,
   );
   strictEqual(state.modelRequests.length, 2);
   strictEqual(
     state.modelRequests.every((body: any) =>
-      JSON.stringify(body.messages).includes("learning_topic_ids") &&
-      JSON.stringify(body.messages).includes("expression_purpose")
+      !JSON.stringify(body.messages).includes("learning_topic_ids") &&
+      !JSON.stringify(body.messages).includes("expression_purpose")
     ),
     true,
   );
@@ -597,7 +582,7 @@ Deno.test("extracted persistence preserves the commit boundary when finalization
     );
     strictEqual(state.removed, 0);
     strictEqual(state.released, 1);
-    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual(state.backgroundScopes.length, 0);
     strictEqual((await handler(request())).status, 200);
     strictEqual(state.debits, 1);
     strictEqual(state.calls, 1);
@@ -666,7 +651,7 @@ Deno.test("trusted staging and production projects use DeepSeek, independent of 
       );
       strictEqual(
         body.messages[1].content[1].text.includes("expression_purpose"),
-        true,
+        false,
       );
       strictEqual(
         state.modelHeaders[0].get("Authorization"),
@@ -684,7 +669,7 @@ Deno.test("trusted staging and production projects use DeepSeek, independent of 
       strictEqual((await handler(request())).status, 200);
       strictEqual(state.calls, 1);
       strictEqual(state.debits, 1);
-      strictEqual(state.backgroundScopes.length, 1);
+      strictEqual(state.backgroundScopes.length, 0);
       const record = anonymous
         ? state.guests.get(id)
         : [...state.memories.values()][0];
@@ -836,7 +821,7 @@ Deno.test("production DeepSeek keeps legacy three-sentence responses for both ac
     strictEqual(response.headers.get("Server-Timing"), null);
     strictEqual(state.modelRequests[0].model, "deepseek-flash");
     strictEqual(state.debits, 1);
-    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual(state.backgroundScopes.length, 0);
   }
 });
 
@@ -865,6 +850,6 @@ Deno.test("overlapping production DeepSeek requests generate and debit once", as
     strictEqual((await handler(request())).status, 200);
     strictEqual(state.calls, 1);
     strictEqual(state.debits, 1);
-    strictEqual(state.backgroundScopes.length, 1);
+    strictEqual(state.backgroundScopes.length, 0);
   }
 });

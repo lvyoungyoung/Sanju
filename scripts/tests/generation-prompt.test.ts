@@ -6,7 +6,6 @@ import {
   selectSceneQuestionType,
 } from "../../supabase/functions/_shared/generate-memory-v2/content.ts";
 import { buildPhotoCategoryRules } from "../../supabase/functions/_shared/generate-memory-v2/photo-categories.ts";
-import { buildSentenceMetadataRules } from "../../supabase/functions/_shared/sentence-metadata.ts";
 
 const levels = ["启蒙", "简单", "中等", "高级"] as const;
 const formats = ["legacy_v1", "dual_tabs_v1"] as const;
@@ -14,13 +13,15 @@ const formats = ["legacy_v1", "dual_tabs_v1"] as const;
 // Compare teaching rules independently of the category catalog.
 function sentencePromptBaseline(prompt: string): string {
   return prompt.replace(`\n\n${buildPhotoCategoryRules(false)}`, "")
-    .replace(`\n\n${buildSentenceMetadataRules()}`, "")
     .replace(
       "image_descriptions、scene_and_feelings 和 tags；tags 是照片分类 ID 数组",
       "image_descriptions 和 scene_and_feelings",
     )
     .replace("sentences 和 tags；tags 是照片分类 ID 数组", "sentences")
-    .replace(/,"tags":\[\](?=\}$)/, "");
+    .replace(/,"tags":\[\](?=\}$)/, "")
+    // Canonicalize the deliberately simplified output schema for the teaching-rule snapshot.
+    .replaceAll("english 和 chinese 两个字段", "english、chinese、learning_topic_ids 和 expression_purpose 四个字段")
+    .replaceAll('"chinese":"..."', '"chinese":"...","learning_topic_ids":[],"expression_purpose":"..."');
 }
 
 Deno.test("sentence teaching rules match the reviewed baseline at every difficulty", () => {
@@ -119,7 +120,7 @@ Deno.test("natural beginner guidance stays compact without shrinking output rule
   ok(prompt.length <= 4500, `Prompt grew to ${prompt.length} characters`);
 });
 
-Deno.test("combined generation preserves sentence groups, categories and purposes", () => {
+Deno.test("generation keeps sentence groups and photo categories without sentence metadata", () => {
   for (const format of formats) {
     for (const level of levels) {
       const prompt = buildPromptText(level, format);
@@ -134,8 +135,6 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
           deepStrictEqual(Object.keys(item).sort(), [
             "chinese",
             "english",
-            "expression_purpose",
-            "learning_topic_ids",
           ]);
           strictEqual(typeof item.english, "string");
           strictEqual(typeof item.chinese, "string");
@@ -148,7 +147,7 @@ Deno.test("combined generation preserves sentence groups, categories and purpose
       deepStrictEqual(parsed.tags, []);
       strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
       for (const item of parsed.sentences) {
-        deepStrictEqual(item.learning_topic_ids, []);
+        ok(!("learning_topic_ids" in item) && !("expression_purpose" in item));
       }
       if (format === "dual_tabs_v1") {
         deepStrictEqual(
@@ -187,7 +186,7 @@ Deno.test("unknown photo categories are ignored without discarding sentence meta
     strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
     strictEqual(
       parsed.sentences.every((s) =>
-        s.expression_purpose && Array.isArray(s.learning_topic_ids)
+        !("expression_purpose" in s) && !("learning_topic_ids" in s)
       ),
       true,
     );
@@ -389,7 +388,7 @@ Deno.test("scene expressions follow atmosphere without prescribing distinct comm
       "不固定为感受加经历", "不必覆盖所有意图", "不要把所有照片都变成点餐、问路",
     ]) ok(!prompt.includes(removed), `${level}: removed intention checklist ${removed}`);
     ok(!prompt.includes("第一、三句优先 I/we"));
-    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
+    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildPhotoCategoryRules(false)));
     ok(!/例如|示例|example/i.test(sceneRules), "Do not seed another repeated English opening with an example");
     ok(!sceneRules.includes("第二句优先 I/we"));
     ok(!buildPromptText(level, "legacy_v1").includes("不机械套用 I feel"));
@@ -399,7 +398,7 @@ Deno.test("scene expressions follow atmosphere without prescribing distinct comm
 Deno.test("only scene expressions require a final question while photo expressions accept either form", () => {
   for (const level of levels) {
     const prompt = buildPromptText(level, "dual_tabs_v1");
-    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildSentenceMetadataRules()));
+    const sceneRules = prompt.slice(prompt.indexOf("scene_and_feelings："), prompt.indexOf(buildPhotoCategoryRules(false)));
     for (const rule of [
       "仅 scene_and_feelings 必须前两句陈述、第三句疑问",
       "以 ? 结尾，中文也用问句",

@@ -75,7 +75,6 @@ extension AppModel {
         switch try await performGenerationRequest(images: images, context: context) {
         case let .generated(result, session):
             try accountRequests.check(context.accountRevision)
-            observeGeneratedSentenceEnrichment(session: session, memoryID: result.memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             timing.start("client_local_save")
             let memory = makeGeneratedMemory(
                 from: result,
@@ -93,9 +92,8 @@ extension AppModel {
             outcome = "success"
             return memory
 
-        case let .recovered(memory, session):
+        case let .recovered(memory, _):
             try accountRequests.check(context.accountRevision)
-            observeGeneratedSentenceEnrichment(session: session, memoryID: memory.id, guestJobID: context.guestJobID, requestID: timing.requestID)
             outcome = "recovered"
             return memory
         }
@@ -317,12 +315,10 @@ extension AppModel {
         if isAnonymous {
             let localSentences = generationResult.memory.sentences.map { sentence in
                 SentenceRecord(
-                    // Keep the server-issued ID so its staged anonymous embedding can
-                    // be promoted when this memory is copied into an account later.
+                    // Keep the server-issued ID so guest import retains sentence identity.
                     id: sentence.id,
                     english: sentence.english,
                     chinese: sentence.chinese,
-                    learningTopicIDs: sentence.learningTopicIDs,
                     presentationGroup: sentence.presentationGroup,
                     isFavorite: sentence.isFavorite,
                     contentVersion: sentence.contentVersion,

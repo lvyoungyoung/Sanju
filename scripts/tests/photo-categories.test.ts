@@ -81,8 +81,8 @@ Deno.test("photo categories parse independently without changing sentence metada
       );
       ok(parsed);
       deepStrictEqual(parsed.tags, normalizePhotoCategories(tags));
-      deepStrictEqual(parsed.sentences[0].learning_topic_ids, ["pets_and_animals"]);
-      strictEqual(parsed.sentences[0].expression_purpose, "Describing a cat.");
+      strictEqual((parsed.sentences[0] as any).learning_topic_ids, undefined);
+      strictEqual((parsed.sentences[0] as any).expression_purpose, undefined);
       strictEqual(parsed.sentences.length, format === "legacy_v1" ? 3 : 6);
     }
   }
@@ -164,9 +164,7 @@ Deno.test("guest recovery returns photo categories unchanged and preserves owner
     const result = await (await handler(request("owner"))).json();
     strictEqual(result.recovered, true);
     deepStrictEqual(result.memory.tags, job.tags);
-    deepStrictEqual(result.memory.sentences[0].learning_topic_ids, [
-      "pets_and_animals",
-    ]);
+    strictEqual(result.memory.sentences[0].learning_topic_ids, undefined);
     strictEqual(result.remainingCredits, 9);
   }
   deepStrictEqual(await (await handler(request("other"))).json(), {

@@ -1,5 +1,4 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { normalizeSceneCategoryIDs } from "../_shared/scene-categories.ts"
 
 interface RequestBody {
   guestJobID?: string
@@ -113,11 +112,10 @@ Deno.serve(async (req) => {
         tags: Array.isArray(job.tags) ? job.tags : [],
         sentences: (usesDualTabFormat ? sentences : sentences.slice(0, 3)).map((sentence: any) => ({
           // Completed guest jobs already contain server-issued sentence IDs. Preserve
-          // them so a recovered local memory keeps its staged semantic embedding.
+          // them so recovery and guest import retain sentence identity.
           id: isUUID(sentence?.id) ? sentence.id : crypto.randomUUID(),
           english: String(sentence?.english ?? "").trim(),
           chinese: String(sentence?.chinese ?? "").trim(),
-          learning_topic_ids: normalizeLearningTopicIDs(sentence?.learning_topic_ids),
           ...(usesDualTabFormat
             ? {
                 presentation_group: sentence?.presentation_group === "what_i_say"
@@ -154,8 +152,4 @@ function jsonResponse(data: unknown, status = 200) {
 function isUUID(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
-}
-
-function normalizeLearningTopicIDs(value: unknown): string[] {
-  return normalizeSceneCategoryIDs(value, 2)
 }
