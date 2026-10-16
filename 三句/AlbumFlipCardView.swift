@@ -2,6 +2,29 @@ import ImageIO
 import SwiftUI
 import UIKit
 
+struct AlbumFlipNeighborCard: View {
+    let size: CGSize
+
+    var body: some View {
+        ZStack {
+            AppSurfaceColor.elevated
+            Ellipse()
+                .fill(AppStroke.subtle)
+                .frame(width: size.width * 1.3, height: size.height * 0.65)
+                .offset(x: -size.width * 0.2, y: -size.height * 0.2)
+            Ellipse()
+                .fill(AppPalette.accent.opacity(0.07))
+                .frame(width: size.width, height: size.height * 0.5)
+                .offset(x: size.width * 0.2, y: size.height * 0.25)
+        }
+        .frame(width: size.width, height: size.height)
+        .blur(radius: 24)
+        .background(AppSurfaceColor.elevated)
+        .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
 struct AlbumFlipFavoriteFeedbackView: View {
     let isFavorite: Bool
     var showsDoubleTapHint = true

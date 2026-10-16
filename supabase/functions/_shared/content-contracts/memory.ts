@@ -131,11 +131,26 @@ export function validateDialogue(value: unknown): SentenceDialogue {
   return { index: d.index, turn: d.turn }
 }
 
-// A pair is identified within its presentation group, not across the whole photo.
-export function validateSentenceCollection(sentences: SentenceContent[], format?: "dual_tabs_v1" | "dialogue_tabs_v1"): void {
+// Trio indices are global; historical tabs identify pairs within each group.
+export function validateSentenceCollection(sentences: SentenceContent[], format?: "dual_tabs_v1" | "dialogue_tabs_v1" | "dialogue_trio_v1"): void {
   if (new Set(sentences.map(s => s.id)).size !== sentences.length) throw new ContractError("duplicate_sentence_id")
   const hasDialogue = sentences.some(s => s.dialogue != null)
-  if (format === "dialogue_tabs_v1" || hasDialogue || sentences.length === 12) {
+  if (format === "dialogue_trio_v1" || (!format && hasDialogue && sentences.length === 6)) {
+    if (sentences.length !== 6) throw new ContractError("invalid_dialogue")
+    const keys = new Set<string>()
+    const groups = new Map<number, string>()
+    for (const s of sentences) {
+      const d = validateDialogue(s.dialogue)
+      if (!["what_i_see", "what_i_say"].includes(s.presentationGroup) ||
+          (d.index === 0 && s.presentationGroup !== "what_i_see") ||
+          (d.index === 2 && s.presentationGroup !== "what_i_say") ||
+          (groups.has(d.index) && groups.get(d.index) !== s.presentationGroup)) throw new ContractError("invalid_dialogue")
+      const key = `${d.index}:${d.turn}`
+      if (keys.has(key)) throw new ContractError("invalid_dialogue")
+      keys.add(key)
+      groups.set(d.index, s.presentationGroup)
+    }
+  } else if (format === "dialogue_tabs_v1" || hasDialogue || sentences.length === 12) {
     if (format === "dual_tabs_v1" || sentences.length !== 12) throw new ContractError("invalid_dialogue")
     const keys = new Set<string>()
     for (const s of sentences) {

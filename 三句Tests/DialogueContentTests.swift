@@ -105,13 +105,84 @@ final class DialogueContentTests: XCTestCase {
 
     func testNewGenerationUsesDialogueFormatAndOldSnapshotStillValidates() throws {
         let spec = GenerationSpec(selection: .legacyEnglish(explanationLanguage: .simplifiedChinese), level: .beginner)
-        XCTAssertEqual(spec.generationFormat, "dialogue_tabs_v1")
+        XCTAssertEqual(spec.generationFormat, "dialogue_trio_v1")
         try spec.validate()
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(spec)) as? [String: Any])
         json["generationFormat"] = "dual_tabs_v1"
         let old = try JSONDecoder().decode(GenerationSpec.self, from: JSONSerialization.data(withJSONObject: json))
         try old.validate()
         XCTAssertEqual(old.generationFormat, "dual_tabs_v1")
+        json["generationFormat"] = "dialogue_tabs_v1"
+        try JSONDecoder().decode(GenerationSpec.self, from: JSONSerialization.data(withJSONObject: json)).validate()
+    }
+
+    func testTrioRoundUsesPairOrderWithEitherMiddleStyleAndPreservesHistory() throws {
+        for middle in SentencePresentationGroup.allCases {
+            var original = trio(middle: middle)
+            original.sentences.reverse()
+            let items = AlbumFlipItem.makeItems(from: [original])
+            XCTAssertEqual(items.map { $0.sentence.dialogue?.index }, [0, 1, 2])
+            let deck = AlbumFlipDeck(items: items.reversed(), mode: .photoRounds, randomIndex: { $0 - 1 })
+            var visited: [UUID] = []
+            for index in 0..<3 {
+                let item = try XCTUnwrap(deck.currentItem)
+                XCTAssertEqual(item.sentence.dialogue?.index, index)
+                XCTAssertEqual(item.sentences.compactMap(\.dialogue?.turn), [0, 1])
+                visited.append(try XCTUnwrap(deck.currentPageID))
+                XCTAssertTrue(deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID)))
+            }
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertTrue(deck.navigate(.previous, cardID: try XCTUnwrap(deck.currentPageID)))
+            XCTAssertEqual(deck.currentPageID, visited.last)
+            XCTAssertTrue(deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID)))
+            XCTAssertTrue(deck.isShowingRoundBreak)
+            XCTAssertTrue(deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID)))
+            XCTAssertEqual(deck.currentItem?.sentence.dialogue?.index, 0)
+        }
+    }
+
+    func testTrioLocalCloudAndGuestRoundTrips() throws {
+        for middle in SentencePresentationGroup.allCases {
+            var original = trio(middle: middle)
+            original.sentences[1].isFavorite = true
+            let local = try JSONDecoder().decode(MemoryEntry.self, from: JSONEncoder().encode(original))
+            XCTAssertTrue(MemoryIdentity.isContentComplete(local))
+            let dto = SupabaseContentMemory(memory: local, imagePath: "owner/photo.jpg")
+            try dto.validate()
+            let restored = try dto.memory(imageData: local.imageData, isAnonymous: true)
+            XCTAssertEqual(restored.sentences, original.sentences)
+            let remote = try CloudSyncManager().makeRemoteMemories(from: [dto.record()])
+            XCTAssertEqual(remote.first?.sentences, original.sentences)
+        }
+    }
+
+    func testTrioRejectsMissingDuplicateAndCrossGroupTurns() throws {
+        let original = trio(middle: .whatISee)
+        var missing = original
+        missing.sentences.removeLast()
+        var duplicate = original
+        duplicate.sentences[1] = original.sentences[0]
+        var wrongGroup = original
+        wrongGroup.sentences[1] = SentenceRecord(targetText: original.sentences[1].targetText,
+            translationText: original.sentences[1].translationText, presentationGroup: .whatIDSay,
+            dialogue: original.sentences[1].dialogue)
+        var wrongIndex = original
+        let sentence = original.sentences[4]
+        wrongIndex.sentences[4] = SentenceRecord(targetText: sentence.targetText, translationText: sentence.translationText,
+            presentationGroup: sentence.presentationGroup, dialogue: SentenceDialogue(index: 1, turn: 0))
+        for invalid in [missing, duplicate, wrongGroup, wrongIndex] {
+            XCTAssertFalse(MemoryIdentity.isContentComplete(invalid))
+            XCTAssertThrowsError(try SupabaseContentMemory(memory: invalid, imagePath: "").validate())
+        }
+    }
+
+    private func trio(middle: SentencePresentationGroup) -> MemoryEntry {
+        MemoryEntry(imageData: Data([1, 2, 3]), sentences: (0..<6).map { index in
+            SentenceRecord(targetText: index % 2 == 0 ? "Shall we sit by the window for a while?" : "Yes, the afternoon light is really lovely over there.",
+                translationText: "A translated sentence.",
+                presentationGroup: index < 2 ? .whatISee : (index < 4 ? middle : .whatIDSay),
+                dialogue: SentenceDialogue(index: index / 2, turn: index % 2))
+        })
     }
 
     private func memory() -> MemoryEntry {

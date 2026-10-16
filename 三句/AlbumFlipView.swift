@@ -244,7 +244,19 @@ struct AlbumFlipView: View {
         return ZStack {
             ForEach(deck.browsingPages) { page in
                 let isFront = page.id == deck.currentPageID
-                pageContent(page, size: size, isFront: isFront, exitWidth: exitWidth)
+                let focus = AlbumFlipPagingMotion.focus(
+                    relativePosition: deck.relativePosition(of: page.id),
+                    translation: drag.width, pageWidth: exitWidth
+                )
+                let reveal = isFront ? 1 : AlbumFlipPagingMotion.contentReveal(focus: focus)
+                ZStack {
+                    // Keep photos warm, but show only abstract shapes at the sides.
+                    pageContent(page, size: size, isFront: isFront, exitWidth: exitWidth)
+                        .opacity(reveal)
+                    AlbumFlipNeighborCard(size: size)
+                        .opacity(1 - reveal)
+                        .allowsHitTesting(false)
+                }
                 .overlay {
                     if isFront, let feedback = favoriteFeedback, feedback.cardID == page.id {
                         AlbumFlipFavoriteFeedbackView(
@@ -254,7 +266,9 @@ struct AlbumFlipView: View {
                         .allowsHitTesting(false)
                     }
                 }
-                .shadow(color: .black.opacity(0.08), radius: 14, x: 0, y: 8)
+                .scaleEffect(x: 1, y: reduceMotion ? 1 : AlbumFlipPagingMotion.heightScale(focus: focus))
+                .shadow(color: .black.opacity(isFront ? 0.08 : 0.035), radius: isFront ? 14 : 8, x: 0, y: 8)
+                .zIndex(Double(focus))
                 .offset(x: reduceMotion ? 0 : AlbumFlipPagingMotion.offset(
                     relativePosition: deck.relativePosition(of: page.id),
                     translation: drag.width, pageWidth: exitWidth
@@ -488,6 +502,17 @@ struct AlbumFlipView: View {
 }
 
 enum AlbumFlipPagingMotion {
+    static func focus(relativePosition: Int, translation: CGFloat, pageWidth: CGFloat) -> CGFloat {
+        guard pageWidth > 0 else { return relativePosition == 0 ? 1 : 0 }
+        return 1 - min(1, abs(offset(relativePosition: relativePosition, translation: translation, pageWidth: pageWidth)) / pageWidth)
+    }
+
+    static func heightScale(focus: CGFloat) -> CGFloat { 0.92 + 0.08 * min(1, max(0, focus)) }
+
+    static func contentReveal(focus: CGFloat) -> Double {
+        Double(min(1, max(0, (focus - 0.55) / 0.45)))
+    }
+
     static func translation(_ x: CGFloat, pageWidth: CGFloat, canGoBack: Bool) -> CGFloat {
         guard pageWidth > 0 else { return 0 }
         if x > 0 && !canGoBack { return min(x * 0.22, 64) }

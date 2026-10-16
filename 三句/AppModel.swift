@@ -225,6 +225,25 @@ extension Array where Element == MemoryEntry {
 }
 
 extension Array where Element == SentenceRecord {
+    var isCompleteDialogueTrio: Bool {
+        guard count == 6, allSatisfy({ $0.dialogue?.isValid == true }),
+              Set(map(\.id)).count == count else { return false }
+        return (0..<3).allSatisfy { index in
+            let pair = filter { $0.dialogue?.index == index }
+            guard pair.count == 2, Set(pair.compactMap { $0.dialogue?.turn }) == Set([0, 1]),
+                  Set(pair.map(\.presentationGroup)).count == 1 else { return false }
+            return index == 1 || pair[0].presentationGroup == (index == 0 ? .whatISee : .whatIDSay)
+        }
+    }
+
+    var isCompleteSentenceCollection: Bool {
+        guard [3, 6, 12].contains(count), Set(map(\.id)).count == count else { return false }
+        if allSatisfy({ $0.dialogue == nil }) { return count != 12 }
+        if count == 6 { return isCompleteDialogueTrio }
+        return count == 12 && allSatisfy({ $0.dialogue?.isValid == true }) &&
+            Set(map { "\($0.presentationGroup.rawValue):\($0.dialogue!.index):\($0.dialogue!.turn)" }).count == 12
+    }
+
     var dialogueGroups: [SentenceDialogueGroup] {
         var groups: [SentenceDialogueGroup] = []
         var consumed = Set<UUID>()
@@ -240,7 +259,9 @@ extension Array where Element == SentenceRecord {
             consumed.formUnion(pair.map(\.id))
             groups.append(SentenceDialogueGroup(sentences: pair))
         }
-        return groups
+        return isCompleteDialogueTrio
+            ? groups.sorted { $0.sentences[0].dialogue!.index < $1.sentences[0].dialogue!.index }
+            : groups
     }
 
     func sentenceDictionaryByID() -> [UUID: SentenceRecord] {

@@ -4,6 +4,72 @@ import XCTest
 
 @MainActor
 final class SpeechButtonLayoutTests: XCTestCase {
+    func testResultPanelDisplaysAllThreePairsWithoutCategoryTabs() throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        defer { model.speech.stop() }
+        let memory = MemoryEntry(imageData: Data(), sentences: (0..<6).map { index in
+            SentenceRecord(english: index % 2 == 0 ? "Shall we sit by the window for a while?" : "Yes, the afternoon light is really lovely over there.",
+                chinese: index % 2 == 0 ? "我们在窗边坐一会儿好吗？" : "好啊，那边的午后阳光真的很舒服。",
+                presentationGroup: index < 2 ? .whatISee : .whatIDSay,
+                dialogue: SentenceDialogue(index: index / 2, turn: index % 2))
+        })
+        let panel = MemoryDetailSentencePanel(memory: memory).environmentObject(model).frame(width: 345)
+        let cardsOnly = VStack(spacing: 10) {
+            ForEach(memory.sentences.dialogueGroups) { group in
+                MemoryDialogueGroupCard(group: group, context: memory.context)
+            }
+        }.environmentObject(model).frame(width: 345)
+        XCTAssertEqual(try size(of: panel).height, try size(of: cardsOnly).height, accuracy: 1)
+        for scheme in [ColorScheme.light, .dark] {
+            let renderer = ImageRenderer(content: panel.padding(20).background(AppSurfaceColor.page)
+                .environment(\.colorScheme, scheme).fixedSize(horizontal: false, vertical: true))
+            let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+            attachment.name = "ThreeDialoguePairs-\(scheme)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+    }
+
+    func testDialogueResultCardsUseLessVerticalSpaceWithoutShrinkingTextOrButtons() throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        defer { model.speech.stop() }
+        let turns = [
+            SentenceRecord(english: "This looks like a lovely place to take a break.", chinese: "这里看起来很适合休息一下。", dialogue: SentenceDialogue(index: 0, turn: 0)),
+            SentenceRecord(english: "Let's grab a coffee and sit by the window.", chinese: "我们买杯咖啡，坐在窗边吧。", dialogue: SentenceDialogue(index: 0, turn: 1))
+        ]
+        for width in [CGFloat(280), 345] {
+            let compact = MemoryDialogueGroupCard(group: SentenceDialogueGroup(sentences: turns), context: .legacyEnglish)
+                .environmentObject(model).frame(width: width)
+            let previous = VStack(alignment: .leading, spacing: 16) {
+                MemoryDetailSentenceRow(sentence: turns[0])
+                Divider()
+                MemoryDetailSentenceRow(sentence: turns[1])
+            }.padding(20).environmentObject(model).frame(width: width)
+            let compactSize = try size(of: compact)
+            let previousSize = try size(of: previous)
+            XCTAssertEqual(compactSize.width, width, accuracy: 1)
+            XCTAssertLessThan(compactSize.height, previousSize.height - 60)
+            for scheme in [ColorScheme.light, .dark] {
+                for typeSize in [DynamicTypeSize.large, .accessibility3] {
+                    let renderer = ImageRenderer(content: compact
+                        .environment(\.colorScheme, scheme)
+                        .environment(\.dynamicTypeSize, typeSize)
+                        .fixedSize(horizontal: false, vertical: true))
+                    let image = try XCTUnwrap(renderer.uiImage)
+                    XCTAssertEqual(image.size.width, width, accuracy: 1)
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "CompactDialogue-\(Int(width))-\(scheme)-\(typeSize)"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
+    }
+
     func testPlaybackLabelKeepsItsSizeWhileLoading() throws {
         let suite = "SpeechButtonLayout.\(UUID())"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

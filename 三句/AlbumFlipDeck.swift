@@ -170,6 +170,15 @@ final class AlbumFlipDeck: ObservableObject {
                 remainingRoundItems = items
                 return
             }
+            let isDialogueTrio = items.count == 3 && Set(items.map(\.memoryID)).count == 1 &&
+                items.flatMap(\.sentences).isCompleteDialogueTrio
+            if isDialogueTrio {
+                let index = remainingRoundItems.indices.min {
+                    remainingRoundItems[$0].sentence.dialogue!.index < remainingRoundItems[$1].sentence.dialogue!.index
+                }!
+                pages.append(.sentence(AlbumFlipCard(item: remainingRoundItems.remove(at: index))))
+                return
+            }
             let sceneIndices = remainingRoundItems.indices.filter {
                 remainingRoundItems[$0].sentence.presentationGroup == .whatIDSay
             }

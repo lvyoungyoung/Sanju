@@ -68,24 +68,9 @@ struct MemoryDetailImageSkeleton: View {
 
 struct MemoryDetailSentencePanel: View {
     let memory: MemoryEntry
-    @State private var selectedGroup: SentencePresentationGroup = .whatIDSay
-
-    private var displayedSentences: [SentenceRecord] {
-        memory.sentences.filter { sentence in
-            sentence.presentationGroup == selectedGroup
-        }
-    }
-
     var body: some View {
         VStack(spacing: 10) {
-            SentenceGroupPicker(selection: $selectedGroup)
-            .onAppear {
-                if !memory.sentences.contains(where: { $0.presentationGroup == selectedGroup }) {
-                    selectedGroup = memory.sentences.first?.presentationGroup ?? .whatISee
-                }
-            }
-
-            if displayedSentences.isEmpty {
+            if memory.sentences.isEmpty {
                 ContentUnavailableView(
                     L10n.string("memory_detail.group.empty.title", "没有内容"),
                     systemImage: "text.badge.xmark"
@@ -93,7 +78,7 @@ struct MemoryDetailSentencePanel: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppSpacing.xLarge)
             } else {
-                ForEach(displayedSentences.dialogueGroups) { group in
+                ForEach(memory.sentences.dialogueGroups) { group in
                     MemoryDialogueGroupCard(group: group, context: memory.context)
                 }
             }
@@ -104,15 +89,16 @@ struct MemoryDetailSentencePanel: View {
 struct MemoryDialogueGroupCard: View {
     let group: SentenceDialogueGroup
     let context: MemoryContentContext
+    private var isDialogue: Bool { group.sentences.count == 2 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: isDialogue ? 10 : 16) {
             ForEach(group.sentences) { sentence in
                 if sentence.id != group.id { Divider().overlay(AppStroke.subtle) }
-                MemoryDetailSentenceRow(sentence: sentence, context: context)
+                MemoryDetailSentenceRow(sentence: sentence, context: context, isCompact: isDialogue)
             }
         }
-        .padding(20)
+        .padding(isDialogue ? 16 : 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .appCardBorder()
@@ -123,34 +109,51 @@ struct MemoryDetailSentenceRow: View {
     @EnvironmentObject private var appModel: AppModel
     let sentence: SentenceRecord
     var context: MemoryContentContext = .legacyEnglish
+    var isCompact = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.large) {
-            VStack(alignment: .leading, spacing: 10) {
-                if let dialogue = sentence.dialogue {
-                    SentenceSpeakerBadge(speaker: dialogue.speaker)
+        VStack(alignment: .leading, spacing: isCompact ? 8 : AppSpacing.large) {
+            if isCompact {
+                HStack(alignment: .top, spacing: 10) {
+                    if let dialogue = sentence.dialogue {
+                        SentenceSpeakerBadge(speaker: dialogue.speaker)
+                    }
+                    sentenceContent
                 }
-                Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
-                    .font(AppTypography.sentence)
-                    .lineSpacing(4)
-                    .foregroundStyle(AppTextColor.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
-
-                Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTextColor.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let dialogue = sentence.dialogue {
+                        SentenceSpeakerBadge(speaker: dialogue.speaker)
+                    }
+                    sentenceContent
+                }
             }
 
             SentenceActions(speech: appModel.speech, request: appModel.speech.request(sentence: sentence, context: context), isFavorite: sentence.isFavorite) {
                 appModel.toggleFavorite(sentenceID: sentence.id)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, isCompact ? 0 : 8)
     }
 
+    private var sentenceContent: some View {
+        VStack(alignment: .leading, spacing: isCompact ? 6 : 10) {
+            Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
+                .font(AppTypography.sentence)
+                .lineSpacing(isCompact ? 3 : 4)
+                .foregroundStyle(AppTextColor.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
+
+            Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
+                .font(.system(size: 13))
+                .foregroundStyle(AppTextColor.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 }
 
 struct MemoryDetailPagerControls: View {

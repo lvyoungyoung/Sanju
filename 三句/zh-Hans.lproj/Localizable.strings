@@ -284,7 +284,7 @@
 "purchase.empty" = "暂时没有可购买商品。";
 "purchase.footer" = "购买后次数会同步到你的账号，可在多设备继续使用。";
 "purchase.hero.remaining" = "当前剩余 %d 次";
-"purchase.hero.subtitle" = "每次上传一张照片，都会生成六组简短对话与对应翻译。";
+"purchase.hero.subtitle" = "每次上传一张照片，都会生成三组简短对话与对应翻译。";
 "purchase.hero.title" = "继续记录你的生活\n也继续把瞬间变成可学习内容";
 "purchase.loading.subtitle" = "马上就好，正在同步最新价格";
 "purchase.loading.title" = "正在准备购买方案...";

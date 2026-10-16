@@ -849,36 +849,8 @@ private struct NewLearningResultPanel<Content: View>: View {
 
 private struct NewLearningSentenceList: View {
     let memory: MemoryEntry
-    @State private var selectedGroup: SentencePresentationGroup = .whatIDSay
-
-    private var displayedSentences: [SentenceRecord] {
-        memory.sentences.filter { sentence in
-            sentence.presentationGroup == selectedGroup
-        }
-    }
-
     var body: some View {
-        VStack(spacing: 10) {
-            SentenceGroupPicker(selection: $selectedGroup)
-            .onAppear {
-                if !memory.sentences.contains(where: { $0.presentationGroup == selectedGroup }) {
-                    selectedGroup = memory.sentences.first?.presentationGroup ?? .whatISee
-                }
-            }
-
-            if displayedSentences.isEmpty {
-                ContentUnavailableView(
-                    L10n.string("memory_detail.group.empty.title", "没有内容"),
-                    systemImage: "text.badge.xmark"
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.xLarge)
-            } else {
-                ForEach(displayedSentences.dialogueGroups) { group in
-                    MemoryDialogueGroupCard(group: group, context: memory.context)
-                }
-            }
-        }
+        MemoryDetailSentencePanel(memory: memory)
     }
 }
 

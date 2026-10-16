@@ -284,7 +284,7 @@
 "purchase.empty" = "No products are currently available.";
 "purchase.footer" = "Purchased credits will sync to your account and can be used on multiple devices.";
 "purchase.hero.remaining" = "%d credits left";
-"purchase.hero.subtitle" = "Each uploaded photo generates six short conversations with translations, ready for learning.";
+"purchase.hero.subtitle" = "Each uploaded photo generates three short conversations with translations, ready for learning.";
 "purchase.hero.title" = "Keep recording your life\nand keep turning moments into something you can learn from";
 "purchase.loading.subtitle" = "Almost there, syncing the latest prices";
 "purchase.loading.title" = "Preparing purchase options...";

@@ -23,6 +23,9 @@ extension SupabaseService {
         if spec.generationFormat == "dialogue_tabs_v1", result.memory.sentences.count != 12 {
             throw SupabaseServiceError.invalidResponse
         }
+        if spec.generationFormat == "dialogue_trio_v1", !result.memory.sentences.isCompleteDialogueTrio {
+            throw SupabaseServiceError.invalidResponse
+        }
         return result
     }
 

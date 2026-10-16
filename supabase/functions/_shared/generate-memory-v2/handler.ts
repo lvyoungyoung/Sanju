@@ -8,7 +8,7 @@ import { loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGues
 import { type GenerationViolationRecord, moderateImageBeforeGeneration, isGenerationViolationBanEnabled, isFutureTimestamp, recordGenerationViolation, buildGenerationPolicyViolationError } from "./moderation.ts"
 import { persistGeneratedResult } from "./persist-result.ts"
 import { prepareGenerationRequest } from "../generation/spec.ts"
-import { buildMultilingualPrompt, generationCompletionTokenBudget, parseMultilingualContent, type GeneratedSentence } from "../generation/content.ts"
+import { buildMultilingualPrompt, generationCompletionTokenBudget, parseMultilingualContent, selectDialogueMiddleGroup, type GeneratedSentence } from "../generation/content.ts"
 import { claimGeneration, recoverGeneration, recoveryResponse, persistMultilingualResult } from "../generation/adapter.ts"
 import type { Sentence } from "./content.ts"
 import { readAssistanceJSON } from "../assistance-input.ts"
@@ -271,12 +271,14 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
     }
 
     const guestImagePath = isAnonymous ? `${user.id}/guest/${guestJobID}.jpg` : null
+    // The winning claim persists this one choice; fallback never samples again.
+    const dialogueMiddleGroup = prepared?.spec.generationFormat === "dialogue_trio_v1" ? selectDialogueMiddleGroup() : undefined
     let guestImageUploaded = false
     const requestID = isAnonymous ? guestJobID! : authenticatedClientRequestID
     if (requestID) {
       timing.start("job_claim")
       const { data: claim, error: claimError } = prepared
-        ? { data: await claimGeneration(adminClient, prepared, user.id, isAnonymous, guestImagePath), error: null }
+        ? { data: await claimGeneration(adminClient, prepared, user.id, isAnonymous, guestImagePath, dialogueMiddleGroup), error: null }
         : await adminClient.rpc("claim_generation_job", {
         p_user_id: user.id,
         p_request_id: requestID,
@@ -381,8 +383,8 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
 
     timing.start("prompt")
     // Choose once so retries and provider fallback keep the same scene question type.
-    const sceneQuestionType = generationFormat === "dual_tabs_v1" ? selectSceneQuestionType() : undefined
-    const promptText = prepared ? buildMultilingualPrompt(prepared.spec, sceneQuestionType) : buildPromptText(englishLevel, generationFormat, sceneQuestionType)
+    const sceneQuestionType = generationFormat === "dual_tabs_v1" && prepared?.spec.generationFormat !== "dialogue_trio_v1" ? selectSceneQuestionType() : undefined
+    const promptText = prepared ? buildMultilingualPrompt(prepared.spec, sceneQuestionType, dialogueMiddleGroup) : buildPromptText(englishLevel, generationFormat, sceneQuestionType)
 
     const completionResult = await requestWithFallback<Sentence | GeneratedSentence>({
       imageBase64,
@@ -395,7 +397,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       generationFormat,
       fetcher: generationFetch,
       timing,
-      ...(prepared ? { parseContent: (raw: string) => parseMultilingualContent(raw, prepared.spec) } : {}),
+      ...(prepared ? { parseContent: (raw: string) => parseMultilingualContent(raw, prepared.spec, dialogueMiddleGroup) } : {}),
       ...(prepared ? { maxCompletionTokens: generationCompletionTokenBudget(prepared.spec) } : {}),
     })
 

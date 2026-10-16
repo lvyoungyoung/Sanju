@@ -5,12 +5,12 @@ export interface GenerationSpec extends Omit<ContentContext, "schemaVersion"> {
   schemaVersion: 1
   catalogVersion: 1
   level: LearningLevel
-  generationFormat: "dual_tabs_v1" | "dialogue_tabs_v1"
+  generationFormat: "dual_tabs_v1" | "dialogue_tabs_v1" | "dialogue_trio_v1"
 }
 
 export function validateGenerationSpec(value: unknown): GenerationSpec {
   const s = record(value)
-  if (s.schemaVersion !== 1 || s.catalogVersion !== languageCatalog.catalogVersion || !["dual_tabs_v1", "dialogue_tabs_v1"].includes(s.generationFormat) ||
+  if (s.schemaVersion !== 1 || s.catalogVersion !== languageCatalog.catalogVersion || !["dual_tabs_v1", "dialogue_tabs_v1", "dialogue_trio_v1"].includes(s.generationFormat) ||
       !hasTeachingLocale(s.targetLanguage, s.teachingLocale) || !languageCatalog.levels.includes(s.level) ||
       !supportsGeneration(s.targetLanguage, s.translationLanguage)) {
     throw new ContractError("invalid_generation_spec")

@@ -17,11 +17,8 @@ struct SupabaseContentMemory: Codable {
             throw SupabaseServiceError.invalidResponse
         }
         for sentence in sentences { try sentence.validate(context: context) }
-        if sentences.contains(where: { $0.dialogue != nil }) || sentences.count == 12 {
-            guard sentences.count == 12, sentences.allSatisfy({ $0.dialogue != nil }),
-                  Set(sentences.map { "\($0.presentationGroup.rawValue):\($0.dialogue!.index):\($0.dialogue!.turn)" }).count == 12 else {
-                throw SupabaseServiceError.invalidResponse
-            }
+        guard sentences.map(\.sentence).isCompleteSentenceCollection else {
+            throw SupabaseServiceError.invalidResponse
         }
     }
 

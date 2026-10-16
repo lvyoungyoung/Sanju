@@ -57,6 +57,22 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertEqual(AlbumFlipPagingMotion.translation(100, pageWidth: 0, canGoBack: true), 0)
     }
 
+    func testNeighborDepthAndRevealFollowDragWithoutJumpingAtPromotion() {
+        let stride: CGFloat = 360
+        for side in [-1, 1] {
+            let resting = AlbumFlipPagingMotion.focus(relativePosition: side, translation: 0, pageWidth: stride)
+            XCTAssertEqual(AlbumFlipPagingMotion.heightScale(focus: resting), 0.92, accuracy: 0.001)
+            XCTAssertEqual(AlbumFlipPagingMotion.contentReveal(focus: resting), 0)
+            let halfway = AlbumFlipPagingMotion.focus(relativePosition: side, translation: -CGFloat(side) * stride / 2, pageWidth: stride)
+            XCTAssertEqual(AlbumFlipPagingMotion.contentReveal(focus: halfway), 0)
+            let arriving = AlbumFlipPagingMotion.focus(relativePosition: side, translation: -CGFloat(side) * stride, pageWidth: stride)
+            let promoted = AlbumFlipPagingMotion.focus(relativePosition: 0, translation: 0, pageWidth: stride)
+            XCTAssertEqual(arriving, promoted)
+            XCTAssertEqual(AlbumFlipPagingMotion.heightScale(focus: arriving), 1, accuracy: 0.001)
+            XCTAssertEqual(AlbumFlipPagingMotion.contentReveal(focus: arriving), 1, accuracy: 0.001)
+        }
+    }
+
     func testNeighborPeekAndPagingDistanceStayConsistentAcrossScreenSizes() {
         for width: CGFloat in [320, 393, 430, 1024] {
             let cardWidth = AlbumFlipLayout.cardSize(in: CGSize(width: width, height: 600)).width
