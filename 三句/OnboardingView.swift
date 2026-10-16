@@ -485,7 +485,7 @@ struct OnboardingFlipDemo {
     private(set) var index = 0
     var phase: OnboardingFlipPhase = .listening
     var nextIndex: Int { (index + 1) % Self.cards.count }
-    var swipeDirection: CGFloat { index.isMultiple(of: 2) ? -1 : 1 }
+    var swipeDirection: CGFloat { -1 }
 
     mutating func advance() {
         index = nextIndex
@@ -521,16 +521,11 @@ struct OnboardingFlipArtwork: View {
             }
             .padding(.bottom, 10)
             HStack(spacing: 24) {
-                Label(L10n.string("album_flip.again", "再看看"), systemImage: "arrow.uturn.backward")
-                    .foregroundStyle(phase == .swiping && demo.swipeDirection < 0 ? AppPalette.accentText : AppTextColor.secondary)
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.system(size: 18))
                     .foregroundStyle(phase.isListening ? AppPalette.accentText : AppTextColor.tertiary)
                     .symbolEffect(.variableColor.iterative, options: .repeating,
                                   isActive: isAnimating && phase.isListening)
-                Label(L10n.string("album_flip.familiar", "熟悉了"), systemImage: "checkmark")
-                    .foregroundStyle(phase == .familiar || (phase == .swiping && demo.swipeDirection > 0)
-                                     ? AppPalette.accentText : AppTextColor.secondary)
             }
             .font(.system(.subheadline, weight: .medium))
             .frame(minHeight: 36)

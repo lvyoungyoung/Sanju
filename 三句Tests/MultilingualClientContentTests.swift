@@ -210,7 +210,12 @@ final class MultilingualClientContentTests: XCTestCase {
     }
 
     func testGenerationUsesV3SnapshotSpecAndKeepsStableIDs() async throws {
-        let original = memory()
+        var original = memory()
+        original.sentences = (0..<12).map { index in
+            SentenceRecord(targetText: "Podemos tomar otro cafe antes de volver al trabajo.", translationText: "We can have another coffee.",
+                presentationGroup: index < 6 ? .whatISee : .whatIDSay,
+                dialogue: SentenceDialogue(index: (index % 6) / 2, turn: index % 2))
+        }
         let requestID = UUID().uuidString.lowercased()
         let api = try service([["status": "completed", "memory": try wire(original), "remainingCredits": 7,
                                 "clientRequestID": requestID]])
@@ -224,6 +229,7 @@ final class MultilingualClientContentTests: XCTestCase {
         let sentSpec = try XCTUnwrap(body["generationSpec"] as? [String: Any])
         XCTAssertEqual(sentSpec["targetLanguage"] as? String, "es")
         XCTAssertEqual(sentSpec["level"] as? String, "beginner")
+        XCTAssertEqual(sentSpec["generationFormat"] as? String, "dialogue_tabs_v1")
         XCTAssertEqual(body["clientRequestID"] as? String, requestID)
     }
 

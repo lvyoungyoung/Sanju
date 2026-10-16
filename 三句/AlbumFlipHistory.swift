@@ -1,5 +1,11 @@
 import Foundation
 
+// Retained for historical records and pending feedback from older clients.
+nonisolated enum AlbumFlipFeedback: String, Codable {
+    case again
+    case familiar
+}
+
 nonisolated struct AlbumFlipEvent: Codable, Equatable, Identifiable {
     let id: UUID
     let memoryID: UUID

@@ -93,14 +93,29 @@ struct MemoryDetailSentencePanel: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppSpacing.xLarge)
             } else {
-                ForEach(displayedSentences) { sentence in
-                    MemoryDetailSentenceRow(sentence: sentence, context: memory.context)
-                        .padding(20)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-                        .appCardBorder()
+                ForEach(displayedSentences.dialogueGroups) { group in
+                    MemoryDialogueGroupCard(group: group, context: memory.context)
                 }
             }
         }
+    }
+}
+
+struct MemoryDialogueGroupCard: View {
+    let group: SentenceDialogueGroup
+    let context: MemoryContentContext
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(group.sentences) { sentence in
+                if sentence.id != group.id { Divider().overlay(AppStroke.subtle) }
+                MemoryDetailSentenceRow(sentence: sentence, context: context)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+        .appCardBorder()
     }
 }
 
@@ -112,6 +127,9 @@ struct MemoryDetailSentenceRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
             VStack(alignment: .leading, spacing: 10) {
+                if let dialogue = sentence.dialogue {
+                    SentenceSpeakerBadge(speaker: dialogue.speaker)
+                }
                 Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
                     .font(AppTypography.sentence)
                     .lineSpacing(4)

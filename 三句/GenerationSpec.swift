@@ -13,13 +13,14 @@ nonisolated struct GenerationSpec: Codable, Hashable, Sendable {
         schemaVersion = 1; catalogVersion = LanguageCatalog.version
         targetLanguage = selection.targetLanguage; translationLanguage = selection.translationLanguage
         teachingLocale = selection.targetLanguage.teachingLocale; self.level = level
-        generationFormat = "dual_tabs_v1"
+        generationFormat = "dialogue_tabs_v1"
     }
     var context: MemoryContentContext {
         MemoryContentContext(targetLanguage: targetLanguage, translationLanguage: translationLanguage, teachingLocale: teachingLocale)
     }
     func validate() throws {
-        guard schemaVersion == 1, catalogVersion == LanguageCatalog.version, generationFormat == "dual_tabs_v1" else {
+        guard schemaVersion == 1, catalogVersion == LanguageCatalog.version,
+              ["dual_tabs_v1", "dialogue_tabs_v1"].contains(generationFormat) else {
             throw LanguageContractError.unsupportedVersion
         }
         try context.validate()

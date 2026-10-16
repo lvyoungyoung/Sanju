@@ -13,10 +13,16 @@ struct SupabaseContentMemory: Codable {
     func validate() throws {
         guard schemaVersion == 2 else { throw LanguageContractError.unsupportedVersion }
         try context.validate()
-        guard [3, 6].contains(sentences.count), Set(sentences.map(\.id)).count == sentences.count else {
+        guard [3, 6, 12].contains(sentences.count), Set(sentences.map(\.id)).count == sentences.count else {
             throw SupabaseServiceError.invalidResponse
         }
         for sentence in sentences { try sentence.validate(context: context) }
+        if sentences.contains(where: { $0.dialogue != nil }) || sentences.count == 12 {
+            guard sentences.count == 12, sentences.allSatisfy({ $0.dialogue != nil }),
+                  Set(sentences.map { "\($0.presentationGroup.rawValue):\($0.dialogue!.index):\($0.dialogue!.turn)" }).count == 12 else {
+                throw SupabaseServiceError.invalidResponse
+            }
+        }
     }
 
     func memory(imageData: Data, isAnonymous: Bool) throws -> MemoryEntry {
@@ -36,7 +42,7 @@ struct SupabaseContentMemory: Codable {
                 english: sentence.targetText, chinese: sentence.translationText, learningTopicIDs: nil,
                 presentationGroup: sentence.presentationGroup.rawValue,
                 isFavorite: sentence.isFavorite, contentVersion: sentence.contentVersion,
-                learningMaterial: sentence.learningMaterial)
+                learningMaterial: sentence.learningMaterial, dialogue: sentence.dialogue)
         }, context: context)
     }
 
@@ -77,6 +83,7 @@ struct SupabaseContentSentence: Codable {
     let presentationGroup: SentencePresentationGroup
     let isFavorite: Bool
     let learningMaterial: SentenceLearningMaterial?
+    let dialogue: SentenceDialogue?
 
     init(_ sentence: SentenceRecord) {
         id = sentence.id
@@ -86,10 +93,12 @@ struct SupabaseContentSentence: Codable {
         presentationGroup = sentence.presentationGroup
         isFavorite = sentence.isFavorite
         learningMaterial = sentence.learningMaterial
+        dialogue = sentence.dialogue
     }
 
     func validate(context: MemoryContentContext) throws {
         guard contentVersion == 1 else { throw LanguageContractError.unsupportedVersion }
+        if let dialogue, !dialogue.isValid { throw SupabaseServiceError.invalidResponse }
         guard !targetText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !translationText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SupabaseServiceError.invalidResponse
@@ -105,7 +114,7 @@ struct SupabaseContentSentence: Codable {
         SentenceRecord(id: id, targetText: targetText, translationText: translationText,
                        contentVersion: contentVersion, learningMaterial: learningMaterial,
                        presentationGroup: presentationGroup,
-                       isFavorite: isFavorite)
+                       isFavorite: isFavorite, dialogue: dialogue)
     }
 }
 
@@ -134,7 +143,7 @@ struct SupabaseContentGenerationResponse: Decodable {
         guard status == "completed" || status == "acknowledged" else {
             throw SupabaseServiceError.apiError(status == "failed" ? "generation_failed" : "generation_pending")
         }
-        guard let memory, let remainingCredits, remainingCredits >= 0, [3, 6].contains(memory.sentences.count) else {
+        guard let memory, let remainingCredits, remainingCredits >= 0, [3, 6, 12].contains(memory.sentences.count) else {
             throw SupabaseServiceError.invalidResponse
         }
         return SupabaseGenerateMemoryResult(memory: try memory.memory(imageData: imageData, isAnonymous: isAnonymous),

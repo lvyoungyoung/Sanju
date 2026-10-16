@@ -8,7 +8,13 @@ enum MemoryIdentity {
     }
 
     static func isContentComplete(_ memory: MemoryEntry) -> Bool {
-        guard memory.sentences.count == 3 || memory.sentences.count == 6 else { return false }
+        guard [3, 6, 12].contains(memory.sentences.count) else { return false }
+        if memory.sentences.contains(where: { $0.dialogue != nil }) || memory.sentences.count == 12 {
+            guard memory.sentences.count == 12,
+                  memory.sentences.allSatisfy({ $0.dialogue?.isValid == true }),
+                  memory.sentences.dialogueGroups.count == 6,
+                  memory.sentences.dialogueGroups.allSatisfy({ $0.sentences.count == 2 }) else { return false }
+        }
 
         return memory.sentences.allSatisfy {
             !$0.english.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&

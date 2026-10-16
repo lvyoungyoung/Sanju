@@ -69,26 +69,34 @@ struct AlbumFlipSentenceCard<Photo: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             photo()
-                .frame(width: size.width, height: max(80, min(360, size.height * 0.56)))
+                .frame(width: size.width, height: max(80, min(360, size.height * (item.reply == nil ? 0.56 : 0.43))))
                 .clipped()
                 .accessibilityLabel(L10n.string("album_flip.photo", "这句话对应的照片"))
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(sentenceText: item.sentence.targetText, language: item.context.teachingLocale.rawValue)
-                        .font(.custom("AvenirNext-DemiBold", size: 23, relativeTo: .title3))
-                        .foregroundStyle(AppTextColor.primary)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    SentenceReadingView(sentence: item.sentence, context: item.context, isEnabled: showsJapaneseReadings)
-
-                    if showsTranslation {
-                        Text(sentenceText: item.sentence.translationText, language: item.context.translationLanguage.rawValue)
-                            .font(.body)
-                            .foregroundStyle(AppTextColor.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .transition(.opacity)
+                    ForEach(item.sentences) { sentence in
+                        HStack(alignment: .top, spacing: 12) {
+                            if item.reply != nil, let dialogue = sentence.dialogue {
+                                SentenceSpeakerBadge(speaker: dialogue.speaker)
+                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(sentenceText: sentence.targetText, language: item.context.teachingLocale.rawValue)
+                                    .font(.custom("AvenirNext-DemiBold", size: item.reply == nil ? 23 : 21, relativeTo: .title3))
+                                    .foregroundStyle(AppTextColor.primary)
+                                    .lineSpacing(4)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                SentenceReadingView(sentence: sentence, context: item.context, isEnabled: showsJapaneseReadings)
+                                if showsTranslation {
+                                    Text(sentenceText: sentence.translationText, language: item.context.translationLanguage.rawValue)
+                                        .font(.body)
+                                        .foregroundStyle(AppTextColor.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .transition(.opacity)
+                                }
+                            }
+                        }
+                        .padding(.bottom, item.reply == nil ? 0 : 6)
                     }
 
                     Button(action: onToggleTranslation) {
@@ -117,6 +125,20 @@ struct AlbumFlipSentenceCard<Photo: View>: View {
         .background(AppSurfaceColor.card)
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+    }
+}
+
+struct SentenceSpeakerBadge: View {
+    @ScaledMetric(relativeTo: .caption) private var diameter = 26.0
+    let speaker: String
+
+    var body: some View {
+        Text(speaker)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(AppTextColor.secondary)
+            .frame(width: diameter, height: diameter)
+            .background(AppSurfaceColor.elevated, in: Circle())
+            .accessibilityLabel(L10n.string("dialogue.speaker", "说话人") + " " + speaker)
     }
 }
 

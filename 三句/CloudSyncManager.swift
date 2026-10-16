@@ -83,7 +83,8 @@ struct CloudSyncManager {
                     learningMaterial: sentence.learningMaterial,
                     learningTopicIDs: sentence.learningTopicIDs ?? [],
                     presentationGroup: group,
-                    isFavorite: sentence.isFavorite
+                    isFavorite: sentence.isFavorite,
+                    dialogue: sentence.dialogue
                 )
             }
 

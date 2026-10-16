@@ -322,7 +322,8 @@ extension AppModel {
                     presentationGroup: sentence.presentationGroup,
                     isFavorite: sentence.isFavorite,
                     contentVersion: sentence.contentVersion,
-                    learningMaterial: sentence.learningMaterial
+                    learningMaterial: sentence.learningMaterial,
+                    dialogue: sentence.dialogue
                 )
             }
             return MemoryEntry(

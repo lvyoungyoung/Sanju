@@ -874,47 +874,12 @@ private struct NewLearningSentenceList: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppSpacing.xLarge)
             } else {
-                ForEach(displayedSentences) { sentence in
-                    NewLearningSentenceRow(sentence: sentence, context: memory.context)
-                        .padding(20)
-                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-                        .appCardBorder()
+                ForEach(displayedSentences.dialogueGroups) { group in
+                    MemoryDialogueGroupCard(group: group, context: memory.context)
                 }
             }
         }
     }
-}
-
-private struct NewLearningSentenceRow: View {
-    @EnvironmentObject private var appModel: AppModel
-
-    let sentence: SentenceRecord
-    let context: MemoryContentContext
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.large) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
-                    .font(AppTypography.sentence)
-                    .lineSpacing(4)
-                    .foregroundStyle(AppTextColor.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
-
-                Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTextColor.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            SentenceActions(speech: appModel.speech, request: appModel.speech.request(sentence: sentence, context: context), isFavorite: sentence.isFavorite) {
-                appModel.toggleFavorite(sentenceID: sentence.id)
-            }
-        }
-        .padding(.vertical, 8)
-    }
-
 }
 
 private struct GeneratingImageOverlay: View {

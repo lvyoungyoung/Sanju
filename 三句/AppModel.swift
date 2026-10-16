@@ -22,12 +22,21 @@ enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
     }
 }
 
+nonisolated struct SentenceDialogue: Codable, Hashable, Sendable {
+    let index: Int
+    let turn: Int
+
+    var isValid: Bool { (0..<3).contains(index) && (0..<2).contains(turn) }
+    var speaker: String { turn == 0 ? "A" : "B" }
+}
+
 struct SentenceRecord: Identifiable, Codable, Hashable {
     let id: UUID
     let targetText: String
     let translationText: String
     let contentVersion: Int
     let learningMaterial: SentenceLearningMaterial?
+    let dialogue: SentenceDialogue?
     var english: String { targetText }
     var chinese: String { translationText }
     let learningTopicIDs: [String]
@@ -42,13 +51,15 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         presentationGroup: SentencePresentationGroup = .whatISee,
         isFavorite: Bool = false,
         contentVersion: Int = 1,
-        learningMaterial: SentenceLearningMaterial? = nil
+        learningMaterial: SentenceLearningMaterial? = nil,
+        dialogue: SentenceDialogue? = nil
     ) {
         self.id = id
         self.targetText = english
         self.translationText = chinese
         self.contentVersion = contentVersion
         self.learningMaterial = learningMaterial
+        self.dialogue = dialogue
         self.learningTopicIDs = learningTopicIDs
         self.presentationGroup = presentationGroup
         self.isFavorite = isFavorite
@@ -58,7 +69,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         case id
         case english
         case chinese
-        case targetText, translationText, contentVersion, learningMaterial
+        case targetText, translationText, contentVersion, learningMaterial, dialogue
         case learningTopicIDs
         case presentationGroup
         case isFavorite
@@ -80,16 +91,19 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
             learningMaterial = nil
         }
         learningTopicIDs = try container.decodeIfPresent([String].self, forKey: .learningTopicIDs) ?? []
+        dialogue = try container.decodeIfPresent(SentenceDialogue.self, forKey: .dialogue)
+        if let dialogue, !dialogue.isValid { throw LanguageContractError.unsupportedVersion }
         presentationGroup = try container.decodeIfPresent(SentencePresentationGroup.self, forKey: .presentationGroup) ?? .whatISee
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 
     init(id: UUID = UUID(), targetText: String, translationText: String, contentVersion: Int = 1,
          learningMaterial: SentenceLearningMaterial? = nil, learningTopicIDs: [String] = [],
-         presentationGroup: SentencePresentationGroup = .whatISee, isFavorite: Bool = false) {
+         presentationGroup: SentencePresentationGroup = .whatISee, isFavorite: Bool = false,
+         dialogue: SentenceDialogue? = nil) {
         self.init(id: id, english: targetText, chinese: translationText, learningTopicIDs: learningTopicIDs,
                   presentationGroup: presentationGroup, isFavorite: isFavorite,
-                  contentVersion: contentVersion, learningMaterial: learningMaterial)
+                  contentVersion: contentVersion, learningMaterial: learningMaterial, dialogue: dialogue)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -99,6 +113,7 @@ struct SentenceRecord: Identifiable, Codable, Hashable {
         try c.encode(translationText, forKey: .translationText)
         try c.encode(contentVersion, forKey: .contentVersion)
         try c.encodeIfPresent(learningMaterial, forKey: .learningMaterial)
+        try c.encodeIfPresent(dialogue, forKey: .dialogue)
         try c.encode(presentationGroup, forKey: .presentationGroup)
         try c.encode(isFavorite, forKey: .isFavorite)
     }
@@ -210,11 +225,34 @@ extension Array where Element == MemoryEntry {
 }
 
 extension Array where Element == SentenceRecord {
+    var dialogueGroups: [SentenceDialogueGroup] {
+        var groups: [SentenceDialogueGroup] = []
+        var consumed = Set<UUID>()
+        for sentence in self where !consumed.contains(sentence.id) {
+            let pair: [SentenceRecord]
+            if let dialogue = sentence.dialogue {
+                let matches = filter { $0.presentationGroup == sentence.presentationGroup && $0.dialogue?.index == dialogue.index }
+                pair = matches.count == 2 && Set(matches.compactMap { $0.dialogue?.turn }) == Set([0, 1])
+                    ? matches.sorted { $0.dialogue!.turn < $1.dialogue!.turn } : [sentence]
+            } else {
+                pair = [sentence]
+            }
+            consumed.formUnion(pair.map(\.id))
+            groups.append(SentenceDialogueGroup(sentences: pair))
+        }
+        return groups
+    }
+
     func sentenceDictionaryByID() -> [UUID: SentenceRecord] {
         reduce(into: [UUID: SentenceRecord]()) { partialResult, sentence in
             partialResult[sentence.id] = partialResult[sentence.id] ?? sentence
         }
     }
+}
+
+struct SentenceDialogueGroup: Identifiable {
+    let sentences: [SentenceRecord]
+    var id: UUID { sentences[0].id }
 }
 
 struct UserProfile: Codable, Hashable {

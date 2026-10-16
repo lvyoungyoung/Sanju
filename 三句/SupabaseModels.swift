@@ -65,6 +65,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
     let isFavorite: Bool
     var contentVersion: Int = 1
     var learningMaterial: SentenceLearningMaterial? = nil
+    var dialogue: SentenceDialogue? = nil
 
     var targetText: String { english }
     var translationText: String { chinese }
@@ -77,6 +78,7 @@ struct SupabaseMemorySentenceRecord: Decodable {
         case learningTopicIDs = "learning_topic_ids"
         case presentationGroup = "presentation_group"
         case isFavorite = "is_favorite"
+        case dialogue
     }
 }
 

@@ -160,7 +160,7 @@
 "favorites.study_count" = "已学 %d 次";
 "favorites.syncing.subtitle" = "马上就好，正在更新你的收藏内容";
 "favorites.syncing.title" = "正在同步收藏...";
-"memories.empty.subtitle" = "在“新的”里上传第一张照片，生成你的第一组三句话。";
+"memories.empty.subtitle" = "在“新的”里上传第一张照片，生成与你的生活有关的对话。";
 "memories.empty.title" = "还没有回忆";
 "study.empty.photo_title" = "从一张照片开始学习";
 "content.empty.add_photo_message" = "添加一张你想记住的照片，让它变成可以反复学习的表达。";
@@ -284,7 +284,7 @@
 "purchase.empty" = "暂时没有可购买商品。";
 "purchase.footer" = "购买后次数会同步到你的账号，可在多设备继续使用。";
 "purchase.hero.remaining" = "当前剩余 %d 次";
-"purchase.hero.subtitle" = "每次上传一张照片，都会生成三句适合学习的简洁描述与对应翻译。";
+"purchase.hero.subtitle" = "每次上传一张照片，都会生成六组简短对话与对应翻译。";
 "purchase.hero.title" = "继续记录你的生活\n也继续把瞬间变成可学习内容";
 "purchase.loading.subtitle" = "马上就好，正在同步最新价格";
 "purchase.loading.title" = "正在准备购买方案...";
@@ -509,7 +509,9 @@
 "album_flip.playing" = "朗读中";
 "album_flip.mute" = "关闭自动朗读";
 "album_flip.unmute" = "开启自动朗读";
-"album_flip.photo" = "这句话对应的照片";
+"album_flip.photo" = "这段表达对应的照片";
+"dialogue.speaker" = "说话人";
+"dialogue.context" = "对话上下文";
 "album_flip.photo_unavailable" = "照片暂时无法加载";
 "album_flip.show_translation" = "查看翻译";
 "album_flip.hide_translation" = "收起翻译";
@@ -517,7 +519,9 @@
 "album_flip.complete.body" = "换一张照片，继续翻你的语言相册。";
 "album_flip.complete.choose_another" = "再上传一张";
 "album_flip.round.title" = "继续翻，重复听";
-"album_flip.round.body" = "左右滑动，再听一遍这几句话。\n也可以上传新照片，学点新的。";
+"album_flip.round.body" = "继续翻，再听一遍这些表达。\n也可以上传新照片，学点新的。";
+"album_flip.previous" = "上一张";
+"album_flip.next" = "下一张";
 "album_flip.round.continue" = "继续翻一翻";
 "photo_category.people_and_portraits" = "人物与合影";
 "photo_category.food_and_drinks" = "美食与饮品";

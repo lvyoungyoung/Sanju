@@ -262,11 +262,11 @@ final class MemoryPhotoCollectionTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let deck = AlbumFlipDeck(items: collection.flipItems(in: "natural_scenery"),
-                                 store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), randomIndex: { _ in 0 })
-        for index in 0..<30 {
+                                 randomIndex: { _ in 0 })
+        for _ in 0..<30 {
             let card = try XCTUnwrap(deck.cards.first)
             XCTAssertEqual(card.item.memoryID, inside.id)
-            deck.advance(index.isMultiple(of: 2) ? .again : .familiar, cardID: card.id)
+            deck.navigate(.next, cardID: card.id)
         }
     }
 

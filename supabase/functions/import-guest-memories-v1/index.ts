@@ -1,5 +1,5 @@
 import { authenticatedContentRequest } from "../_shared/generation/http.ts"
-import { ContractError, record, uuid, validateSentence, type MemoryContent } from "../_shared/content-contracts/memory.ts"
+import { ContractError, record, uuid, validateSentence, validateSentenceCollection, type MemoryContent } from "../_shared/content-contracts/memory.ts"
 import { validateGenerationSpec, contentContext } from "../_shared/generation/spec.ts"
 import { SCENE_CATEGORY_IDS } from "../_shared/scene-categories.ts"
 import { jsonResponse } from "../_shared/generate-memory-v2/responses.ts"
@@ -19,7 +19,7 @@ Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client, a
   for (const item of body.memories) {
     const m = record(item)
     const c = record(m.context)
-    if (m.schemaVersion !== 2 || c.schemaVersion !== 2 || !Array.isArray(m.sentences) || ![3,6].includes(m.sentences.length) ||
+    if (m.schemaVersion !== 2 || c.schemaVersion !== 2 || !Array.isArray(m.sentences) || ![3,6,12].includes(m.sentences.length) ||
         !Array.isArray(m.tags) || m.tags.length > 3 || m.tags.some((id: string) => !SCENE_CATEGORY_IDS.has(id)) ||
         typeof m.createdAt !== "string" || !Number.isFinite(Date.parse(m.createdAt))) throw new ContractError("invalid_import")
     const context = contentContext(validateGenerationSpec({ ...c, schemaVersion: 1, catalogVersion: 1, level: "intermediate", generationFormat: "dual_tabs_v1" }))
@@ -27,7 +27,7 @@ Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client, a
     if (m.imagePath !== "" && m.imagePath !== `${user.id}/${id}.jpg`) throw new ContractError("invalid_image_path")
     const sentences = []
     for (const s of m.sentences) sentences.push(await validateSentence(s, context))
-    if (new Set(sentences.map(s => s.id)).size !== sentences.length) throw new ContractError("duplicate_sentence_id")
+    validateSentenceCollection(sentences)
     memories.push({schemaVersion: 2, id, imagePath: m.imagePath, createdAt: m.createdAt, tags: m.tags, context, sentences})
   }
   if (new Set(memories.map(m => m.id)).size !== memories.length) throw new ContractError("duplicate_memory_id")
@@ -37,4 +37,5 @@ Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client, a
     results.push(error ? { id: memory.id, imported: false, code: error.message?.includes("content_conflict") ? "content_conflict" : "import_failed" } : data)
   }
   return jsonResponse({ schemaVersion: 1, results })
-}))
+// Up to 25 memories x 12 turns, each with up to 32 KiB of learning material.
+}, 16 * 1024 * 1024))

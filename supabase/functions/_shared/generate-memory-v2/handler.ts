@@ -8,7 +8,7 @@ import { loadCompletedAuthenticatedGenerationResponseIfNeeded, loadCompletedGues
 import { type GenerationViolationRecord, moderateImageBeforeGeneration, isGenerationViolationBanEnabled, isFutureTimestamp, recordGenerationViolation, buildGenerationPolicyViolationError } from "./moderation.ts"
 import { persistGeneratedResult } from "./persist-result.ts"
 import { prepareGenerationRequest } from "../generation/spec.ts"
-import { buildMultilingualPrompt, parseMultilingualContent, type GeneratedSentence } from "../generation/content.ts"
+import { buildMultilingualPrompt, generationCompletionTokenBudget, parseMultilingualContent, type GeneratedSentence } from "../generation/content.ts"
 import { claimGeneration, recoverGeneration, recoveryResponse, persistMultilingualResult } from "../generation/adapter.ts"
 import type { Sentence } from "./content.ts"
 import { readAssistanceJSON } from "../assistance-input.ts"
@@ -396,7 +396,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
       fetcher: generationFetch,
       timing,
       ...(prepared ? { parseContent: (raw: string) => parseMultilingualContent(raw, prepared.spec) } : {}),
-      ...(prepared && prepared.spec.targetLanguage !== "en" ? { maxCompletionTokens: 12288 } : {}),
+      ...(prepared ? { maxCompletionTokens: generationCompletionTokenBudget(prepared.spec) } : {}),
     })
 
     if (!completionResult.ok) {

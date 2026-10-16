@@ -20,6 +20,11 @@ export interface LearningMaterial {
   }[]
 }
 
+export interface SentenceDialogue {
+  index: 0 | 1 | 2
+  turn: 0 | 1
+}
+
 export interface SentenceContent {
   id: string
   targetText: string
@@ -28,6 +33,7 @@ export interface SentenceContent {
   presentationGroup: "what_i_see" | "what_i_say"
   isFavorite: boolean
   learningMaterial?: LearningMaterial
+  dialogue?: SentenceDialogue
 }
 
 export interface MemoryContent {
@@ -105,6 +111,7 @@ export async function validateSentence(value: unknown, context: ContentContext):
   const s = record(value)
   const targetText = boundedText(s.targetText)
   const translationText = boundedText(s.translationText)
+  const dialogue = s.dialogue == null ? undefined : validateDialogue(s.dialogue)
   if (s.contentVersion !== 1 || !["what_i_see", "what_i_say"].includes(s.presentationGroup) ||
       typeof s.isFavorite !== "boolean") {
     throw new ContractError("invalid_content")
@@ -113,5 +120,32 @@ export async function validateSentence(value: unknown, context: ContentContext):
   const learningMaterial = s.learningMaterial == null ? undefined : await validateLearningMaterial(s.learningMaterial, targetText, context.targetLanguage === "ja")
   if (context.targetLanguage !== "en" && !learningMaterial?.segments.some(s => s.canBlank)) throw new ContractError("invalid_learning_material")
   return { id: uuid(s.id), targetText, translationText, contentVersion: 1,
-    presentationGroup: s.presentationGroup, isFavorite: s.isFavorite, ...(learningMaterial ? { learningMaterial } : {}) }
+    presentationGroup: s.presentationGroup, isFavorite: s.isFavorite, ...(learningMaterial ? { learningMaterial } : {}),
+    ...(dialogue ? { dialogue } : {}) }
+}
+
+export function validateDialogue(value: unknown): SentenceDialogue {
+  const d = record(value)
+  if (![0, 1, 2].includes(d.index) || ![0, 1].includes(d.turn) ||
+      Object.keys(d).some(key => key !== "index" && key !== "turn")) throw new ContractError("invalid_dialogue")
+  return { index: d.index, turn: d.turn }
+}
+
+// A pair is identified within its presentation group, not across the whole photo.
+export function validateSentenceCollection(sentences: SentenceContent[], format?: "dual_tabs_v1" | "dialogue_tabs_v1"): void {
+  if (new Set(sentences.map(s => s.id)).size !== sentences.length) throw new ContractError("duplicate_sentence_id")
+  const hasDialogue = sentences.some(s => s.dialogue != null)
+  if (format === "dialogue_tabs_v1" || hasDialogue || sentences.length === 12) {
+    if (format === "dual_tabs_v1" || sentences.length !== 12) throw new ContractError("invalid_dialogue")
+    const keys = new Set<string>()
+    for (const s of sentences) {
+      const d = validateDialogue(s.dialogue)
+      if (!["what_i_see", "what_i_say"].includes(s.presentationGroup)) throw new ContractError("invalid_dialogue")
+      const key = `${s.presentationGroup}:${d.index}:${d.turn}`
+      if (keys.has(key)) throw new ContractError("invalid_dialogue")
+      keys.add(key)
+    }
+  } else if (format === "dual_tabs_v1" ? sentences.length !== 6 || sentences.filter(s => s.presentationGroup === "what_i_see").length !== 3 : ![3, 6].includes(sentences.length)) {
+    throw new ContractError("invalid_content")
+  }
 }

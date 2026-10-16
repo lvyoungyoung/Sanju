@@ -21,6 +21,55 @@ final class AlbumFlipTests: XCTestCase {
         super.tearDown()
     }
 
+    func testPagingNeighborsStayOnTheirActualSidesAfterBacktracking() throws {
+        let deck = makeDeck(AlbumFlipItem.makeItems(from: [makeMemory()]))
+        let first = try XCTUnwrap(deck.currentPageID)
+        XCTAssertEqual(deck.browsingPages.map { deck.relativePosition(of: $0.id) }, [0, 1])
+        deck.navigate(.next, cardID: first)
+        let second = try XCTUnwrap(deck.currentPageID)
+        let neighbors = deck.browsingPages.map(\.id)
+        XCTAssertEqual(neighbors.first, first)
+        XCTAssertEqual(deck.browsingPages.map { deck.relativePosition(of: $0.id) }, [-1, 0, 1])
+        deck.navigate(.previous, cardID: second)
+        XCTAssertEqual(deck.browsingPages.map(\.id), [first, second])
+        deck.navigate(.next, cardID: first)
+        XCTAssertEqual(deck.browsingPages.map(\.id), neighbors)
+    }
+
+    func testPagingMotionMovesNeighborsTogetherAndFinishesWithoutPositionJump() {
+        let width: CGFloat = 390
+        for translation: CGFloat in [-390, -100, 0, 100, 390] {
+            let current = AlbumFlipPagingMotion.offset(relativePosition: 0, translation: translation, pageWidth: width)
+            let next = AlbumFlipPagingMotion.offset(relativePosition: 1, translation: translation, pageWidth: width)
+            let previous = AlbumFlipPagingMotion.offset(relativePosition: -1, translation: translation, pageWidth: width)
+            XCTAssertEqual(next - current, width)
+            XCTAssertEqual(current - previous, width)
+        }
+        XCTAssertEqual(AlbumFlipPagingMotion.offset(relativePosition: 1, translation: -width, pageWidth: width), 0)
+        XCTAssertEqual(AlbumFlipPagingMotion.offset(relativePosition: -1, translation: width, pageWidth: width), 0)
+    }
+
+    func testFirstPageHasResistanceAndOversizedDragCannotSkipPages() {
+        XCTAssertEqual(AlbumFlipPagingMotion.translation(100, pageWidth: 390, canGoBack: false), 22)
+        XCTAssertEqual(AlbumFlipPagingMotion.translation(1000, pageWidth: 390, canGoBack: false), 64)
+        XCTAssertEqual(AlbumFlipPagingMotion.translation(-1000, pageWidth: 390, canGoBack: false), -390)
+        XCTAssertEqual(AlbumFlipPagingMotion.translation(1000, pageWidth: 390, canGoBack: true), 390)
+        XCTAssertEqual(AlbumFlipPagingMotion.translation(100, pageWidth: 0, canGoBack: true), 0)
+    }
+
+    func testNeighborPeekAndPagingDistanceStayConsistentAcrossScreenSizes() {
+        for width: CGFloat in [320, 393, 430, 1024] {
+            let cardWidth = AlbumFlipLayout.cardSize(in: CGSize(width: width, height: 600)).width
+            let stride = AlbumFlipLayout.pageStride(in: width)
+            let visibleNeighborWidth = width / 2 - stride + cardWidth / 2
+            XCTAssertEqual(visibleNeighborWidth, 10, accuracy: 0.001)
+            XCTAssertGreaterThan(stride, cardWidth)
+            XCTAssertEqual(AlbumFlipPagingMotion.offset(relativePosition: 1, translation: -stride, pageWidth: stride), 0)
+            XCTAssertEqual(AlbumFlipPagingMotion.offset(relativePosition: -1, translation: stride, pageWidth: stride), 0)
+        }
+        XCTAssertEqual(AlbumFlipLayout.pageStride(in: 0), 0)
+    }
+
     func testPlaybackIndicatorFollowsCurrentSentenceFromLoadingToFinished() {
         let text = "A quiet afternoon."
         XCTAssertEqual(SpeechPlaybackState(text: text, activeText: nil, loadingText: nil), .idle)
@@ -58,7 +107,7 @@ final class AlbumFlipTests: XCTestCase {
         let expectedGroups: [SentencePresentationGroup] = [.whatIDSay, .whatIDSay, .whatIDSay,
                                                          .whatISee, .whatISee, .whatISee]
         for drawLast in [false, true] {
-            let deck = AlbumFlipDeck(items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+            let deck = AlbumFlipDeck(items: items,
                                      mode: .photoRounds, randomIndex: { drawLast ? $0 - 1 : 0 })
             for _ in 0..<3 {
                 var visited = Set<String>()
@@ -66,12 +115,12 @@ final class AlbumFlipTests: XCTestCase {
                     let item = try XCTUnwrap(deck.currentItem)
                     XCTAssertEqual(item.sentence.presentationGroup, group)
                     XCTAssertTrue(visited.insert(item.id).inserted)
-                    deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID))
+                    deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
                 }
                 XCTAssertEqual(visited, Set(items.map(\.id)))
                 XCTAssertTrue(deck.isShowingRoundBreak)
                 XCTAssertEqual(deck.upcomingSpeechTexts, deck.cards.prefix(5).map { $0.item.sentence.english })
-                deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID))
+                deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
             }
         }
     }
@@ -80,11 +129,11 @@ final class AlbumFlipTests: XCTestCase {
         let allItems = AlbumFlipItem.makeItems(from: [makeMemory()])
         for group in SentencePresentationGroup.allCases {
             let items = allItems.filter { $0.sentence.presentationGroup == group }
-            let deck = AlbumFlipDeck(items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
+            let deck = AlbumFlipDeck(items: items,
                                      mode: .photoRounds, randomIndex: { _ in 0 })
             for _ in items {
                 XCTAssertEqual(deck.currentItem?.sentence.presentationGroup, group)
-                deck.advance(.again, cardID: try XCTUnwrap(deck.currentPageID))
+                deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
             }
             XCTAssertTrue(deck.isShowingRoundBreak)
             XCTAssertEqual(deck.cards.count, items.count)
@@ -203,29 +252,32 @@ final class AlbumFlipTests: XCTestCase {
                 memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(-Double(days) * 86_400),
                 sentence: SentenceRecord(english: "A quiet afternoon.", chinese: "安静的午后。")
             )
-            return item.selectionWeight(at: now, progress: nil)
+            return item.selectionWeight(at: now)
         }
         XCTAssertEqual(weights, [48, 43, 30, 17, 12])
         for index in 1..<weights.count { XCTAssertLessThan(weights[index], weights[index - 1]) }
 
         let future = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(86_400),
                                    sentence: SentenceRecord(english: "Tomorrow.", chinese: "明天。"))
-        XCTAssertEqual(future.selectionWeight(at: now, progress: nil), weights[0])
+        XCTAssertEqual(future.selectionWeight(at: now), weights[0])
     }
 
-    func testRecencyStillPreservesFamiliarityWeighting() {
-        let now = Date(timeIntervalSince1970: 1_700_000_000)
-        for days in [0, 30, 365] {
-            let item = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: now.addingTimeInterval(-Double(days) * 86_400),
-                                     sentence: SentenceRecord(english: "A quiet afternoon.", chinese: "安静的午后。"))
-            func progress(_ feedback: AlbumFlipFeedback) -> AlbumFlipProgress {
-                .applying(AlbumFlipEvent(id: UUID(), memoryID: item.memoryID, sentenceID: item.sentence.id,
-                                        feedback: feedback, occurredAt: now, timeZoneID: "UTC"), to: nil)
-            }
-            let unseen = item.selectionWeight(at: now, progress: nil)
-            XCTAssertGreaterThan(item.selectionWeight(at: now, progress: progress(.again)), unseen)
-            XCTAssertLessThan(item.selectionWeight(at: now, progress: progress(.familiar)), unseen)
+    func testBrowsingDoesNotReadOrChangeHistoricalFamiliarity() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
+        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
+        store.record(AlbumFlipEvent(id: UUID(), memoryID: items[0].memoryID, sentenceID: items[0].sentence.id,
+                                   feedback: .familiar, occurredAt: Date(), timeZoneID: "UTC"))
+        let before = defaults.dictionaryRepresentation() as NSDictionary
+        let deck = makeDeck(items)
+        for _ in 0..<30 {
+            deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
         }
+        for _ in 0..<30 {
+            deck.navigate(.previous, cardID: try XCTUnwrap(deck.currentPageID))
+        }
+        XCTAssertEqual(before, defaults.dictionaryRepresentation() as NSDictionary)
+        XCTAssertEqual(store.read().records.count, 1)
+        XCTAssertEqual(store.read().pending.count, 1)
     }
 
     func testDeckUsesRecencyWeightsAndCanStillSelectOldContent() throws {
@@ -235,11 +287,10 @@ final class AlbumFlipTests: XCTestCase {
                         sentences: [SentenceRecord(english: "A day to remember.", chinese: "值得记住的一天。")])
         }
         let items = AlbumFlipItem.makeItems(from: memories)
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
         // Check every boundary of the weighted draw, without statistical/flaky assertions.
         for (ticket, expectedIndex) in [(0, 0), (47, 0), (48, 1), (77, 1), (78, 2), (89, 2)] {
             var isFirstDraw = true
-            let deck = AlbumFlipDeck(items: items, store: store, now: { now }, randomIndex: { bound in
+            let deck = AlbumFlipDeck(items: items, now: { now }, randomIndex: { bound in
                 guard isFirstDraw else { return 0 }
                 isFirstDraw = false
                 XCTAssertEqual(bound, 90)
@@ -264,7 +315,7 @@ final class AlbumFlipTests: XCTestCase {
         let otherMemory = makeMemory()
         let items = AlbumFlipItem.makeItems(from: [currentMemory])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds, randomIndex: { $0 - 1 })
+        let deck = AlbumFlipDeck(items: items, mode: .photoRounds, randomIndex: { $0 - 1 })
         XCTAssertFalse(deck.isShowingRoundBreak)
         XCTAssertEqual(deck.cards.count, 6)
         XCTAssertEqual(deck.upcomingSpeechTexts.count, 5)
@@ -284,7 +335,7 @@ final class AlbumFlipTests: XCTestCase {
                 XCTAssertNil(deck.visiblePages.last?.item, "The interlude must already sit behind the last sentence")
             }
             let nextPageID = deck.visiblePages.last?.id
-            deck.advance(index.isMultiple(of: 2) ? .again : .familiar, cardID: current.id)
+            deck.navigate(.next, cardID: current.id)
             XCTAssertEqual(deck.currentPageID, nextPageID)
             if index < 5 { XCTAssertEqual(deck.cards.map(\.id), lookahead.map(\.id)) }
             XCTAssertEqual(deck.isShowingRoundBreak, index == 5)
@@ -296,42 +347,42 @@ final class AlbumFlipTests: XCTestCase {
         XCTAssertEqual(deck.upcomingSpeechTexts, deck.cards.prefix(5).map { $0.item.sentence.english })
         XCTAssertNil(deck.visiblePages.first?.item)
         XCTAssertEqual(deck.visiblePages.last?.id, deck.cards.first?.id)
-        XCTAssertEqual(store.read().pending.count, 6)
-        XCTAssertEqual(store.read().records.count, 6)
+        XCTAssertEqual(store.read().pending.count, 0)
+        XCTAssertEqual(store.read().records.count, 0)
         XCTAssertTrue(currentMemory.sentences.allSatisfy { !$0.isFavorite })
     }
 
     func testPhotoRoundDeduplicatesAndIgnoresStaleSentenceAndInterludeAdvances() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items + items, store: store, mode: .photoRounds)
+        let deck = AlbumFlipDeck(items: items + items, mode: .photoRounds)
         XCTAssertEqual(deck.cards.count, 1)
         let card = try XCTUnwrap(deck.cards.first)
-        deck.advance(.again, cardID: UUID())
+        deck.navigate(.next, cardID: UUID())
         XCTAssertEqual(deck.viewedCount, 0)
-        deck.advance(.again, cardID: card.id)
+        deck.navigate(.next, cardID: card.id)
         XCTAssertTrue(deck.isShowingRoundBreak)
-        deck.advance(.familiar, cardID: card.id)
-        deck.reloadHistory()
+        deck.navigate(.next, cardID: card.id)
+
         XCTAssertTrue(deck.isShowingRoundBreak)
         XCTAssertEqual(deck.viewedCount, 1)
-        XCTAssertEqual(store.read().pending.count, 1)
-        XCTAssertEqual(deck.feedback[items[0].id], .again)
+        XCTAssertEqual(store.read().pending.count, 0)
+
         let interludeID = try XCTUnwrap(deck.currentPageID)
         let nextCardID = try XCTUnwrap(deck.cards.first?.id)
-        deck.advance(.familiar, cardID: interludeID)
+        deck.navigate(.next, cardID: interludeID)
         XCTAssertFalse(deck.isShowingRoundBreak)
         XCTAssertEqual(deck.currentPageID, nextCardID)
         XCTAssertNotEqual(nextCardID, card.id)
-        deck.advance(.again, cardID: interludeID)
-        deck.advance(.familiar, cardID: card.id)
+        deck.navigate(.next, cardID: interludeID)
+        deck.navigate(.next, cardID: card.id)
         XCTAssertEqual(deck.currentPageID, nextCardID)
         XCTAssertEqual(deck.viewedCount, 1)
-        XCTAssertEqual(store.read().pending.count, 1)
+        XCTAssertEqual(store.read().pending.count, 0)
     }
 
     func testEmptyPhotoRoundDoesNotShowAnInterlude() {
-        let deck = AlbumFlipDeck(items: [], store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), mode: .photoRounds)
+        let deck = AlbumFlipDeck(items: [], mode: .photoRounds)
         XCTAssertTrue(deck.cards.isEmpty)
         XCTAssertTrue(deck.visiblePages.isEmpty)
         XCTAssertNil(deck.currentPageID)
@@ -341,40 +392,44 @@ final class AlbumFlipTests: XCTestCase {
 
     func testPhotoRoundRefillsLookaheadWithoutRepeatingAndKeepsBufferedCardsStable() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 10)])
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds, randomIndex: { _ in 0 })
+        let deck = AlbumFlipDeck(items: items, mode: .photoRounds, randomIndex: { _ in 0 })
         let initialCards = deck.cards.map(\.id)
-        deck.reloadHistory()
+
         XCTAssertEqual(deck.cards.map(\.id), initialCards)
         var visited = Set<String>()
         for index in 0..<items.count {
             XCTAssertEqual(deck.cards.count, min(6, items.count - index))
             let current = try XCTUnwrap(deck.cards.first)
             XCTAssertTrue(visited.insert(current.item.id).inserted)
-            deck.advance(.again, cardID: current.id)
+            deck.navigate(.next, cardID: current.id)
         }
         XCTAssertTrue(deck.isShowingRoundBreak)
         XCTAssertEqual(visited.count, items.count)
     }
 
-    func testPhotoRoundFeedbackIsAvailableToSubsequentContinuousBrowsing() throws {
-        let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 1)])
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds)
-        deck.advance(.familiar, cardID: try XCTUnwrap(deck.cards.first).id)
-        let continuous = AlbumFlipDeck(items: items, store: store)
-        XCTAssertEqual(continuous.feedback[items[0].id], .familiar)
-        XCTAssertEqual(continuous.cards.count, 6)
-        XCTAssertFalse(continuous.isShowingRoundBreak)
+    func testBackAndForwardAcrossRoundBreakKeepTheSamePages() throws {
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: [makeMemory()]), mode: .photoRounds)
+        var visited = [UUID]()
+        for _ in 0..<9 {
+            visited.append(try XCTUnwrap(deck.currentPageID))
+            deck.navigate(.next, cardID: visited.last!)
+        }
+        for id in visited.reversed() {
+            deck.navigate(.previous, cardID: try XCTUnwrap(deck.currentPageID))
+            XCTAssertEqual(deck.currentPageID, id)
+        }
+        for id in visited {
+            XCTAssertEqual(deck.currentPageID, id)
+            deck.navigate(.next, cardID: id)
+        }
     }
 
     func testPhotoRoundsRepeatOnlyTheSameSentencesAndDoNotRecordFeedbackForInterludes() throws {
         let items = AlbumFlipItem.makeItems(from: [makeMemory()])
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: items, store: store, mode: .photoRounds)
+        let deck = AlbumFlipDeck(items: items, mode: .photoRounds)
         var appearances = Set<UUID>()
-        var callbacks = 0
-        deck.onFeedback = { callbacks += 1 }
+
         for round in 0..<4 {
             var visited = Set<String>()
             for _ in items.indices {
@@ -382,7 +437,7 @@ final class AlbumFlipTests: XCTestCase {
                 let item = try XCTUnwrap(deck.currentItem)
                 XCTAssertTrue(appearances.insert(pageID).inserted)
                 XCTAssertTrue(visited.insert(item.id).inserted)
-                deck.advance(.familiar, cardID: pageID)
+                deck.navigate(.next, cardID: pageID)
             }
             XCTAssertEqual(visited, Set(items.map(\.id)))
             XCTAssertTrue(deck.isShowingRoundBreak)
@@ -390,16 +445,16 @@ final class AlbumFlipTests: XCTestCase {
             let interludeID = try XCTUnwrap(deck.currentPageID)
             XCTAssertTrue(appearances.insert(interludeID).inserted)
             let buffered = deck.cards.map(\.id)
-            deck.reloadHistory()
+
             XCTAssertEqual(deck.currentPageID, interludeID)
             XCTAssertEqual(deck.cards.map(\.id), buffered)
-            deck.advance(round.isMultiple(of: 2) ? .again : .familiar, cardID: interludeID)
+            deck.navigate(.next, cardID: interludeID)
             XCTAssertFalse(deck.isShowingRoundBreak)
             XCTAssertEqual(deck.currentPageID, buffered.first)
             XCTAssertEqual(deck.cards.map(\.id), buffered)
             XCTAssertEqual(deck.viewedCount, (round + 1) * items.count)
-            XCTAssertEqual(store.read().pending.count, (round + 1) * items.count)
-            XCTAssertEqual(callbacks, (round + 1) * items.count)
+            XCTAssertEqual(store.read().pending.count, 0)
+
         }
     }
 
@@ -410,7 +465,7 @@ final class AlbumFlipTests: XCTestCase {
         for _ in 0..<40 {
             let current = try XCTUnwrap(deck.cards.first)
             XCTAssertTrue(appearances.insert(current.id).inserted)
-            deck.advance(.familiar, cardID: current.id)
+            deck.navigate(.next, cardID: current.id)
             XCTAssertEqual(deck.cards.count, 6)
             XCTAssertEqual(deck.visibleCards.count, 2)
         }
@@ -425,7 +480,7 @@ final class AlbumFlipTests: XCTestCase {
             XCTAssertEqual(upcoming.count, 5)
             XCTAssertEqual(deck.upcomingSpeechTexts, upcoming.map { $0.item.sentence.english })
             XCTAssertEqual(deck.visibleCards.map(\.id), Array(deck.cards.prefix(2)).map(\.id))
-            deck.advance(.familiar, cardID: current.id)
+            deck.navigate(.next, cardID: current.id)
             XCTAssertEqual(Array(deck.cards.prefix(5)).map(\.id), upcoming.map(\.id))
         }
     }
@@ -439,7 +494,7 @@ final class AlbumFlipTests: XCTestCase {
                 XCTAssertNotEqual(current.item.memoryID, previous)
                 previous = current.item.memoryID
                 XCTAssertEqual(deck.upcomingSpeechTexts.count, 5)
-                deck.advance(.familiar, cardID: current.id)
+                deck.navigate(.next, cardID: current.id)
             }
         }
     }
@@ -453,7 +508,7 @@ final class AlbumFlipTests: XCTestCase {
                 let current = try XCTUnwrap(deck.cards.first)
                 XCTAssertNotEqual(current.item.memoryID, lastPhoto)
                 lastPhoto = current.item.memoryID
-                deck.advance(.familiar, cardID: current.id)
+                deck.navigate(.next, cardID: current.id)
             }
         }
     }
@@ -465,88 +520,91 @@ final class AlbumFlipTests: XCTestCase {
         for _ in 0..<6 {
             let current = try XCTUnwrap(deck.cards.first)
             seen.insert(current.item.id)
-            deck.advance(.familiar, cardID: current.id)
+            deck.navigate(.next, cardID: current.id)
         }
         XCTAssertEqual(seen, Set(items.map(\.id)))
     }
 
-    func testAgainRevisitsTheExactSentenceAfterSeveralCards() throws {
-        let items = AlbumFlipItem.makeItems(from: (0..<3).map { index in
-            let memory = makeMemory()
-            return MemoryEntry(id: memory.id, createdAt: Date().addingTimeInterval(index == 0 ? -365 * 86_400 : 0),
-                               imageData: memory.imageData, sentences: memory.sentences)
-        })
-        let deck = makeDeck(items)
-        let first = try XCTUnwrap(deck.cards.first)
-        deck.advance(.again, cardID: first.id)
-        var repeatAt: Int?
-        for index in 1...12 {
-            let current = try XCTUnwrap(deck.cards.first)
-            if current.item.id == first.item.id {
-                repeatAt = index
-                break
-            }
-            deck.advance(.familiar, cardID: current.id)
+    func testBackThenForwardReusesActualHistoryAndLookaheadWithoutDrawing() throws {
+        var draws = 0
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: (0..<4).map { _ in makeMemory() }),
+                                 randomIndex: { _ in draws += 1; return 0 })
+        var visited = [UUID]()
+        var windows = [[String]]()
+        for _ in 0..<20 {
+            visited.append(try XCTUnwrap(deck.currentPageID))
+            windows.append(deck.upcomingSpeechItems.map(\.id))
+            deck.navigate(.next, cardID: visited.last!)
         }
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(repeatAt), 4)
-        XCTAssertLessThanOrEqual(try XCTUnwrap(repeatAt), 9)
+        let frontierDraws = draws
+        for index in visited.indices.reversed() {
+            XCTAssertTrue(deck.navigate(.previous, cardID: try XCTUnwrap(deck.currentPageID)))
+            XCTAssertEqual(deck.currentPageID, visited[index])
+            XCTAssertEqual(deck.upcomingSpeechItems.map(\.id), windows[index])
+        }
+        for index in visited.indices {
+            XCTAssertEqual(deck.currentPageID, visited[index])
+            XCTAssertEqual(deck.upcomingSpeechItems.map(\.id), windows[index])
+            deck.navigate(.next, cardID: visited[index])
+        }
+        XCTAssertEqual(draws, frontierDraws)
     }
 
     func testStaleSwipeCompletionCannotAdvanceTheNextCard() throws {
         let deck = makeDeck(AlbumFlipItem.makeItems(from: [makeMemory()]))
         let first = try XCTUnwrap(deck.cards.first)
-        deck.advance(.again, cardID: first.id)
+        deck.navigate(.next, cardID: first.id)
         let next = deck.cards.first?.id
-        deck.advance(.familiar, cardID: first.id)
+        deck.navigate(.next, cardID: first.id)
         XCTAssertEqual(deck.cards.first?.id, next)
         XCTAssertEqual(deck.viewedCount, 1)
-        XCTAssertEqual(deck.feedback[first.item.id], .again)
+
     }
 
-    func testFeedbackIsLocalAndAccountScoped() throws {
-        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "account-a")
-        let deck = AlbumFlipDeck(items: items, store: store)
-        let first = try XCTUnwrap(deck.cards.first)
-        deck.advance(.familiar, cardID: first.id)
-        XCTAssertEqual(AlbumFlipDeck(items: items, store: store).feedback[first.item.id], .familiar)
-        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "account-b").read().records.isEmpty)
-        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest").read().records.isEmpty)
-        XCTAssertTrue(items.allSatisfy { !$0.sentence.isFavorite })
-        XCTAssertNil(defaults.object(forKey: AppStorageKey.localSentenceStudyProgress))
-        XCTAssertNil(defaults.object(forKey: AppStorageKey.remainingCredits))
+    func testFirstCardRejectsBackWithoutChangingHistoryOrDrawing() throws {
+        let deck = makeDeck(AlbumFlipItem.makeItems(from: [makeMemory()]))
+        let first = try XCTUnwrap(deck.currentPageID)
+        let pages = deck.pages.map(\.id)
+        XCTAssertFalse(deck.canGoBack)
+        XCTAssertFalse(deck.navigate(.previous, cardID: first))
+        XCTAssertEqual(deck.currentPageID, first)
+        XCTAssertEqual(deck.pages.map(\.id), pages)
+        XCTAssertEqual(deck.displayPages(toward: .previous).map(\.id), [first])
+        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest").read().pending.isEmpty)
     }
 
-    func testRemovedSentencesAreNotRestoredFromHistory() throws {
-        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        store.record(AlbumFlipEvent(id: UUID(), memoryID: items[0].memoryID, sentenceID: items[0].sentence.id,
-                                    feedback: .familiar, occurredAt: Date(), timeZoneID: TimeZone.current.identifier))
-        XCTAssertTrue(AlbumFlipDeck(items: Array(items.dropFirst()), store: store).feedback.isEmpty)
+    func testUnevenPhotoCountsStillAvoidConsecutivePhotos() throws {
+        let items = AlbumFlipItem.makeItems(from: [makeMemory(count: 30), makeMemory(count: 1)])
+        let deck = makeDeck(items)
+        for _ in 0..<100 {
+            let previous = try XCTUnwrap(deck.currentItem).memoryID
+            deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
+            XCTAssertNotEqual(deck.currentItem?.memoryID, previous)
+        }
     }
 
-    func testFamiliarFeedbackHasLowerSelectionWeight() throws {
-        let items = AlbumFlipItem.makeItems(from: [makeMemory()])
-        let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        store.record(AlbumFlipEvent(id: UUID(), memoryID: items[0].memoryID, sentenceID: items[0].sentence.id,
-                                    feedback: .familiar, occurredAt: Date(), timeZoneID: TimeZone.current.identifier))
-        var initialWeight = 0
-        _ = AlbumFlipDeck(items: items, store: store, randomIndex: { bound in
-            if initialWeight == 0 { initialWeight = bound }
-            return 0
-        })
-        XCTAssertEqual(initialWeight, (4 + (items.count - 1) * 12) * 4)
+    func testReturningToSingleSentenceKeepsItsOriginalPresentationIdentity() throws {
+        let deck = makeDeck(AlbumFlipItem.makeItems(from: [makeMemory(count: 1)]))
+        let first = try XCTUnwrap(deck.currentPageID)
+        deck.navigate(.next, cardID: first)
+        let second = try XCTUnwrap(deck.currentPageID)
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(deck.displayPages(toward: .previous).map(\.id), [second, first])
+        deck.navigate(.previous, cardID: second)
+        XCTAssertEqual(deck.currentPageID, first)
+        deck.navigate(.next, cardID: first)
+        XCTAssertEqual(deck.currentPageID, second)
     }
 
     func testSwipeThresholdVelocityAndVerticalScrolling() {
-        XCTAssertNil(AlbumFlipSwipe.feedback(x: 40, y: 1, predictedX: 60, width: 320))
-        XCTAssertNil(AlbumFlipSwipe.feedback(x: 100, y: 200, predictedX: 300, width: 320))
-        XCTAssertNil(AlbumFlipSwipe.feedback(x: 15, y: 1, predictedX: 300, width: 320))
-        XCTAssertNil(AlbumFlipSwipe.feedback(x: 30, y: 1, predictedX: -250, width: 320))
-        XCTAssertEqual(AlbumFlipSwipe.feedback(x: -90, y: 5, predictedX: -100, width: 320), .again)
-        XCTAssertEqual(AlbumFlipSwipe.feedback(x: 90, y: 5, predictedX: 100, width: 320), .familiar)
-        XCTAssertEqual(AlbumFlipSwipe.feedback(x: 30, y: 5, predictedX: 200, width: 320), .familiar)
-        XCTAssertNil(AlbumFlipSwipe.feedback(x: 100, y: 0, predictedX: 200, width: 0))
+        XCTAssertNil(AlbumFlipSwipe.direction(x: 40, y: 1, predictedX: 60, width: 320))
+        XCTAssertNil(AlbumFlipSwipe.direction(x: 100, y: 200, predictedX: 300, width: 320))
+        XCTAssertNil(AlbumFlipSwipe.direction(x: 15, y: 1, predictedX: 300, width: 320))
+        XCTAssertNil(AlbumFlipSwipe.direction(x: 30, y: 1, predictedX: -250, width: 320))
+        XCTAssertEqual(AlbumFlipSwipe.direction(x: -90, y: 5, predictedX: -100, width: 320), .next)
+        XCTAssertEqual(AlbumFlipSwipe.direction(x: 90, y: 5, predictedX: 100, width: 320), .previous)
+        XCTAssertEqual(AlbumFlipSwipe.direction(x: 30, y: 5, predictedX: 200, width: 320), .previous)
+        XCTAssertNil(AlbumFlipSwipe.direction(x: 100, y: 0, predictedX: 200, width: 0))
     }
 
     func testCardRendersAtSmallAndLargeSizesInBothThemes() async throws {
@@ -578,6 +636,32 @@ final class AlbumFlipTests: XCTestCase {
         }.environment(\.dynamicTypeSize, .accessibility3)
         let image = try await renderInWindow(view, size: CGSize(width: 272, height: 365))
         XCTAssertEqual(image.size, CGSize(width: 272, height: 365))
+    }
+
+    func testDialogueCardFitsCompactAndLargeTypeLayoutsInBothThemes() async throws {
+        let item = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: .now, sentence: SentenceRecord(
+            english: "This looks like a lovely place to take a break.",
+            chinese: "这里看起来很适合休息一下。", dialogue: SentenceDialogue(index: 0, turn: 0)
+        ), reply: SentenceRecord(
+            english: "Let's grab a coffee and sit by the window for a while.",
+            chinese: "我们买杯咖啡，在窗边坐一会儿吧。", dialogue: SentenceDialogue(index: 0, turn: 1)
+        ))
+        for scheme in [ColorScheme.light, .dark] {
+            for typeSize in [DynamicTypeSize.large, .accessibility3] {
+                let size = CGSize(width: 320, height: 480)
+                let view = AlbumFlipSentenceCard(item: item, size: size, showsTranslation: true, onToggleTranslation: {}) {
+                    Image(uiImage: self.samplePhoto).resizable().scaledToFill()
+                }
+                .environment(\.colorScheme, scheme)
+                .environment(\.dynamicTypeSize, typeSize)
+                let image = try await renderInWindow(view, size: size)
+                XCTAssertEqual(image.size, size)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "DialogueCard-\(scheme)-\(typeSize)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
     }
 
     func testFavoriteButtonRendersBothStatesOverThePhotoInBothThemes() async throws {
@@ -650,7 +734,7 @@ final class AlbumFlipTests: XCTestCase {
         defer { model.speech.stop() }
         for scheme in [ColorScheme.light, .dark] {
             let view = AlbumFlipView(
-                items: AlbumFlipItem.makeItems(from: model.memories), ownerID: "guest", defaults: defaults
+                items: AlbumFlipItem.makeItems(from: model.memories), ownerID: "guest"
             )
             .environmentObject(model)
             .environment(\.colorScheme, scheme)
@@ -788,7 +872,7 @@ final class AlbumFlipTests: XCTestCase {
         let observation = model.speech.$activeText.compactMap { $0 }.sink { narrated.append($0) }
         defer { observation.cancel() }
         let store = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest")
-        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: model.memories), store: store,
+        let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: model.memories),
                                  mode: .photoRounds, randomIndex: { _ in 0 })
         let firstText = try XCTUnwrap(deck.currentItem?.sentence.english)
         let view = AlbumFlipView(deck: deck, ownerID: "guest")
@@ -796,18 +880,18 @@ final class AlbumFlipTests: XCTestCase {
             .environment(\.scenePhase, .active)
         let image = try await renderInWindow(view, size: CGSize(width: 393, height: 852)) {
             XCTAssertEqual(narrated, [firstText])
-            for _ in 0..<6 { deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID)) }
+            for _ in 0..<6 { deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID)) }
             try await Task.sleep(for: .milliseconds(400))
             XCTAssertTrue(deck.isShowingRoundBreak)
             XCTAssertNil(model.speech.activeText)
             XCTAssertNil(model.speech.loadingText)
             XCTAssertEqual(narrated.count, 1)
             let nextText = try XCTUnwrap(deck.cards.first?.item.sentence.english)
-            deck.advance(.again, cardID: try XCTUnwrap(deck.currentPageID))
+            deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID))
             try await Task.sleep(for: .milliseconds(450))
             XCTAssertEqual(narrated, [firstText, nextText])
             XCTAssertEqual(deck.viewedCount, 6)
-            XCTAssertEqual(store.read().pending.count, 6)
+            XCTAssertEqual(store.read().pending.count, 0)
         }
         let attachment = XCTAttachment(image: image)
         attachment.name = "AlbumFlip-NextRound"
@@ -864,9 +948,8 @@ final class AlbumFlipTests: XCTestCase {
         model.speech.sessionProvider = { throw CancellationError() }
         defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
         let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: [makeMemory()]),
-                                 store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
                                  mode: .photoRounds)
-        for _ in 0..<6 { deck.advance(.familiar, cardID: try XCTUnwrap(deck.currentPageID)) }
+        for _ in 0..<6 { deck.navigate(.next, cardID: try XCTUnwrap(deck.currentPageID)) }
         let pageID = deck.currentPageID
         let bufferedIDs = deck.cards.map(\.id)
         let selection = AlbumFlipPhotoSelection()
@@ -933,7 +1016,6 @@ final class AlbumFlipTests: XCTestCase {
         model.speech.sessionProvider = { throw CancellationError() }
         defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
         let deck = AlbumFlipDeck(items: AlbumFlipItem.makeItems(from: [makeMemory()]),
-                                 store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"),
                                  mode: .photoRounds)
         let pageID = deck.currentPageID
         let selection = AlbumFlipPhotoSelection()
@@ -956,6 +1038,57 @@ final class AlbumFlipTests: XCTestCase {
         }
     }
 
+    func testRapidForwardBackCancelsOldNarrationAndReplaysReturnedCard() async throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        model.albumFlipHistorySync = nil
+        model.speech.ownerProvider = { "navigation-test-\(self.suite!)" }
+        model.speech.sessionProvider = {
+            try await Task.sleep(for: .seconds(60))
+            throw CancellationError()
+        }
+        defer { model.speech.stop(); model.speech.cancelAlbumSpeechPrefetch() }
+        let deck = makeDeck(AlbumFlipItem.makeItems(from: [makeMemory()]))
+        let firstID = try XCTUnwrap(deck.currentPageID)
+        let firstText = try XCTUnwrap(deck.currentItem?.sentence.targetText)
+        var narrated = [String]()
+        let observation = model.speech.$activeText.compactMap { $0 }.sink { narrated.append($0) }
+        defer { observation.cancel() }
+        let view = AlbumFlipView(deck: deck, ownerID: "guest")
+            .environmentObject(model).environment(\.scenePhase, .active)
+        _ = try await renderInWindow(view, size: CGSize(width: 393, height: 852)) {
+            try await self.waitForNarration { model.speech.activeText == firstText }
+            XCTAssertEqual(narrated, [firstText])
+            deck.navigate(.next, cardID: firstID)
+            let secondID = try XCTUnwrap(deck.currentPageID)
+            let secondText = try XCTUnwrap(deck.currentItem?.sentence.targetText)
+            try await Task.sleep(for: .milliseconds(80))
+            XCTAssertNil(model.speech.activeText)
+            deck.navigate(.previous, cardID: secondID)
+            try await Task.sleep(for: .milliseconds(80))
+            deck.navigate(.next, cardID: firstID)
+            try await self.waitForNarration { model.speech.activeText == secondText }
+            XCTAssertEqual(narrated, [firstText, secondText])
+            XCTAssertEqual(model.speech.activeText, secondText)
+            deck.navigate(.previous, cardID: secondID)
+            try await self.waitForNarration { model.speech.activeText == firstText }
+            XCTAssertEqual(narrated, [firstText, secondText, firstText])
+            XCTAssertEqual(deck.currentPageID, firstID)
+            XCTAssertEqual(model.speech.activeText, firstText)
+            XCTAssertTrue(AlbumFlipHistoryStore(defaults: self.defaults, ownerID: "guest").read().pending.isEmpty)
+        }
+    }
+
+    private func waitForNarration(_ condition: () -> Bool) async throws {
+        // Wait for the published state, not a fixed margin around the 300ms debounce.
+        for _ in 0..<40 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTFail("Current-card narration did not become ready within two seconds")
+    }
+
     private var samplePhoto: UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 640, height: 480)).image { context in
             UIColor.orange.setFill()
@@ -966,7 +1099,7 @@ final class AlbumFlipTests: XCTestCase {
     }
 
     private func makeDeck(_ items: [AlbumFlipItem]) -> AlbumFlipDeck {
-        AlbumFlipDeck(items: items, store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest"), randomIndex: { _ in 0 })
+        AlbumFlipDeck(items: items, randomIndex: { _ in 0 })
     }
 
     private func renderInWindow<Content: View>(

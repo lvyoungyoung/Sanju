@@ -4,7 +4,7 @@ import { ContractError, record } from "../content-contracts/memory.ts"
 import { jsonResponse } from "../generate-memory-v2/responses.ts"
 import { readAssistanceJSON } from "../assistance-input.ts"
 
-export async function authenticatedContentRequest(req: Request, operation: (args: { body: Record<string, any>; user: any; client: any; authClient: any }) => Promise<Response>): Promise<Response> {
+export async function authenticatedContentRequest(req: Request, operation: (args: { body: Record<string, any>; user: any; client: any; authClient: any }) => Promise<Response>, maxBodyBytes = 6 * 1024 * 1024): Promise<Response> {
   try {
     if (req.method !== "POST") return jsonResponse({ error: "Method Not Allowed" }, 405)
     const url = Deno.env.get("SUPABASE_LOCAL_URL") ?? Deno.env.get("SUPABASE_URL")
@@ -18,7 +18,7 @@ export async function authenticatedContentRequest(req: Request, operation: (args
     const { data: { user }, error } = await authClient.auth.getUser(token)
     if (error || !user) throw new ContractError("invalid_jwt", 401)
     let body: Record<string, any>
-    try { body = record(await readAssistanceJSON(req, 6 * 1024 * 1024)) } catch { throw new ContractError("invalid_request") }
+    try { body = record(await readAssistanceJSON(req, maxBodyBytes)) } catch { throw new ContractError("invalid_request") }
     return await operation({ body, user, authClient, client: createClient(url, service, options) })
   } catch (error) {
     if (error instanceof ContractError) return jsonResponse({ error: error.code, code: error.code }, error.status)

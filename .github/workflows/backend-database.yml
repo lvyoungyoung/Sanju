@@ -74,6 +74,9 @@ jobs:
       - name: Test generation job ownership and atomic completion
         run: deno test --no-lock --allow-read --allow-env scripts/tests/generation-jobs.test.ts scripts/tests/generation-enrichment-db.test.ts scripts/tests/generation-enrichment-timing-db.test.ts
 
+      - name: Test dialogue persistence and authenticated guest import
+        run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/multilingual-dialogue-generation.test.ts scripts/tests/multilingual-dialogue-http.test.ts
+
   migrate:
     name: SQL Migrations
     runs-on: [self-hosted, linux, x64, aliyun-ecs]

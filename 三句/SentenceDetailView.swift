@@ -12,6 +12,12 @@ struct SentenceDetailView: View {
     }
 
     private var context: MemoryContentContext { appModel.memory(withID: memoryID)?.context ?? .legacyEnglish }
+    private var dialoguePartner: SentenceRecord? {
+        guard let sentence, let dialogue = sentence.dialogue else { return nil }
+        return appModel.memory(withID: memoryID)?.sentences.first {
+            $0.id != sentence.id && $0.presentationGroup == sentence.presentationGroup && $0.dialogue?.index == dialogue.index
+        }
+    }
     private var language: SupportLanguage { appModel.explanationLanguage }
     private var identity: String {
         [appModel.accountRequests.revision.uuidString, sentenceID.uuidString, sentence?.targetText ?? "",
@@ -26,6 +32,16 @@ struct SentenceDetailView: View {
                 VStack(alignment: .leading, spacing: AppSpacing.large) {
                     MemoryDetailImageView(imageData: memory.imageData)
                     originalSentence(sentence)
+                    if let partner = dialoguePartner {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text(L10n.string("dialogue.context", "对话上下文"))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(AppTextColor.secondary)
+                            MemoryDetailSentenceRow(sentence: partner, context: context)
+                        }
+                        .padding(AppSpacing.xLarge)
+                        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card))
+                    }
                     if let explanation = model.explanation {
                         SentenceExplanationContent(explanation: explanation)
                             .id(identity)
@@ -61,6 +77,9 @@ struct SentenceDetailView: View {
 
     private func originalSentence(_ sentence: SentenceRecord) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.large) {
+            if let dialogue = sentence.dialogue {
+                SentenceSpeakerBadge(speaker: dialogue.speaker)
+            }
             Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
                 .font(.system(.title2, weight: .semibold))
                 .foregroundStyle(AppTextColor.primary)

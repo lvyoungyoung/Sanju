@@ -326,7 +326,7 @@ async function requestPrimaryModelOnce<T = Sentence>(
 
   const content = data?.choices?.[0]?.message?.content
 
-  if (!content || typeof content !== "string") {
+  if (!content || typeof content !== "string" || data?.choices?.[0]?.finish_reason === "length") {
     return {
       ok: false,
       provider,
@@ -334,7 +334,7 @@ async function requestPrimaryModelOnce<T = Sentence>(
       rateLimited: false,
       statusCode: 500,
       internalError: appendDiagnosticSnippet(
-        `Invalid ${providerLabel} response content`,
+        data?.choices?.[0]?.finish_reason === "length" ? `${providerLabel} output token limit reached` : `Invalid ${providerLabel} response content`,
         "response_snippet",
         rawText
       ),
@@ -458,13 +458,13 @@ async function requestKimiOnce<T = Sentence>(
 
   const content = data?.choices?.[0]?.message?.content
 
-  if (!content || typeof content !== "string") {
+  if (!content || typeof content !== "string" || data?.choices?.[0]?.finish_reason === "length") {
     return {
       ok: false,
       provider: "kimi",
       rateLimited: false,
       statusCode: 500,
-      internalError: "Invalid Kimi response content",
+      internalError: data?.choices?.[0]?.finish_reason === "length" ? "Kimi output token limit reached" : "Invalid Kimi response content",
       publicError: { error: "生成结果格式异常，请重试" },
     }
   }

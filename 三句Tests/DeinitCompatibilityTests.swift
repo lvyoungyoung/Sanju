@@ -14,7 +14,7 @@ final class DeinitCompatibilityTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         DeinitTestContext.$marker.withValue(1) {
-            assertReleased { AlbumFlipDeck(items: [], store: AlbumFlipHistoryStore(defaults: defaults, ownerID: "offline-test")) }
+            assertReleased { AlbumFlipDeck(items: []) }
             assertReleased { MemoryImageLoader() }
             assertReleased { LocalRateLimiter(defaults: defaults) }
             assertReleased { NetworkStatusMonitor() }

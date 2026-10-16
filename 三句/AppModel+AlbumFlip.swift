@@ -4,11 +4,16 @@ extension AppModel {
     @discardableResult
     func toggleAlbumFlipSentenceFavorite(_ item: AlbumFlipItem, ownerID: String) -> Bool {
         guard albumFlipOwnerID == ownerID,
-              let sentence = memory(withID: item.memoryID)?.sentences.first(where: { $0.id == item.sentence.id }) else {
+              let memory = memory(withID: item.memoryID) else {
             return false
         }
-        // Deck items are snapshots; always toggle the live sentence, not the snapshot.
-        toggleFavorite(sentenceID: sentence.id)
+        let live = item.sentences.compactMap { wanted in memory.sentences.first { $0.id == wanted.id } }
+        guard live.count == item.sentences.count else { return false }
+        // A card saves both turns; individual turns remain manageable in the result/favorites.
+        let shouldFavorite = !live.allSatisfy(\.isFavorite)
+        for sentence in live where sentence.isFavorite != shouldFavorite {
+            toggleFavorite(sentenceID: sentence.id)
+        }
         return true
     }
 

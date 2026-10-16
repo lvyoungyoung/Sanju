@@ -27,7 +27,7 @@ export function recoveryResponse(result: any): Response | null {
 export async function claimGeneration(client: any, prepared: PreparedGeneration, userID: string, anonymous: boolean, imagePath: string | null): Promise<string> {
   const { data, error } = await client.rpc("claim_generation_job_v3", { p_user_id: userID, p_request_id: prepared.requestID,
     p_is_anonymous: anonymous, p_image_path: imagePath, p_generation_spec: prepared.spec, p_request_fingerprint: prepared.fingerprint,
-    p_generation_policy: { version: 1, promptVersion: "multilingual-v1", materialPolicyVersion: 1, providerPolicyVersion: 1 } })
+    p_generation_policy: { version: 1, promptVersion: prepared.spec.generationFormat === "dialogue_tabs_v1" ? "dialogue-v1" : "multilingual-v1", materialPolicyVersion: 1, providerPolicyVersion: 1 } })
   if (error) {
     for (const code of ["request_context_mismatch", "generation_disabled"]) {
       if (error.message?.includes(code)) throw new ContractError(code, code === "generation_disabled" ? 403 : 409)

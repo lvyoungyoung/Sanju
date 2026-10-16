@@ -160,7 +160,7 @@
 "favorites.study_count" = "Studied %d times";
 "favorites.syncing.subtitle" = "Almost there, updating your favorites";
 "favorites.syncing.title" = "Syncing favorites...";
-"memories.empty.subtitle" = "Upload your first photo in New and generate your first set of three sentences.";
+"memories.empty.subtitle" = "Upload your first photo in New to create conversations from your own life.";
 "memories.empty.title" = "No Memories Yet";
 "study.empty.photo_title" = "Start learning with a photo";
 "content.empty.add_photo_message" = "Add a photo you want to remember and turn it into expressions you can practice.";
@@ -284,7 +284,7 @@
 "purchase.empty" = "No products are currently available.";
 "purchase.footer" = "Purchased credits will sync to your account and can be used on multiple devices.";
 "purchase.hero.remaining" = "%d credits left";
-"purchase.hero.subtitle" = "Each uploaded photo generates three short descriptions with translations, ready for learning.";
+"purchase.hero.subtitle" = "Each uploaded photo generates six short conversations with translations, ready for learning.";
 "purchase.hero.title" = "Keep recording your life\nand keep turning moments into something you can learn from";
 "purchase.loading.subtitle" = "Almost there, syncing the latest prices";
 "purchase.loading.title" = "Preparing purchase options...";
@@ -509,7 +509,9 @@
 "album_flip.playing" = "Playing";
 "album_flip.mute" = "Turn off automatic playback";
 "album_flip.unmute" = "Turn on automatic playback";
-"album_flip.photo" = "The photo for this sentence";
+"album_flip.photo" = "The photo for these expressions";
+"dialogue.speaker" = "Speaker";
+"dialogue.context" = "Conversation context";
 "album_flip.photo_unavailable" = "Photo unavailable right now";
 "album_flip.show_translation" = "Show translation";
 "album_flip.hide_translation" = "Hide translation";
@@ -517,7 +519,9 @@
 "album_flip.complete.body" = "Pick another photo to keep exploring your language album.";
 "album_flip.complete.choose_another" = "Add another photo";
 "album_flip.round.title" = "Keep flipping. Keep listening.";
-"album_flip.round.body" = "Swipe either way to hear these sentences again.\nOr add a new photo to learn something new.";
+"album_flip.round.body" = "Keep browsing to hear these expressions again.\nOr add a new photo to learn something new.";
+"album_flip.previous" = "Previous card";
+"album_flip.next" = "Next card";
 "album_flip.round.continue" = "Keep flipping";
 "photo_category.people_and_portraits" = "People & Portraits";
 "photo_category.food_and_drinks" = "Food & Drinks";

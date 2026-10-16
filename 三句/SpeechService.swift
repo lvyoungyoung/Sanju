@@ -61,8 +61,13 @@ final class SpeechService: NSObject, ObservableObject {
     @Published private(set) var activeText: String?
     private var activeVoice: SpeechVoice?
     @Published private(set) var activeRequest: SpeechRequest?
+    @Published private(set) var sequenceRequests: [SpeechRequest] = []
+    private var sequenceID = UUID()
+    private var sequenceIndex = 0
+    private var sequenceGapTask: Task<Void, Never>?
     private var pendingBytes = Data()
     private var scheduledBuffers = 0
+    private var hasScheduledCloudAudio = false
     private var sourceCompleted = false
     private var systemUtterance: AVSpeechUtterance?
 
@@ -154,6 +159,7 @@ final class SpeechService: NSObject, ObservableObject {
 
     func setVoice(_ voice: SpeechVoice) {
         guard voice != selectedVoice else { return }
+        if !sequenceRequests.isEmpty { stop() }
         if let onVoiceSelection {
             onVoiceSelection(voice)
         } else {
@@ -214,11 +220,54 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     func speak(_ text: String, voice overrideVoice: SpeechVoice? = nil) {
+        cancelSequence()
         speak(.english(text, voice: overrideVoice ?? selectedVoice, owner: ownerProvider?() ?? "local",
                        accountRevision: accountRevisionProvider?() ?? 0), usesLegacyAPI: true)
     }
 
-    func speak(_ request: SpeechRequest) { speak(request, usesLegacyAPI: false) }
+    func speak(_ request: SpeechRequest) {
+        cancelSequence()
+        speak(request, usesLegacyAPI: false)
+    }
+
+    func speakSequence(_ requests: [SpeechRequest]) {
+        stop()
+        guard !requests.isEmpty else { return }
+        guard requests.allSatisfy({ isCurrent($0) }) else { accountDidChange(); return }
+        if let invalid = requests.first(where: { !$0.isValid }) {
+            playbackErrorRequest = invalid
+            playbackError = .descriptorMismatch
+            return
+        }
+        sequenceRequests = requests
+        speak(requests[0], usesLegacyAPI: false)
+    }
+
+    private func cancelSequence() {
+        sequenceID = UUID()
+        sequenceGapTask?.cancel()
+        sequenceGapTask = nil
+        sequenceIndex = 0
+        if !sequenceRequests.isEmpty { sequenceRequests = [] }
+    }
+
+    private func advanceSequence(after completed: SpeechRequest?) {
+        guard sequenceRequests.indices.contains(sequenceIndex),
+              completed == sequenceRequests[sequenceIndex], sequenceGapTask == nil else { return }
+        guard sequenceRequests.allSatisfy({ isCurrent($0) }) else { accountDidChange(); return }
+        guard sequenceIndex + 1 < sequenceRequests.count else { cancelSequence(); return }
+        let id = sequenceID
+        let playbackID = requestID
+        // Keep the full sequence published during the natural pause between turns.
+        sequenceGapTask = Task { [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            guard let self, !Task.isCancelled, sequenceID == id, requestID == playbackID else { return }
+            sequenceGapTask = nil
+            guard sequenceRequests.allSatisfy({ isCurrent($0) }) else { accountDidChange(); return }
+            sequenceIndex += 1
+            speak(sequenceRequests[sequenceIndex], usesLegacyAPI: false)
+        }
+    }
 
     func request(sentence: SentenceRecord, context: MemoryContentContext) -> SpeechRequest {
         request(text: sentence.targetText, context: context)
@@ -275,6 +324,9 @@ final class SpeechService: NSObject, ObservableObject {
 #endif
                     return
                 }
+                // A cache miss also suspends; cancellation may have replaced this playback.
+                try Task.checkCancellation()
+                guard requestID == id, isCurrent(request) else { return }
                 if let prefetchedStream {
                     for try await chunk in prefetchedStream {
                         try Task.checkCancellation()
@@ -319,6 +371,7 @@ final class SpeechService: NSObject, ObservableObject {
                 await cache.save(audio, key: key)
             } catch {
                 guard !Task.isCancelled, requestID == id, isCurrent(request) else { return }
+                if !sequenceRequests.isEmpty, error is CancellationError { stop(); return }
 #if DEBUG
                 print("[SpeechFlow] Cloud unavailable; using system voice: \(error.localizedDescription)")
 #endif
@@ -334,6 +387,7 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     func stop() {
+        cancelSequence()
         stopPlayback()
         albumPrefetcher.setForegroundBusy(false)
     }
@@ -353,6 +407,7 @@ final class SpeechService: NSObject, ObservableObject {
         synthesizer.stopSpeaking(at: .immediate)
         pendingBytes.removeAll()
         scheduledBuffers = 0
+        hasScheduledCloudAudio = false
         sourceCompleted = false
         activeText = nil
         activeVoice = nil
@@ -388,6 +443,7 @@ final class SpeechService: NSObject, ObservableObject {
             try engine.start()
         }
         scheduledBuffers += 1
+        hasScheduledCloudAudio = true
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self, self.requestID == id else { return }
@@ -405,11 +461,20 @@ final class SpeechService: NSObject, ObservableObject {
 
     private func releaseCloudAudioIfFinished() {
         guard sourceCompleted, scheduledBuffers == 0 else { return }
+        if !sequenceRequests.isEmpty, !hasScheduledCloudAudio || !pendingBytes.isEmpty {
+            playbackErrorRequest = activeRequest
+            playbackError = .invalidAudio
+            stop()
+            return
+        }
+        sourceCompleted = false
+        let completed = activeRequest
         player.stop()
         engine.stop()
         activeText = nil
         activeRequest = nil
         deactivateAudioSession()
+        advanceSequence(after: completed)
     }
 
     private func playSystemSpeech(_ request: SpeechRequest) {
@@ -429,6 +494,8 @@ final class SpeechService: NSObject, ObservableObject {
         player.stop()
         engine.stop()
         scheduledBuffers = 0
+        hasScheduledCloudAudio = false
+        sourceCompleted = false
         pendingBytes.removeAll()
         let id = requestID
         fallbackTask = Task { [weak self] in
@@ -438,8 +505,16 @@ final class SpeechService: NSObject, ObservableObject {
 #if DEBUG
                 print("[SpeechFlow] System voice audio activation failed: \(error.localizedDescription)")
 #endif
+                guard !Task.isCancelled, requestID == id else { return }
+                if !sequenceRequests.isEmpty {
+                    playbackErrorRequest = request
+                    playbackError = .invalidAudio
+                    stop()
+                    return
+                }
             }
-            guard !Task.isCancelled, requestID == id, isCurrent(request) else { return }
+            guard !Task.isCancelled, requestID == id else { return }
+            guard isCurrent(request) else { accountDidChange(); return }
             speakWithSystemVoice(request)
             fallbackTask = nil
         }
@@ -449,7 +524,7 @@ final class SpeechService: NSObject, ObservableObject {
         guard let voice = preferredVoice(for: request) else {
             playbackErrorRequest = request
             playbackError = .noMatchingSystemVoice
-            stopPlayback()
+            stop()
             isUsingSystemVoice = false
             return
         }
@@ -501,21 +576,24 @@ final class SpeechService: NSObject, ObservableObject {
 
 extension SpeechService: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        finishSystemSpeech(utterance)
+        finishSystemSpeech(utterance, completed: true)
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        finishSystemSpeech(utterance)
+        finishSystemSpeech(utterance, completed: false)
     }
 
-    private nonisolated func finishSystemSpeech(_ utterance: AVSpeechUtterance) {
+    private nonisolated func finishSystemSpeech(_ utterance: AVSpeechUtterance, completed: Bool) {
         let completedID = ObjectIdentifier(utterance)
         Task { @MainActor [weak self] in
             guard let self, self.systemUtterance.map(ObjectIdentifier.init) == completedID else { return }
+            guard completed else { self.stop(); return }
+            let request = self.activeRequest
             self.systemUtterance = nil
             self.activeText = nil
             self.activeRequest = nil
             self.deactivateAudioSession()
+            self.advanceSequence(after: request)
         }
     }
 }
