@@ -13,7 +13,7 @@ struct SupabaseContentMemory: Codable {
     func validate() throws {
         guard schemaVersion == 2 else { throw LanguageContractError.unsupportedVersion }
         try context.validate()
-        guard [3, 6, 12].contains(sentences.count), Set(sentences.map(\.id)).count == sentences.count else {
+        guard [3, 6, 9, 12].contains(sentences.count), Set(sentences.map(\.id)).count == sentences.count else {
             throw SupabaseServiceError.invalidResponse
         }
         for sentence in sentences { try sentence.validate(context: context) }
@@ -140,7 +140,7 @@ struct SupabaseContentGenerationResponse: Decodable {
         guard status == "completed" || status == "acknowledged" else {
             throw SupabaseServiceError.apiError(status == "failed" ? "generation_failed" : "generation_pending")
         }
-        guard let memory, let remainingCredits, remainingCredits >= 0, [3, 6, 12].contains(memory.sentences.count) else {
+        guard let memory, let remainingCredits, remainingCredits >= 0, [3, 6, 9, 12].contains(memory.sentences.count) else {
             throw SupabaseServiceError.invalidResponse
         }
         return SupabaseGenerateMemoryResult(memory: try memory.memory(imageData: imageData, isAnonymous: isAnonymous),

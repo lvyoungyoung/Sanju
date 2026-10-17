@@ -67,9 +67,11 @@ struct MemoryDetailImageSkeleton: View {
 }
 
 struct MemoryDetailSentencePanel: View {
+    @EnvironmentObject private var appModel: AppModel
+    @State private var selectedScenarioIndex = 0
     let memory: MemoryEntry
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 28) {
             if memory.sentences.isEmpty {
                 ContentUnavailableView(
                     L10n.string("memory_detail.group.empty.title", "没有内容"),
@@ -77,31 +79,196 @@ struct MemoryDetailSentencePanel: View {
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppSpacing.xLarge)
+            } else if memory.sentences.isCompleteScenarioDialogues {
+                let groups = memory.sentences.dialogueGroups
+                HStack(spacing: 6) {
+                        ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                            Button {
+                                guard selectedScenarioIndex != index else { return }
+                                appModel.speech.stop()
+                                selectedScenarioIndex = index
+                            } label: {
+                                Text(group.scenarioTitle ?? "")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(selectedScenarioIndex == index ? AppTextColor.primary : AppTextColor.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 6)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .background(selectedScenarioIndex == index ? AppSurfaceColor.card : Color.clear, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(selectedScenarioIndex == index ? .isSelected : [])
+                            .accessibilityIdentifier("scenario.tab.\(index)")
+                        }
+                }
+                .padding(4)
+                .background(AppSurfaceColor.secondaryFill, in: Capsule())
+                if let group = groups.indices.contains(selectedScenarioIndex) ? groups[selectedScenarioIndex] : groups.first {
+                    VStack(spacing: 12) {
+                        ScenarioPlaybackButton(speech: appModel.speech, requests: group.sentences.map {
+                            appModel.speech.request(sentence: $0, context: memory.context)
+                        })
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        MemoryDialogueGroupCard(group: group, context: memory.context)
+                    }
+                    .id(group.id)
+                }
             } else {
-                ForEach(memory.sentences.dialogueGroups) { group in
-                    MemoryDialogueGroupCard(group: group, context: memory.context)
+                ForEach(Array(memory.sentences.dialogueGroups.enumerated()), id: \.element.id) { index, group in
+                    VStack(spacing: 12) {
+                        if group.sentences.count == 2 {
+                            HStack(spacing: 12) {
+                                Rectangle().fill(AppTextColor.secondary.opacity(0.2)).frame(height: 1)
+                                Text(String(format: "%02d", index + 1))
+                                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(AppTextColor.secondary)
+                                Rectangle().fill(AppTextColor.secondary.opacity(0.2)).frame(height: 1)
+                            }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(L10n.string("dialogue.group.number", "第 %d 组对话", index + 1))
+                            .accessibilityAddTraits(.isHeader)
+                        }
+                        MemoryDialogueGroupCard(group: group, context: memory.context)
+                    }
                 }
             }
         }
+        .onChange(of: memory.id) { _, _ in selectedScenarioIndex = 0 }
+        .onDisappear { if memory.sentences.isCompleteScenarioDialogues { appModel.speech.stop() } }
+    }
+}
+
+private struct ScenarioPlaybackButton: View {
+    @ObservedObject var speech: SpeechService
+    let requests: [SpeechRequest]
+
+    private var isActive: Bool {
+        speech.sequenceRequests == requests || speech.activeRequest.map { requests.contains($0) } == true
+    }
+
+    var body: some View {
+        Button {
+            if isActive { speech.stop() } else { speech.speakSequence(requests) }
+        } label: {
+            Label(isActive ? L10n.string("new.result.playing", "播放中") : L10n.string("dialogue.play_all", "播放对话"),
+                  systemImage: isActive ? "stop.fill" : "play.fill")
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(AppPalette.accentText)
+                .frame(minHeight: 44)
+                .padding(.horizontal, 8)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("scenario.play")
     }
 }
 
 struct MemoryDialogueGroupCard: View {
     let group: SentenceDialogueGroup
     let context: MemoryContentContext
-    private var isDialogue: Bool { group.sentences.count == 2 }
+    private var isDialogue: Bool { group.sentences.count >= 2 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isDialogue ? 10 : 16) {
-            ForEach(group.sentences) { sentence in
-                if sentence.id != group.id { Divider().overlay(AppStroke.subtle) }
-                MemoryDetailSentenceRow(sentence: sentence, context: context, isCompact: isDialogue)
+        if isDialogue {
+            VStack(spacing: 12) {
+                ForEach(group.sentences) { sentence in
+                    MemoryDialogueChatBubble(sentence: sentence, context: context)
+                }
+            }
+            .padding(.vertical, 8)
+        } else {
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(group.sentences) { sentence in
+                    MemoryDetailSentenceRow(sentence: sentence, context: context)
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+            .appCardBorder()
+        }
+    }
+}
+
+struct MemoryDialogueChatBubble: View {
+    @State private var isExpanded = false
+    let sentence: SentenceRecord
+    let context: MemoryContentContext
+
+    var body: some View {
+        MemoryDialogueChatBubbleContent(sentence: sentence, context: context, isExpanded: $isExpanded)
+    }
+}
+
+struct MemoryDialogueChatBubbleContent: View {
+    @EnvironmentObject private var appModel: AppModel
+    let sentence: SentenceRecord
+    let context: MemoryContentContext
+    @Binding var isExpanded: Bool
+    private var isReply: Bool { sentence.dialogue?.turn == 1 }
+
+    var body: some View {
+        DialogueBubble(isReply: isReply, bottomPadding: isExpanded ? 4 : 12) {
+            Button { isExpanded.toggle() } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(sentenceText: sentence.targetText, language: context.teachingLocale.rawValue)
+                        .font(AppTypography.sentence)
+                        .foregroundStyle(AppTextColor.primary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SentenceReadingView(sentence: sentence, context: context, isEnabled: appModel.showsJapaneseReadings)
+                }
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(isExpanded
+                ? L10n.string("dialogue.details.collapse", "轻点收起翻译和操作")
+                : L10n.string("dialogue.details.expand", "轻点查看翻译和操作"))
+            .accessibilityIdentifier("dialogue.details.\(sentence.id)")
+
+            if isExpanded {
+                Text(sentenceText: sentence.translationText, language: context.translationLanguage.rawValue)
+                    .font(.subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                actions
             }
         }
-        .padding(isDialogue ? 16 : 20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurfaceColor.card, in: RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
-        .appCardBorder()
+    }
+
+    private var actions: some View {
+        let request = appModel.speech.request(sentence: sentence, context: context)
+        return HStack(spacing: 2) {
+            Button { appModel.speech.speak(request) } label: {
+                SpeechPlaybackLabel(speech: appModel.speech, text: request.text,
+                    playingTitle: L10n.string("new.result.playing", "播放中"), request: request)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityIdentifier("dialogue.play.\(sentence.id)")
+
+            Button { appModel.toggleFavorite(sentenceID: sentence.id) } label: {
+                Image(systemName: sentence.isFavorite ? "star.fill" : "star")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel(sentence.isFavorite
+                ? L10n.string("favorites.action.unfavorite", "取消收藏")
+                : L10n.string("new.result.favorite", "收藏"))
+            .accessibilityAddTraits(sentence.isFavorite ? .isSelected : [])
+            .accessibilityIdentifier("dialogue.favorite.\(sentence.id)")
+        }
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(AppPalette.accentText)
+        .tint(AppPalette.accentText)
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, alignment: isReply ? .trailing : .leading)
     }
 }
 

@@ -4,6 +4,88 @@ import XCTest
 
 @MainActor
 final class SpeechButtonLayoutTests: XCTestCase {
+    func testScenarioTabsDisplayOneThreeTurnConversationInsteadOfEveryGroup() throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        defer { model.speech.stop() }
+        for count in [2, 3] {
+            let titles = ["喝点什么", "忙里偷闲", "靠窗坐吧"]
+            let memory = MemoryEntry(imageData: Data(), sentences: (0..<(count * 3)).map { index in
+                SentenceRecord(english: ["Would you like something warm to drink?", "A coffee sounds good after that long walk.", "Let's find a quiet table by the window."][index % 3],
+                    chinese: ["你想喝点热的吗？", "走了这么久，喝杯咖啡不错。", "我们找个靠窗的安静位置吧。"][index % 3],
+                    presentationGroup: .whatIDSay,
+                    dialogue: SentenceDialogue(index: index / 3, turn: index % 3, title: titles[index / 3]))
+            })
+            XCTAssertTrue(memory.sentences.isCompleteScenarioDialogues)
+            let panel = MemoryDetailSentencePanel(memory: memory).environmentObject(model).frame(width: 345)
+            let allGroups = VStack {
+                ForEach(memory.sentences.dialogueGroups) { group in
+                    MemoryDialogueGroupCard(group: group, context: memory.context)
+                }
+            }.environmentObject(model).frame(width: 345)
+            XCTAssertLessThan(try size(of: panel).height, try size(of: allGroups).height)
+            for scheme in [ColorScheme.light, .dark] {
+                let renderer = ImageRenderer(content: panel.padding(20).background(AppSurfaceColor.page)
+                    .environment(\.colorScheme, scheme).fixedSize(horizontal: false, vertical: true))
+                let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                attachment.name = "ScenarioTabs-\(count)-\(scheme)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
+    func testChatBubbleFavoriteStateDoesNotShiftLayout() throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        defer { model.speech.stop() }
+        for turn in [0, 1] {
+            for typeSize in [DynamicTypeSize.large, .accessibility3] {
+                let sentence = SentenceRecord(english: "Let's sit by the window and enjoy the afternoon light.",
+                    chinese: "我们坐在窗边，享受午后的阳光吧。", dialogue: SentenceDialogue(index: 0, turn: turn))
+                var saved = sentence
+                saved.isFavorite = true
+                let plainSize = try size(of: MemoryDialogueChatBubbleContent(sentence: sentence, context: .legacyEnglish, isExpanded: .constant(true))
+                    .environmentObject(model).environment(\.dynamicTypeSize, typeSize).frame(width: 280))
+                let savedSize = try size(of: MemoryDialogueChatBubbleContent(sentence: saved, context: .legacyEnglish, isExpanded: .constant(true))
+                    .environmentObject(model).environment(\.dynamicTypeSize, typeSize).frame(width: 280))
+                XCTAssertEqual(plainSize.width, 280, accuracy: 1)
+                XCTAssertEqual(plainSize, savedSize)
+            }
+        }
+    }
+
+    func testChatBubbleStartsCollapsedAndDetailsExpandWithoutChangingWidth() throws {
+        let model = AppModel()
+        model.networkStatusMonitor.cancel()
+        model.isNetworkAvailable = false
+        defer { model.speech.stop() }
+        for turn in [0, 1] {
+            let sentence = SentenceRecord(english: "Let's sit by the window and enjoy the afternoon light.",
+                chinese: "我们坐在窗边，享受午后的阳光吧。", dialogue: SentenceDialogue(index: 0, turn: turn))
+            for typeSize in [DynamicTypeSize.large, .accessibility3] {
+                let initial = try size(of: MemoryDialogueChatBubble(sentence: sentence, context: .legacyEnglish)
+                    .environmentObject(model).environment(\.dynamicTypeSize, typeSize).frame(width: 280))
+                let collapsed = try size(of: MemoryDialogueChatBubbleContent(sentence: sentence, context: .legacyEnglish, isExpanded: .constant(false))
+                    .environmentObject(model).environment(\.dynamicTypeSize, typeSize).frame(width: 280))
+                let expanded = MemoryDialogueChatBubbleContent(sentence: sentence, context: .legacyEnglish, isExpanded: .constant(true))
+                    .environmentObject(model).environment(\.dynamicTypeSize, typeSize).frame(width: 280)
+                let expandedSize = try size(of: expanded)
+                XCTAssertEqual(initial, collapsed)
+                XCTAssertEqual(expandedSize.width, collapsed.width, accuracy: 1)
+                XCTAssertGreaterThan(expandedSize.height, collapsed.height + 44)
+                let renderer = ImageRenderer(content: expanded.padding(20).background(AppSurfaceColor.page)
+                    .fixedSize(horizontal: false, vertical: true))
+                let attachment = XCTAttachment(image: try XCTUnwrap(renderer.uiImage))
+                attachment.name = "ExpandedDialogue-\(turn)-\(typeSize)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
+    }
+
     func testResultPanelDisplaysAllThreePairsWithoutCategoryTabs() throws {
         let model = AppModel()
         model.networkStatusMonitor.cancel()
@@ -21,7 +103,9 @@ final class SpeechButtonLayoutTests: XCTestCase {
                 MemoryDialogueGroupCard(group: group, context: memory.context)
             }
         }.environmentObject(model).frame(width: 345)
-        XCTAssertEqual(try size(of: panel).height, try size(of: cardsOnly).height, accuracy: 1)
+        XCTAssertEqual(memory.sentences.dialogueGroups.count, 3)
+        // Numbered separators and additional inter-group space distinguish three conversations.
+        XCTAssertGreaterThan(try size(of: panel).height, try size(of: cardsOnly).height + 90)
         for scheme in [ColorScheme.light, .dark] {
             let renderer = ImageRenderer(content: panel.padding(20).background(AppSurfaceColor.page)
                 .environment(\.colorScheme, scheme).fixedSize(horizontal: false, vertical: true))
@@ -52,7 +136,8 @@ final class SpeechButtonLayoutTests: XCTestCase {
             let compactSize = try size(of: compact)
             let previousSize = try size(of: previous)
             XCTAssertEqual(compactSize.width, width, accuracy: 1)
-            XCTAssertLessThan(compactSize.height, previousSize.height - 60)
+            // Chat bubbles trade some line width for distinct left/right speakers.
+            XCTAssertLessThan(compactSize.height, previousSize.height)
             for scheme in [ColorScheme.light, .dark] {
                 for typeSize in [DynamicTypeSize.large, .accessibility3] {
                     let renderer = ImageRenderer(content: compact

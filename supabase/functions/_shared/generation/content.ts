@@ -1,6 +1,7 @@
 import { SCENE_CATEGORY_IDS } from "../scene-categories.ts"
 import { ContractError, record, sha256, validateSentence, validateSentenceCollection, type SentenceContent } from "../content-contracts/memory.ts"
 import { contentContext, type GenerationSpec } from "./spec.ts"
+import { buildScenarioPrompt, flattenScenarios } from "./scenarios.ts"
 
 const lengthPolicy = {
   en: { starter: [3, 6], beginner: [8, 12], intermediate: [10, 16], advanced: [8, 24] },
@@ -12,10 +13,12 @@ const lengthPolicy = {
 function acceptedLengthRange(spec: GenerationSpec): readonly [number, number] {
   const [min, max] = lengthPolicy[spec.targetLanguage][spec.level]
   // Keep Japanese character limits; word-count targets allow natural short replies.
-  return spec.targetLanguage === "ja" ? [min, max] : [1, max + Math.max(4, Math.ceil(max / 2))]
+  return spec.targetLanguage === "ja" ? [min, max] : [1, Math.max(
+    spec.generationFormat === "scenario_dialogue_v1" ? 18 : 0, max + Math.max(4, Math.ceil(max / 2)))]
 }
 
 export function generationCompletionTokenBudget(spec: GenerationSpec): number | undefined {
+  if (spec.generationFormat === "scenario_dialogue_v1") return spec.targetLanguage === "en" ? 6144 : 18432
   // Double the six-sentence budgets for 12 turns, including per-turn study material.
   if (spec.generationFormat === "dialogue_tabs_v1") return spec.targetLanguage === "en" ? 8192 : 24576
   if (spec.generationFormat === "dialogue_trio_v1") return spec.targetLanguage === "en" ? 4096 : 12288
@@ -29,6 +32,7 @@ export function selectDialogueMiddleGroup(random: () => number = Math.random): D
 }
 
 export function buildMultilingualPrompt(spec: GenerationSpec, questionType: "open" | "closed" = "open", middleGroup?: DialogueMiddleGroup): string {
+  if (spec.generationFormat === "scenario_dialogue_v1") return buildScenarioPrompt(spec)
   const [min, max] = lengthPolicy[spec.targetLanguage][spec.level]
   const style = { en: "natural American English", es: "common Latin American Spanish, not Spain-specific usage",
     ja: "standard Japanese, everyday polite expressions", fr: "natural France French" }[spec.targetLanguage]
@@ -67,8 +71,11 @@ export type GeneratedSentence = SentenceContent
 
 export async function parseMultilingualContent(raw: string, spec: GenerationSpec, middleGroup?: DialogueMiddleGroup): Promise<{sentences: GeneratedSentence[]; tags: string[]} | null> {
   try {
-    const value = record(JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")))
-    if (!Array.isArray(value.sentences) || value.sentences.length !== (spec.generationFormat === "dialogue_tabs_v1" ? 12 : 6) || !Array.isArray(value.tags) ||
+    const payload = record(JSON.parse(raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")))
+    const scenario = spec.generationFormat === "scenario_dialogue_v1"
+    const value = scenario ? flattenScenarios(payload, spec) : payload
+    const allowedCounts = scenario ? [6, 9] : [spec.generationFormat === "dialogue_tabs_v1" ? 12 : 6]
+    if (!Array.isArray(value.sentences) || !allowedCounts.includes(value.sentences.length) || !Array.isArray(value.tags) ||
         value.tags.length > 3 || value.tags.some((id: string) => !SCENE_CATEGORY_IDS.has(id))) return null
     const sentences: GeneratedSentence[] = []
     for (const item of value.sentences) {

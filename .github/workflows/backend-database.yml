@@ -77,6 +77,9 @@ jobs:
       - name: Test dialogue persistence and authenticated guest import
         run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/multilingual-dialogue-generation.test.ts scripts/tests/multilingual-dialogue-http.test.ts
 
+      - name: Test named scenario persistence and generation
+        run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/scenario-*.test.ts
+
   migrate:
     name: SQL Migrations
     runs-on: [self-hosted, linux, x64, aliyun-ecs]

@@ -84,70 +84,98 @@ struct AlbumFlipFavoriteButton: View {
 struct AlbumFlipSentenceCard<Photo: View>: View {
     let item: AlbumFlipItem
     let size: CGSize
-    let showsTranslation: Bool
-    let onToggleTranslation: () -> Void
+    let translatedSentenceIDs: Set<UUID>
+    let onToggleTranslation: (UUID) -> Void
+    var onDoubleTap: () -> Void = {}
     var showsJapaneseReadings = true
     @ViewBuilder var photo: () -> Photo
 
     var body: some View {
         VStack(spacing: 0) {
             photo()
-                .frame(width: size.width, height: max(80, min(360, size.height * (item.reply == nil ? 0.56 : 0.43))))
+                .frame(width: size.width, height: max(80, min(360, size.height * (item.sentences.count == 3 ? 0.34 : item.reply == nil ? 0.56 : 0.43))))
                 .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2, perform: onDoubleTap)
                 .accessibilityLabel(L10n.string("album_flip.photo", "这句话对应的照片"))
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
+                    if let title = item.scenarioTitle {
+                        Text(title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTextColor.secondary)
+                            .accessibilityAddTraits(.isHeader)
+                    }
                     ForEach(item.sentences) { sentence in
-                        HStack(alignment: .top, spacing: 12) {
-                            if item.reply != nil, let dialogue = sentence.dialogue {
-                                SentenceSpeakerBadge(speaker: dialogue.speaker)
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(sentenceText: sentence.targetText, language: item.context.teachingLocale.rawValue)
-                                    .font(.custom("AvenirNext-DemiBold", size: item.reply == nil ? 23 : 21, relativeTo: .title3))
-                                    .foregroundStyle(AppTextColor.primary)
-                                    .lineSpacing(4)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                SentenceReadingView(sentence: sentence, context: item.context, isEnabled: showsJapaneseReadings)
-                                if showsTranslation {
-                                    Text(sentenceText: sentence.translationText, language: item.context.translationLanguage.rawValue)
-                                        .font(.body)
-                                        .foregroundStyle(AppTextColor.secondary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .transition(.opacity)
-                                }
-                            }
-                        }
-                        .padding(.bottom, item.reply == nil ? 0 : 6)
+                        interactiveSentence(sentence)
                     }
-
-                    Button(action: onToggleTranslation) {
-                        HStack(spacing: 6) {
-                            Text(showsTranslation
-                                ? L10n.string("album_flip.hide_translation", "收起翻译")
-                                : L10n.string("album_flip.show_translation", "查看翻译"))
-                            Image(systemName: showsTranslation ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(AppTextColor.secondary)
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 22)
-                .padding(.top, 20)
+                .padding(.horizontal, item.reply == nil ? 22 : 16)
+                .padding(.top, item.reply == nil ? 20 : 16)
                 .padding(.bottom, 12)
             }
             .scrollBounceBehavior(.basedOnSize)
         }
         .frame(width: size.width, height: size.height, alignment: .top)
-        .background(AppSurfaceColor.card)
+        .background {
+            AppSurfaceColor.card
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2, perform: onDoubleTap)
+        }
         .clipShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: AppCornerRadius.card, style: .continuous))
+    }
+
+    private func interactiveSentence(_ sentence: SentenceRecord) -> some View {
+        Group {
+            if item.reply != nil {
+                DialogueBubble(isReply: sentence.dialogue?.turn == 1,
+                    incomingFill: AppSurfaceColor.elevated) {
+                    sentenceContent(sentence)
+                }
+            } else {
+                sentenceContent(sentence)
+            }
+        }
+        .contentShape(Rectangle())
+        // Resolve the double tap first so saving never also reveals a translation.
+        .gesture(TapGesture(count: 2).exclusively(before: TapGesture()).onEnded { value in
+            switch value {
+            case .first: onDoubleTap()
+            case .second: onToggleTranslation(sentence.id)
+            }
+        })
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(translatedSentenceIDs.contains(sentence.id)
+            ? L10n.string("album_flip.hide_translation", "收起翻译")
+            : L10n.string("album_flip.show_translation", "查看翻译"))
+        .accessibilityAction { onToggleTranslation(sentence.id) }
+        .accessibilityIdentifier("album_flip.translation.\(sentence.id)")
+    }
+
+    private func sentenceContent(_ sentence: SentenceRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(sentenceText: sentence.targetText, language: item.context.teachingLocale.rawValue)
+                .font(item.reply == nil
+                    ? .custom("AvenirNext-DemiBold", size: 23, relativeTo: .title3)
+                    : AppTypography.sentence)
+                .foregroundStyle(AppTextColor.primary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            SentenceReadingView(sentence: sentence, context: item.context, isEnabled: showsJapaneseReadings)
+            if translatedSentenceIDs.contains(sentence.id) {
+                Text(sentenceText: sentence.translationText, language: item.context.translationLanguage.rawValue)
+                    .font(item.reply == nil ? .body : .subheadline)
+                    .foregroundStyle(AppTextColor.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
+        }
+        .frame(minHeight: 44, alignment: .leading)
     }
 }
 

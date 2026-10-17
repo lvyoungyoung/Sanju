@@ -29,7 +29,7 @@ export async function claimGeneration(client: any, prepared: PreparedGeneration,
   if (trio && middleGroup !== "what_i_see" && middleGroup !== "what_i_say") throw new ContractError("invalid_dialogue_policy")
   const { data, error } = await client.rpc("claim_generation_job_v3", { p_user_id: userID, p_request_id: prepared.requestID,
     p_is_anonymous: anonymous, p_image_path: imagePath, p_generation_spec: prepared.spec, p_request_fingerprint: prepared.fingerprint,
-    p_generation_policy: { version: 1, promptVersion: trio ? "dialogue-trio-v1" : prepared.spec.generationFormat === "dialogue_tabs_v1" ? "dialogue-v1" : "multilingual-v1",
+    p_generation_policy: { version: 1, promptVersion: prepared.spec.generationFormat === "scenario_dialogue_v1" ? "scenario-dialogue-v1" : trio ? "dialogue-trio-v1" : prepared.spec.generationFormat === "dialogue_tabs_v1" ? "dialogue-v1" : "multilingual-v1",
       materialPolicyVersion: 1, providerPolicyVersion: 1, ...(trio ? { dialogueMiddleGroup: middleGroup } : {}) } })
   if (error) {
     for (const code of ["request_context_mismatch", "generation_disabled"]) {

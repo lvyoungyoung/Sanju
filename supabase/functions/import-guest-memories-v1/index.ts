@@ -19,7 +19,7 @@ Deno.serve(req => authenticatedContentRequest(req, async ({body, user, client, a
   for (const item of body.memories) {
     const m = record(item)
     const c = record(m.context)
-    if (m.schemaVersion !== 2 || c.schemaVersion !== 2 || !Array.isArray(m.sentences) || ![3,6,12].includes(m.sentences.length) ||
+    if (m.schemaVersion !== 2 || c.schemaVersion !== 2 || !Array.isArray(m.sentences) || ![3,6,9,12].includes(m.sentences.length) ||
         !Array.isArray(m.tags) || m.tags.length > 3 || m.tags.some((id: string) => !SCENE_CATEGORY_IDS.has(id)) ||
         typeof m.createdAt !== "string" || !Number.isFinite(Date.parse(m.createdAt))) throw new ContractError("invalid_import")
     const context = contentContext(validateGenerationSpec({ ...c, schemaVersion: 1, catalogVersion: 1, level: "intermediate", generationFormat: "dual_tabs_v1" }))

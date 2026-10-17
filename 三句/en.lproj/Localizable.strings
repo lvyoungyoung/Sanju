@@ -511,6 +511,10 @@
 "album_flip.unmute" = "Turn on automatic playback";
 "album_flip.photo" = "The photo for these expressions";
 "dialogue.speaker" = "Speaker";
+"dialogue.play_all" = "Play conversation";
+"dialogue.group.number" = "Conversation %d";
+"dialogue.details.expand" = "Tap to show translation and actions";
+"dialogue.details.collapse" = "Tap to hide translation and actions";
 "dialogue.context" = "Conversation context";
 "album_flip.photo_unavailable" = "Photo unavailable right now";
 "album_flip.show_translation" = "Show translation";

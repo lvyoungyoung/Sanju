@@ -511,6 +511,10 @@
 "album_flip.unmute" = "开启自动朗读";
 "album_flip.photo" = "这段表达对应的照片";
 "dialogue.speaker" = "说话人";
+"dialogue.play_all" = "播放对话";
+"dialogue.group.number" = "第 %d 组对话";
+"dialogue.details.expand" = "轻点查看翻译和操作";
+"dialogue.details.collapse" = "轻点收起翻译和操作";
 "dialogue.context" = "对话上下文";
 "album_flip.photo_unavailable" = "照片暂时无法加载";
 "album_flip.show_translation" = "查看翻译";

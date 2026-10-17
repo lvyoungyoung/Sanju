@@ -8,6 +8,7 @@ on:
       - "contracts/languages.v1.json"
       - "scripts/generate-language-catalog.mjs"
       - "scripts/tests/multilingual*.ts"
+      - "scripts/tests/scenario-*.test.ts"
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/tests/edge-deployment-boundaries.test.ts"
@@ -37,6 +38,7 @@ on:
       - "contracts/languages.v1.json"
       - "scripts/generate-language-catalog.mjs"
       - "scripts/tests/multilingual*.ts"
+      - "scripts/tests/scenario-*.test.ts"
       - "scripts/edge-functions.txt"
       - "scripts/check-edge-functions.sh"
       - "scripts/tests/edge-deployment-boundaries.test.ts"
@@ -133,6 +135,9 @@ jobs:
 
       - name: Test multilingual contracts and local database isolation
         run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/multilingual*.ts
+
+      - name: Test named scenario generation and persistence
+        run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/scenario-*.test.ts
 
       - name: Check generated language catalogs
         run: node scripts/generate-language-catalog.mjs --check

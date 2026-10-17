@@ -26,6 +26,9 @@ extension SupabaseService {
         if spec.generationFormat == "dialogue_trio_v1", !result.memory.sentences.isCompleteDialogueTrio {
             throw SupabaseServiceError.invalidResponse
         }
+        if spec.generationFormat == "scenario_dialogue_v1", !result.memory.sentences.isCompleteScenarioDialogues {
+            throw SupabaseServiceError.invalidResponse
+        }
         return result
     }
 
@@ -85,7 +88,7 @@ extension SupabaseService {
         let path = "\(session.userID)/\(memory.id.uuidString.lowercased()).jpg"
         let content = SupabaseContentMemory(memory: memory, imagePath: path)
         try content.validate()
-        guard [3, 6, 12].contains(content.sentences.count) else { throw SupabaseServiceError.invalidResponse }
+        guard [3, 6, 9, 12].contains(content.sentences.count) else { throw SupabaseServiceError.invalidResponse }
         let existing: SupabaseContentMemory? = try await contentRPC(session: session, name: "get_memory_v2",
             payload: ["p_memory_id": memory.id.uuidString.lowercased()])
         if let existing {

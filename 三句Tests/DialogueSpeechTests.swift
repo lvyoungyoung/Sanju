@@ -80,6 +80,26 @@ final class DialogueSpeechTests: XCTestCase {
         XCTAssertTrue(source.requests.isEmpty)
     }
 
+    func testScenarioSequencePlaysThreeDistinctLinesAndReplacementDropsOldThirdLine() async throws {
+        let requests = [request("Would you like some coffee?", voice: .dean),
+                        request("Yes, a small cup would be lovely.", voice: .chloe),
+                        request("I'll get one for you too.", voice: .dean)]
+        let replacement = request("A new scenario begins.", voice: .dean)
+        await seed(requests + [replacement])
+        speech.speakSequence(requests)
+        try await waitUntil { self.speech.sequenceRequests.isEmpty }
+        XCTAssertEqual(started, requests)
+
+        started.removeAll()
+        speech.speakSequence(requests)
+        try await waitForGap()
+        speech.speakSequence([replacement])
+        try await waitUntil { self.speech.sequenceRequests.isEmpty }
+        try await settleGap()
+        XCTAssertEqual(started, [requests[0], replacement])
+        XCTAssertTrue(source.requests.isEmpty)
+    }
+
     func testStopDuringBufferedPlaybackIgnoresLateCompletion() async throws {
         let requests = [request("First"), request("Must not start")]
         await seed(requests, audio: Data(repeating: 0, count: 48_000))

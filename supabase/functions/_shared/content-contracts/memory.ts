@@ -22,8 +22,11 @@ export interface LearningMaterial {
 
 export interface SentenceDialogue {
   index: 0 | 1 | 2
-  turn: 0 | 1
+  turn: 0 | 1 | 2
+  title?: string
 }
+
+export type GenerationFormat = "dual_tabs_v1" | "dialogue_tabs_v1" | "dialogue_trio_v1" | "scenario_dialogue_v1"
 
 export interface SentenceContent {
   id: string
@@ -126,16 +129,35 @@ export async function validateSentence(value: unknown, context: ContentContext):
 
 export function validateDialogue(value: unknown): SentenceDialogue {
   const d = record(value)
-  if (![0, 1, 2].includes(d.index) || ![0, 1].includes(d.turn) ||
-      Object.keys(d).some(key => key !== "index" && key !== "turn")) throw new ContractError("invalid_dialogue")
-  return { index: d.index, turn: d.turn }
+  const named = Object.hasOwn(d, "title")
+  if (![0, 1, 2].includes(d.index) || !(named ? [0, 1, 2] : [0, 1]).includes(d.turn) ||
+      Object.keys(d).some(key => !["index", "turn", "title"].includes(key)) ||
+      (named && (typeof d.title !== "string" || !d.title || d.title !== d.title.trim() ||
+        [...d.title].length > 24 || /[\u0000-\u001f\u007f-\u009f]/u.test(d.title)))) throw new ContractError("invalid_dialogue")
+  return { index: d.index, turn: d.turn, ...(named ? { title: d.title } : {}) }
 }
 
 // Trio indices are global; historical tabs identify pairs within each group.
-export function validateSentenceCollection(sentences: SentenceContent[], format?: "dual_tabs_v1" | "dialogue_tabs_v1" | "dialogue_trio_v1"): void {
+export function validateSentenceCollection(sentences: SentenceContent[], format?: GenerationFormat): void {
   if (new Set(sentences.map(s => s.id)).size !== sentences.length) throw new ContractError("duplicate_sentence_id")
+  if (format !== undefined && !["dual_tabs_v1", "dialogue_tabs_v1", "dialogue_trio_v1", "scenario_dialogue_v1"].includes(format)) throw new ContractError("invalid_dialogue")
   const hasDialogue = sentences.some(s => s.dialogue != null)
-  if (format === "dialogue_trio_v1" || (!format && hasDialogue && sentences.length === 6)) {
+  const hasTitle = sentences.some(s => s.dialogue != null && Object.hasOwn(s.dialogue, "title"))
+  if (format === "scenario_dialogue_v1" || hasTitle) {
+    if ((format !== undefined && format !== "scenario_dialogue_v1") || ![6, 9].includes(sentences.length)) throw new ContractError("invalid_dialogue")
+    const keys = new Set<string>()
+    const titles = new Map<number, string>()
+    for (const s of sentences) {
+      const d = validateDialogue(s.dialogue)
+      if (d.title === undefined || d.index >= sentences.length / 3 || s.presentationGroup !== "what_i_say" ||
+          (titles.has(d.index) && titles.get(d.index) !== d.title)) throw new ContractError("invalid_dialogue")
+      const key = `${d.index}:${d.turn}`
+      if (keys.has(key)) throw new ContractError("invalid_dialogue")
+      keys.add(key)
+      titles.set(d.index, d.title)
+    }
+    if (new Set(titles.values()).size !== sentences.length / 3) throw new ContractError("invalid_dialogue")
+  } else if (format === "dialogue_trio_v1" || (!format && hasDialogue && sentences.length === 6)) {
     if (sentences.length !== 6) throw new ContractError("invalid_dialogue")
     const keys = new Set<string>()
     const groups = new Map<number, string>()

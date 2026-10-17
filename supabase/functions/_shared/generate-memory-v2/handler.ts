@@ -383,7 +383,7 @@ export async function handleGenerationRequest(req: Request, timing: GenerationTi
 
     timing.start("prompt")
     // Choose once so retries and provider fallback keep the same scene question type.
-    const sceneQuestionType = generationFormat === "dual_tabs_v1" && prepared?.spec.generationFormat !== "dialogue_trio_v1" ? selectSceneQuestionType() : undefined
+    const sceneQuestionType = generationFormat === "dual_tabs_v1" && prepared?.spec.generationFormat !== "dialogue_trio_v1" && prepared?.spec.generationFormat !== "scenario_dialogue_v1" ? selectSceneQuestionType() : undefined
     const promptText = prepared ? buildMultilingualPrompt(prepared.spec, sceneQuestionType, dialogueMiddleGroup) : buildPromptText(englishLevel, generationFormat, sceneQuestionType)
 
     const completionResult = await requestWithFallback<Sentence | GeneratedSentence>({

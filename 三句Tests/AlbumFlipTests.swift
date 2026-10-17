@@ -627,7 +627,7 @@ final class AlbumFlipTests: XCTestCase {
         let item = AlbumFlipItem.makeItems(from: [makeMemory()])[0]
         for size in [CGSize(width: 272, height: 365), CGSize(width: 345, height: 535)] {
             for scheme in [ColorScheme.light, .dark] {
-                let view = AlbumFlipSentenceCard(item: item, size: size, showsTranslation: true, onToggleTranslation: {}) {
+                let view = AlbumFlipSentenceCard(item: item, size: size, translatedSentenceIDs: Set(item.sentences.map(\.id)), onToggleTranslation: { _ in }) {
                     Image(uiImage: self.samplePhoto).resizable().scaledToFill()
                 }
                 .environment(\.colorScheme, scheme)
@@ -647,11 +647,36 @@ final class AlbumFlipTests: XCTestCase {
             english: String(repeating: "The afternoon light fills this little cafe with warmth. ", count: 5),
             chinese: "午后的阳光让这家小咖啡馆充满暖意。"
         ))
-        let view = AlbumFlipSentenceCard(item: item, size: CGSize(width: 272, height: 365), showsTranslation: true, onToggleTranslation: {}) {
+        let view = AlbumFlipSentenceCard(item: item, size: CGSize(width: 272, height: 365), translatedSentenceIDs: Set(item.sentences.map(\.id)), onToggleTranslation: { _ in }) {
             Color.orange
         }.environment(\.dynamicTypeSize, .accessibility3)
         let image = try await renderInWindow(view, size: CGSize(width: 272, height: 365))
         XCTAssertEqual(image.size, CGSize(width: 272, height: 365))
+    }
+
+    func testScenarioCardRendersThreeBubblesAndTitleWithoutChangingItsFrame() async throws {
+        let turns = (0..<3).map { turn in
+            SentenceRecord(english: ["Would you like something warm to drink?", "A coffee sounds good after that long walk.", "Let's find a quiet table by the window."][turn],
+                chinese: "我们找个靠窗的安静位置吧。", presentationGroup: .whatIDSay,
+                dialogue: SentenceDialogue(index: 0, turn: turn, title: "忙里偷闲"))
+        }
+        let item = AlbumFlipItem(memoryID: UUID(), memoryCreatedAt: .now,
+            sentence: turns[0], reply: turns[1], continuation: turns[2])
+        XCTAssertEqual(item.sentences.map(\.dialogue?.speaker), ["A", "B", "A"])
+        for scheme in [ColorScheme.light, .dark] {
+            for typeSize in [DynamicTypeSize.large, .accessibility3] {
+                let size = CGSize(width: 345, height: 564)
+                let view = AlbumFlipSentenceCard(item: item, size: size, translatedSentenceIDs: [], onToggleTranslation: { _ in }) {
+                    Image(uiImage: self.samplePhoto).resizable().scaledToFill()
+                }.environment(\.colorScheme, scheme).environment(\.dynamicTypeSize, typeSize)
+                let image = try await renderInWindow(view, size: size)
+                XCTAssertEqual(image.size, size)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "ScenarioCard-\(scheme)-\(typeSize)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
     }
 
     func testDialogueCardFitsCompactAndLargeTypeLayoutsInBothThemes() async throws {
@@ -664,18 +689,20 @@ final class AlbumFlipTests: XCTestCase {
         ))
         for scheme in [ColorScheme.light, .dark] {
             for typeSize in [DynamicTypeSize.large, .accessibility3] {
-                let size = CGSize(width: 320, height: 480)
-                let view = AlbumFlipSentenceCard(item: item, size: size, showsTranslation: true, onToggleTranslation: {}) {
-                    Image(uiImage: self.samplePhoto).resizable().scaledToFill()
+                for translatedIDs: Set<UUID> in [[], [item.sentence.id], [try XCTUnwrap(item.reply).id], Set(item.sentences.map(\.id))] {
+                    let size = typeSize.isAccessibilitySize ? CGSize(width: 320, height: 480) : CGSize(width: 345, height: 564)
+                    let view = AlbumFlipSentenceCard(item: item, size: size, translatedSentenceIDs: translatedIDs, onToggleTranslation: { _ in }) {
+                        Image(uiImage: self.samplePhoto).resizable().scaledToFill()
+                    }
+                    .environment(\.colorScheme, scheme)
+                    .environment(\.dynamicTypeSize, typeSize)
+                    let image = try await renderInWindow(view, size: size)
+                    XCTAssertEqual(image.size, size)
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "DialogueCard-\(scheme)-\(typeSize)-translation-\(item.sentences.map { translatedIDs.contains($0.id) ? "on" : "off" }.joined(separator: "-"))"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
                 }
-                .environment(\.colorScheme, scheme)
-                .environment(\.dynamicTypeSize, typeSize)
-                let image = try await renderInWindow(view, size: size)
-                XCTAssertEqual(image.size, size)
-                let attachment = XCTAttachment(image: image)
-                attachment.name = "DialogueCard-\(scheme)-\(typeSize)"
-                attachment.lifetime = .keepAlways
-                add(attachment)
             }
         }
     }
@@ -686,7 +713,7 @@ final class AlbumFlipTests: XCTestCase {
         for scheme in [ColorScheme.light, .dark] {
             var images = [UIImage]()
             for isFavorite in [false, true] {
-                let view = AlbumFlipSentenceCard(item: item, size: size, showsTranslation: false, onToggleTranslation: {}) {
+                let view = AlbumFlipSentenceCard(item: item, size: size, translatedSentenceIDs: [], onToggleTranslation: { _ in }) {
                     Image(uiImage: self.samplePhoto).resizable().scaledToFill()
                 }
                 .overlay(alignment: .topTrailing) {

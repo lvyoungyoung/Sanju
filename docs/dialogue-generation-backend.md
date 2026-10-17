@@ -1,5 +1,57 @@
 # Dialogue Generation Backend
 
+## Current: Named Scenarios (2026-10-17)
+
+New clients request `scenario_dialogue_v1`. The model returns `scenarios` (two
+by default, optionally three genuinely different situations) and photo `tags`.
+Each scenario has a short Chinese `title` and exactly three `dialogue` objects
+with speakers A, B, A. English/Chinese courses use `english` and `chinese`;
+other courses use `targetText` / `translationText` for the corresponding field,
+retaining segmented learning material where required. Titles stay Chinese.
+
+The prompt follows the photo-scenario template: natural useful conversation,
+different small topics, plausible fictional context without asserting real
+identities, and a third turn that continues the conversation rather than asking
+the app user to answer. Usually 5–12 words, with natural shorter/longer speech
+allowed. Vocabulary and grammar follow the selected level. There is no random
+objective/subjective middle group, mandatory question or sentence-purpose output.
+
+The server flattens the result into six or nine independently identifiable
+sentence records. `dialogue: {index, turn, title}` preserves scenario membership;
+indices are contiguous from zero, turns are 0/1/2. `presentationGroup` is the
+internal placeholder `what_i_say`, not an AI category or client Tab. Titles must
+be nonempty, at most 24 Unicode scalars, identical within a scenario and distinct
+between scenarios. The validator checks shape, not whether conversations sound
+natural. English word-count safety caps are 18/18/24 for starter/beginner/
+intermediate; Japanese character and all other material checks remain in place.
+
+Flow: client compression and session checks -> moderation -> one model request
+for scenarios plus tags -> validation -> image upload and atomic save/debit ->
+client persistence/display. Provider order and timeouts are unchanged. No extra
+model request is introduced for titles; no sentence taxonomy/purpose/vector job
+is added. Failed parsing can still cause fallback, so local tests alone do not
+establish real response time or naturalness.
+
+The new migration `20261017000000_scenario_dialogue_generation.sql` extends the
+existing dialogue JSON and immutable format marker. It retains old singles,
+12-turn dialogues, six-turn pairs, IDs, favorites, study history and receipts.
+One credit is charged per photo, not per scenario or utterance. Recovery and guest
+import retain all titles and turns. No destructive backfill is performed.
+
+Deployment order: apply the new migration, deploy `generate-memory-v3` and
+`import-guest-memories-v1`, then test the updated client. Existing read/recovery
+functions pass through the stored JSON and need no redeployment. No new secrets,
+environment variables, proxy routes or changes to speech endpoints are required.
+Code push is not a deployment. The sections below document historical formats.
+
+Local verification for this version: 111 backend regression tests / 174 steps
+passed, plus the new database suite's 3 tests / 7 steps. The final dedicated
+scenario run passed 11 tests / 95 steps. All Edge Function dependency and type
+checks passed. Logs: `/tmp/sanju-scenario-backend.log`,
+`/tmp/sanju-scenario-final-backend.log`, `/tmp/sanju-scenario-functions.log`.
+Both GitHub deployment workflows now run the scenario test files. No live model,
+staging/production database, deployment or real speech service was exercised.
+
 ## Contract
 
 - New V3 requests use `generationSpec.generationFormat = "dialogue_trio_v1"`.

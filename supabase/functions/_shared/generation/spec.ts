@@ -1,16 +1,16 @@
-import { ContractError, record, sha256, uuid, type ContentContext } from "../content-contracts/memory.ts"
+import { ContractError, record, sha256, uuid, type ContentContext, type GenerationFormat } from "../content-contracts/memory.ts"
 import { hasTeachingLocale, languageCatalog, supportsGeneration, type LearningLevel } from "../languages/main.ts"
 
 export interface GenerationSpec extends Omit<ContentContext, "schemaVersion"> {
   schemaVersion: 1
   catalogVersion: 1
   level: LearningLevel
-  generationFormat: "dual_tabs_v1" | "dialogue_tabs_v1" | "dialogue_trio_v1"
+  generationFormat: GenerationFormat
 }
 
 export function validateGenerationSpec(value: unknown): GenerationSpec {
   const s = record(value)
-  if (s.schemaVersion !== 1 || s.catalogVersion !== languageCatalog.catalogVersion || !["dual_tabs_v1", "dialogue_tabs_v1", "dialogue_trio_v1"].includes(s.generationFormat) ||
+  if (s.schemaVersion !== 1 || s.catalogVersion !== languageCatalog.catalogVersion || !["dual_tabs_v1", "dialogue_tabs_v1", "dialogue_trio_v1", "scenario_dialogue_v1"].includes(s.generationFormat) ||
       !hasTeachingLocale(s.targetLanguage, s.teachingLocale) || !languageCatalog.levels.includes(s.level) ||
       !supportsGeneration(s.targetLanguage, s.translationLanguage)) {
     throw new ContractError("invalid_generation_spec")

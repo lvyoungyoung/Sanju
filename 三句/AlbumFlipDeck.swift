@@ -7,8 +7,10 @@ struct AlbumFlipItem: Identifiable, Equatable {
     let sentence: SentenceRecord
     var context: MemoryContentContext = .legacyEnglish
     var reply: SentenceRecord? = nil
+    var continuation: SentenceRecord? = nil
 
-    var sentences: [SentenceRecord] { [sentence] + (reply.map { [$0] } ?? []) }
+    var sentences: [SentenceRecord] { [sentence] + (reply.map { [$0] } ?? []) + (continuation.map { [$0] } ?? []) }
+    var scenarioTitle: String? { sentence.dialogue?.title }
 
     var id: String { "\(memoryID.uuidString):\(sentence.id.uuidString)" }
 
@@ -18,7 +20,8 @@ struct AlbumFlipItem: Identifiable, Equatable {
             memory.sentences.dialogueGroups.compactMap { group in
                 let item = AlbumFlipItem(memoryID: memory.id, memoryCreatedAt: memory.createdAt,
                                          sentence: group.sentences[0], context: memory.context,
-                                         reply: group.sentences.count == 2 ? group.sentences[1] : nil)
+                                         reply: group.sentences.count >= 2 ? group.sentences[1] : nil,
+                                         continuation: group.sentences.count == 3 ? group.sentences[2] : nil)
                 guard item.sentences.allSatisfy({ !$0.targetText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
                       seen.insert(item.id).inserted else { return nil }
                 return item
@@ -118,7 +121,7 @@ final class AlbumFlipDeck: ObservableObject {
         return [currentPage] + (pages.indices.contains(neighbor) ? [pages[neighbor]] : [])
     }
 
-    var upcomingSpeechTexts: [String] { upcomingSpeechItems.map { $0.sentence.targetText } }
+    var upcomingSpeechTexts: [String] { upcomingSpeechItems.flatMap { $0.sentences.map(\.targetText) } }
     var upcomingSpeechItems: [AlbumFlipItem] {
         cards.dropFirst(isShowingRoundBreak ? 0 : 1).prefix(Self.lookaheadCount).map(\.item)
     }
@@ -170,9 +173,10 @@ final class AlbumFlipDeck: ObservableObject {
                 remainingRoundItems = items
                 return
             }
-            let isDialogueTrio = items.count == 3 && Set(items.map(\.memoryID)).count == 1 &&
-                items.flatMap(\.sentences).isCompleteDialogueTrio
-            if isDialogueTrio {
+            let lines = items.flatMap(\.sentences)
+            let hasOrderedDialogues = Set(items.map(\.memoryID)).count == 1 &&
+                (lines.isCompleteDialogueTrio || lines.isCompleteScenarioDialogues)
+            if hasOrderedDialogues {
                 let index = remainingRoundItems.indices.min {
                     remainingRoundItems[$0].sentence.dialogue!.index < remainingRoundItems[$1].sentence.dialogue!.index
                 }!

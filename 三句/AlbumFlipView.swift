@@ -36,7 +36,7 @@ struct AlbumFlipView: View {
     @State private var isHorizontalDrag: Bool?
     @State private var isAdvancing = false
     @State private var isVisible = false
-    @State private var showsTranslation = false
+    @State private var translatedSentenceIDs: Set<UUID> = []
     @State private var isMuted = false
     @State private var crossedThreshold = false
     @State private var spokenCardID: UUID?
@@ -288,19 +288,22 @@ struct AlbumFlipView: View {
         switch page {
         case .sentence(let card):
             AlbumFlipSentenceCard(
-                item: card.item, size: size, showsTranslation: isFront && showsTranslation,
-                onToggleTranslation: {
+                item: card.item, size: size, translatedSentenceIDs: isFront ? translatedSentenceIDs : [],
+                onToggleTranslation: { sentenceID in
+                    guard isVisible, deck.currentPageID == card.id, !isAdvancing else { return }
                     withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
-                        showsTranslation.toggle()
+                        if !translatedSentenceIDs.insert(sentenceID).inserted {
+                            translatedSentenceIDs.remove(sentenceID)
+                        }
                     }
+                },
+                onDoubleTap: {
+                    toggleCurrentCardFavorite(cardID: card.id, showsDoubleTapHint: false)
                 },
                 showsJapaneseReadings: appModel.showsJapaneseReadings
             ) {
                 AlbumFlipPhoto(memoryID: card.item.memoryID, isFront: isFront)
             }
-            .gesture(TapGesture(count: 2).onEnded {
-                toggleCurrentCardFavorite(cardID: card.id, showsDoubleTapHint: false)
-            })
             // Keep the button outside the card's double-tap recognizer.
             .overlay(alignment: .topTrailing) {
                 AlbumFlipFavoriteButton(isFavorite: isFavorite(card.item)) {
@@ -429,7 +432,7 @@ struct AlbumFlipView: View {
                 drag = .zero
                 isAdvancing = false
                 isHorizontalDrag = nil
-                showsTranslation = false
+                translatedSentenceIDs.removeAll()
                 crossedThreshold = false
                 favoriteFeedback = nil
             }

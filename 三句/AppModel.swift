@@ -25,9 +25,33 @@ enum SentencePresentationGroup: String, Codable, Hashable, CaseIterable {
 nonisolated struct SentenceDialogue: Codable, Hashable, Sendable {
     let index: Int
     let turn: Int
+    let title: String?
 
-    var isValid: Bool { (0..<3).contains(index) && (0..<2).contains(turn) }
-    var speaker: String { turn == 0 ? "A" : "B" }
+    init(index: Int, turn: Int, title: String? = nil) {
+        self.index = index
+        self.turn = turn
+        self.title = title
+    }
+
+    private enum CodingKeys: String, CodingKey { case index, turn, title }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        index = try values.decode(Int.self, forKey: .index)
+        turn = try values.decode(Int.self, forKey: .turn)
+        title = values.contains(.title) ? try values.decode(String.self, forKey: .title) : nil
+    }
+
+    var isValid: Bool {
+        guard (0..<3).contains(index) else { return false }
+        guard let title else { return (0..<2).contains(turn) }
+        return (0..<3).contains(turn) && !title.isEmpty &&
+            title == title.trimmingCharacters(in: .whitespacesAndNewlines) &&
+            title.unicodeScalars.count <= 24 && !title.unicodeScalars.contains {
+                $0.value <= 0x1f || (0x7f...0x9f).contains($0.value)
+            }
+    }
+    var speaker: String { turn == 1 ? "B" : "A" }
 }
 
 struct SentenceRecord: Identifiable, Codable, Hashable {
@@ -169,6 +193,9 @@ struct MemoryEntry: Identifiable, Codable, Hashable {
         syncedToAccount = try container.decode(Bool.self, forKey: .syncedToAccount)
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
         sentences = try container.decode([SentenceRecord].self, forKey: .sentences)
+        if sentences.contains(where: { $0.dialogue?.title != nil }), !sentences.isCompleteScenarioDialogues {
+            throw LanguageContractError.unsupportedVersion
+        }
         context = try container.decodeIfPresent(MemoryContentContext.self, forKey: .context) ?? .legacyEnglish
         for sentence in sentences {
             if let material = sentence.learningMaterial {
@@ -225,8 +252,23 @@ extension Array where Element == MemoryEntry {
 }
 
 extension Array where Element == SentenceRecord {
+    var isCompleteScenarioDialogues: Bool {
+        guard [6, 9].contains(count), Set(map(\.id)).count == count,
+              allSatisfy({ $0.dialogue?.isValid == true && $0.dialogue?.title != nil && $0.presentationGroup == .whatIDSay }) else {
+            return false
+        }
+        var titles = Set<String>()
+        return (0..<(count / 3)).allSatisfy { index in
+            let lines = filter { $0.dialogue?.index == index }
+            guard lines.count == 3, Set(lines.compactMap { $0.dialogue?.turn }) == Set([0, 1, 2]),
+                  let title = lines.first?.dialogue?.title,
+                  lines.allSatisfy({ $0.dialogue?.title == title }) else { return false }
+            return titles.insert(title).inserted
+        }
+    }
+
     var isCompleteDialogueTrio: Bool {
-        guard count == 6, allSatisfy({ $0.dialogue?.isValid == true }),
+        guard count == 6, allSatisfy({ $0.dialogue?.isValid == true && $0.dialogue?.title == nil }),
               Set(map(\.id)).count == count else { return false }
         return (0..<3).allSatisfy { index in
             let pair = filter { $0.dialogue?.index == index }
@@ -237,8 +279,9 @@ extension Array where Element == SentenceRecord {
     }
 
     var isCompleteSentenceCollection: Bool {
-        guard [3, 6, 12].contains(count), Set(map(\.id)).count == count else { return false }
-        if allSatisfy({ $0.dialogue == nil }) { return count != 12 }
+        guard [3, 6, 9, 12].contains(count), Set(map(\.id)).count == count else { return false }
+        if contains(where: { $0.dialogue?.title != nil }) { return isCompleteScenarioDialogues }
+        if allSatisfy({ $0.dialogue == nil }) { return count == 3 || count == 6 }
         if count == 6 { return isCompleteDialogueTrio }
         return count == 12 && allSatisfy({ $0.dialogue?.isValid == true }) &&
             Set(map { "\($0.presentationGroup.rawValue):\($0.dialogue!.index):\($0.dialogue!.turn)" }).count == 12
@@ -251,7 +294,9 @@ extension Array where Element == SentenceRecord {
             let pair: [SentenceRecord]
             if let dialogue = sentence.dialogue {
                 let matches = filter { $0.presentationGroup == sentence.presentationGroup && $0.dialogue?.index == dialogue.index }
-                pair = matches.count == 2 && Set(matches.compactMap { $0.dialogue?.turn }) == Set([0, 1])
+                let turns = dialogue.title == nil ? Set([0, 1]) : Set([0, 1, 2])
+                pair = matches.count == turns.count && Set(matches.compactMap { $0.dialogue?.turn }) == turns &&
+                    matches.allSatisfy({ $0.dialogue?.isValid == true && $0.dialogue?.title == dialogue.title })
                     ? matches.sorted { $0.dialogue!.turn < $1.dialogue!.turn } : [sentence]
             } else {
                 pair = [sentence]
@@ -259,7 +304,7 @@ extension Array where Element == SentenceRecord {
             consumed.formUnion(pair.map(\.id))
             groups.append(SentenceDialogueGroup(sentences: pair))
         }
-        return isCompleteDialogueTrio
+        return isCompleteDialogueTrio || isCompleteScenarioDialogues
             ? groups.sorted { $0.sentences[0].dialogue!.index < $1.sentences[0].dialogue!.index }
             : groups
     }
@@ -274,6 +319,7 @@ extension Array where Element == SentenceRecord {
 struct SentenceDialogueGroup: Identifiable {
     let sentences: [SentenceRecord]
     var id: UUID { sentences[0].id }
+    var scenarioTitle: String? { sentences.first?.dialogue?.title }
 }
 
 struct UserProfile: Codable, Hashable {
