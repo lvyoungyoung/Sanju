@@ -75,7 +75,7 @@ Deno.test("dialogue contract: strict pairs, per-turn difficulty, stable legacy f
   strictEqual(await parseMultilingualContent(JSON.stringify(m), legacy), null)
   strictEqual(await parseMultilingualContent(JSON.stringify(memory(false)), spec), null)
   strictEqual((await parseMultilingualContent(JSON.stringify(memory(false)), legacy))?.sentences.length, 6)
-  const tooLong = memory(); tooLong.sentences[0].targetText = "This sentence is much too long for starter English."
+  const tooLong = memory(); tooLong.sentences[0].targetText = "This sentence is deliberately much too long for the starter English guardrail."
   strictEqual(await parseMultilingualContent(JSON.stringify(tooLong), spec), null)
   const prompts: string[] = []
   const fallback = await requestWithFallback({ imageBase64: "AA==", promptText: prompt, generationFormat: "dual_tabs_v1",
@@ -317,6 +317,72 @@ function malformedTrio(middle: DialogueMiddleGroup): MemoryContent[] {
   ]
   return mutations.map(mutate => { const m = trioMemory(middle); mutate(m); return m })
 }
+
+Deno.test("word targets allow short replies and bounded overflow without weakening dialogue structure", async () => {
+  for (const [level, target, ceiling] of [["starter", "3-6", 10], ["beginner", "8-12", 18],
+    ["intermediate", "10-16", 24], ["advanced", "8-24", 36]] as const) {
+    const course = { ...trioSpec, level }
+    const prompt = buildMultilingualPrompt(course, "open", "what_i_say")
+    ok(prompt.includes(`${target} space-delimited words`))
+    ok(prompt.includes("never pad a reply"))
+    const parse = (text: string) => {
+      const m = trioMemory("what_i_say")
+      m.sentences[1].targetText = text
+      return parseMultilingualContent(JSON.stringify(m), course, "what_i_say")
+    }
+    for (const text of ["Absolutely!", "That sounds lovely.", Array(ceiling).fill("word").join(" ")]) {
+      const parsed = await parse(text)
+      strictEqual(parsed?.sentences.length, 6)
+      strictEqual(parsed?.sentences[1].targetText, text)
+    }
+    for (const text of ["", "   ", "...", Array(ceiling + 1).fill("word").join(" ")]) {
+      strictEqual(await parse(text), null)
+    }
+    for (const invalid of malformedTrio("what_i_say")) {
+      strictEqual(await parseMultilingualContent(JSON.stringify(invalid), course, "what_i_say"), null)
+    }
+  }
+})
+
+Deno.test("beginner short and slightly long dialogue succeeds on DeepSeek without fallback", async () => {
+  const course = { ...trioSpec, level: "beginner" as const }
+  const m = trioMemory("what_i_say")
+  m.sentences[0].targetText = "The afternoon sunlight makes this little cafe look warm and welcoming to everyone."
+  m.sentences[1].targetText = "That sounds lovely."
+  let calls = 0
+  const result = await requestWithFallback<SentenceContent>({ imageBase64: "AA==", promptText: buildMultilingualPrompt(course, "open", "what_i_say"),
+    generationFormat: "dual_tabs_v1", mimoBaseURL: "https://unused.invalid/mimo", kimiBaseURL: "https://unused.invalid/kimi",
+    mimoApiKey: "test", kimiApiKey: "test", deepseek: { baseURL: "https://unused.invalid/deepseek", apiKey: "test" },
+    parseContent: raw => parseMultilingualContent(raw, course, "what_i_say"), fetcher: async () => {
+      calls++
+      return Response.json({ choices: [{ message: { content: JSON.stringify(m) }, finish_reason: "stop" }] })
+    } })
+  strictEqual(result.ok, true)
+  strictEqual(calls, 1)
+  if (result.ok) strictEqual(result.provider, "deepseek")
+})
+
+Deno.test("relaxed word counts preserve non-English material and Japanese character validation", async () => {
+  for (const [targetLanguage, teachingLocale, short, ceiling] of [["es", "es-419", "Claro.", 12],
+    ["fr", "fr-FR", "Volontiers.", 12], ["ja", "ja-JP", "はい。", 24]] as const) {
+    const course: GenerationSpec = { ...trioSpec, targetLanguage, teachingLocale }
+    for (const [text, accepted] of [[short, targetLanguage !== "ja"],
+      [targetLanguage === "ja" ? "あ".repeat(ceiling) : Array(ceiling).fill("bonjour").join(" "), true],
+      [targetLanguage === "ja" ? "あ".repeat(ceiling + 1) : Array(ceiling + 1).fill("bonjour").join(" "), false]] as const) {
+      const m = trioMemory("what_i_say")
+      m.sentences = m.sentences.map(s => ({ ...s, targetText: text,
+        learningMaterial: { schemaVersion: 1, policyVersion: 1, textDigest: "", segments: [
+          { id: "s1", surface: text, kind: "phrase", canBlank: true }] } }))
+      const parsed = await parseMultilingualContent(JSON.stringify(m), course, "what_i_say")
+      strictEqual(parsed !== null, accepted, `${targetLanguage}: ${text}`)
+      if (accepted) {
+        strictEqual(parsed?.sentences[0].targetText, text)
+        delete m.sentences[0].learningMaterial
+        strictEqual(await parseMultilingualContent(JSON.stringify(m), course, "what_i_say"), null)
+      }
+    }
+  }
+})
 
 Deno.test("trio contract: global pair keys, both middle choices, budgets, fallback and fingerprints", async () => {
   deepStrictEqual(validateGenerationSpec(trioSpec), trioSpec)

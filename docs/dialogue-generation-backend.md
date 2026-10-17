@@ -31,6 +31,30 @@
 
 ## Persistence And Compatibility
 
+### Relaxed Word Counts (2026-10-17)
+
+V3 generation keeps the prompt's difficulty targets but accepts natural short
+replies without padding. English targets remain 3–6 / 8–12 / 10–16 words for
+starter / beginner / intermediate. Validation allows 1–10 / 1–18 / 1–24 words;
+the historical advanced tier allows 1–36. Spanish and French use the same rule:
+minimum one word, maximum target upper bound plus the larger of four words or
+50% (rounded up). Japanese character limits are unchanged.
+
+Empty or punctuation-only text, excess length, incomplete pairs, incorrect group policy, invalid
+photo tags, language-script checks and learning-material validation still fail.
+Accepted text is preserved, not truncated or padded. Provider fallback only
+occurs if the response still fails validation or the upstream request fails.
+
+Deploy `generate-memory-v3` after pushing this change. No new migration,
+client update, environment variable or proxy change is required. V2's legacy
+prompt/parser is unchanged. Local mock tests do not establish the cause of any
+previous production/staging failure or measure real model latency.
+
+Local verification: 56 tests and 12 substeps passed across generation, dialogue,
+offline HTTP, legacy endpoint and prompt suites. The complete Edge Function
+dependency-boundary and type checks passed. Logs:
+`/tmp/sanju-relaxed-word-regression.log`, `/tmp/sanju-relaxed-word-functions.log`.
+
 Apply the new `20261016002000_dialogue_trio_generation.sql` after the existing
 `20261016001000_dialogue_generation.sql` and
 `20261016000000_remove_sentence_metadata.sql`. No historical migration is edited.

@@ -9,6 +9,12 @@ const lengthPolicy = {
   ja: { starter: [4, 24], beginner: [8, 40], intermediate: [12, 65], advanced: [16, 90] },
 } as const
 
+function acceptedLengthRange(spec: GenerationSpec): readonly [number, number] {
+  const [min, max] = lengthPolicy[spec.targetLanguage][spec.level]
+  // Keep Japanese character limits; word-count targets allow natural short replies.
+  return spec.targetLanguage === "ja" ? [min, max] : [1, max + Math.max(4, Math.ceil(max / 2))]
+}
+
 export function generationCompletionTokenBudget(spec: GenerationSpec): number | undefined {
   // Double the six-sentence budgets for 12 turns, including per-turn study material.
   if (spec.generationFormat === "dialogue_tabs_v1") return spec.targetLanguage === "en" ? 8192 : 24576
@@ -49,6 +55,7 @@ All six expressions should offer different useful choices. For screenshots, docu
   return `${task}
 Difficulty ${spec.level}: ${min}-${max} ${spec.targetLanguage === "ja" ? "Unicode characters, not space-delimited words" : "space-delimited words"} per sentence. Starter uses concrete vocabulary and a single simple clause, no idioms. Beginner uses high-frequency vocabulary and simple grammar. Intermediate permits one short subordinate clause. Advanced permits richer idiomatic but natural everyday speech.
 Apply difficulty to each individual utterance, not the combined pair.
+${spec.targetLanguage !== "ja" ? "The word range is a target, not a quota. Natural short replies and modestly longer utterances are allowed; never pad a reply just to reach the minimum. Keep vocabulary and grammar at the selected difficulty." : ""}
 Return ONLY JSON: {"sentences":[{"targetText":"...","translationText":"...","presentationGroup":"what_i_see"${dialogue ? ',"dialogue":{"index":0,"turn":0}' : ""}}],"tags":["pets_and_animals"]}.
 ${trio ? "Use exactly six utterances total, three complete A/B pairs. Every record must include dialogue:{index:0|1|2,turn:0|1}. Indices are global, never restarted per group." : dialogue ? "Use exactly six utterances in each group, three complete A/B pairs. Every record must include dialogue:{index:0|1|2,turn:0|1}." : "Use exactly three sentences in each group. Do not include dialogue."} Do not include sentence categories, learningTopicIDs, expressionPurpose or purpose metadata.
 Choose up to 3 photo tags only from ${JSON.stringify([...SCENE_CATEGORY_IDS])}. Tags describe the visible photo itself, primary category first, not inferred from the sentences. Empty arrays are correct when no category fits; never pad categories.
@@ -67,8 +74,8 @@ export async function parseMultilingualContent(raw: string, spec: GenerationSpec
     for (const item of value.sentences) {
       const s = record(item)
       const text = s.targetText
-      if (typeof text !== "string") return null
-      const [min, max] = lengthPolicy[spec.targetLanguage][spec.level]
+      if (typeof text !== "string" || !/[\p{L}\p{N}]/u.test(text)) return null
+      const [min, max] = acceptedLengthRange(spec)
       const count = spec.targetLanguage === "ja" ? [...text].length : text.trim().split(/\s+/u).length
       if (count < min || count > max || (spec.targetLanguage === "ja" && !/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) ||
           (spec.targetLanguage !== "ja" && /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text))) return null
