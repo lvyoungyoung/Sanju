@@ -62,6 +62,27 @@ migration, client update, secrets or proxy changes are needed.
 Local scenario regression passed 8 tests / 88 steps; all Edge Function dependency
 and type checks passed. No live model request or deployment was performed.
 
+### Observational Conversations (2026-10-19)
+
+Named scenarios can now be conversations about jointly observing scenery or
+visible details, not just imagined situations. The photo guides the choice of
+observation, feelings, suggestions or situational conversation; no fixed mix is
+required. Different groups should offer different observations or topics, but
+need not invent separate events or communication purposes. One speaker can point
+out something and the other respond or add an observation. Unconnected captions
+and mechanical question-answer drills are still discouraged. Titles may describe
+scenery or a topic rather than an event.
+
+Only the prompt changes: the neutral two-or-three count, three A/B/A turns,
+difficulty, JSON fields, photo tags and validation stay unchanged. Deploy only
+`generate-memory-v3`; no new migration, client update, secrets or proxy changes
+are needed. Local contract tests do not establish real model output quality.
+
+Verification: 54 regression tests / 88 steps passed across scenario generation,
+multilingual generation, legacy prompts and the generation endpoint. All Edge
+Function dependency and type checks passed. No live model call or deployment
+was performed.
+
 ## Contract
 
 - New V3 requests use `generationSpec.generationFormat = "dialogue_trio_v1"`.
