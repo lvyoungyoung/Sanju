@@ -3,7 +3,7 @@
 ## Current: Named Scenarios (2026-10-17)
 
 New clients request `scenario_dialogue_v1`. The model returns `scenarios` (two
-by default, optionally three genuinely different situations) and photo `tags`.
+or three different situations, with no preferred count) and photo `tags`.
 Each scenario has a short Chinese `title` and exactly three `dialogue` objects
 with speakers A, B, A. English/Chinese courses use `english` and `chinese`;
 other courses use `targetText` / `translationText` for the corresponding field,
@@ -51,6 +51,16 @@ checks passed. Logs: `/tmp/sanju-scenario-backend.log`,
 `/tmp/sanju-scenario-final-backend.log`, `/tmp/sanju-scenario-functions.log`.
 Both GitHub deployment workflows now run the scenario test files. No live model,
 staging/production database, deployment or real speech service was exercised.
+
+### Neutral Scenario Count (2026-10-19)
+
+The prompt now says only "生成 2—3 个情景", removing the default of two and the
+extra condition for a third. Topic diversity, three A/B/A turns, output fields,
+and validation accepting either six or nine utterances remain unchanged.
+Deploy only `generate-memory-v3` after pushing this change. No new database
+migration, client update, secrets or proxy changes are needed.
+Local scenario regression passed 8 tests / 88 steps; all Edge Function dependency
+and type checks passed. No live model request or deployment was performed.
 
 ## Contract
 
