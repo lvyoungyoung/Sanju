@@ -98,12 +98,12 @@
 
 当前配置：
 
-- staging API：`https://spb-bp1364k407p37qn7.supabase.opentrust.net`
-- production API：`https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
+- staging API：`https://api-staging.sanju.cc`
+- production API：`https://api.sanju.cc`
 
 注意：
 
-- 2026-10-20 起新客户端直连对应的阿里云 Supabase 项目，环境选择和验证要求见 `docs/client-environments.md`。保留 ECS 的 `api.sanju.cc` / `api-staging.sanju.cc` 代理供旧版客户端使用；历史网络问题需在直连测试中复核。
+- 2026-10-20 曾验证 Supabase 直连，后按用户提出的备案相关要求，将 staging 和 production 客户端均恢复为 ECS API 中转。当前链路、缓存兼容及直连试验历史见 `docs/client-environments.md`。已有直连客户端需安装新构建才会切回中转。
 - 客户端只能放 Supabase publishable/anon key，绝不能放 service_role key。
 - TestFlight 当前连 production，而不是 staging。
 
@@ -417,13 +417,13 @@ Secrets：
 ECS 当前承担：
 
 - 官网 `sanju.cc` / `www.sanju.cc`
-- API 反向代理 `api.sanju.cc`
+- 客户端 API 反向代理 `api.sanju.cc` / `api-staging.sanju.cc`
 - GitHub Actions self-hosted runner
 
 Nginx 反向代理：
 
 - 示例文件：`deploy/nginx/sanju-api-proxy.conf.example`
-- 旧版 production 客户端访问 `https://api.sanju.cc`；2026-10-20 起新客户端使用 Supabase 直连地址。
+- production 客户端访问 `https://api.sanju.cc`，staging 客户端访问 `https://api-staging.sanju.cc`；2026-10-20 的直连试验已按用户要求恢复中转。
 - Nginx 转发到 production Supabase：`spb-bp103246ivn7q0nl.supabase.opentrust.net`
 
 证书：

@@ -9,14 +9,27 @@
 
 ## 当前地址
 
-- staging: `https://spb-bp1364k407p37qn7.supabase.opentrust.net`
-- production: `https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
+- staging: `https://api-staging.sanju.cc`
+- production: `https://api.sanju.cc`
 
 注意：客户端只允许放 `anon`/publishable key，不能放 `service_role` key。
 
-## Supabase 直连（2026-10-20）
+## 当前连接方式：恢复 ECS 中转（2026-10-20）
 
-新客户端直接通过 HTTPS 请求对应项目的 Auth、REST、Storage 和 Edge Functions，不再经过 ECS/Nginx API 中转。图片上传和下载使用相对 Storage 路径，也随配置切换。AI 调用、购买校验和额度处理仍由原有云函数负责。
+按用户提出的备案相关要求，客户端已从 Supabase 直连恢复为自有 API 域名中转：
+
+- staging：App → `api-staging.sanju.cc` → `spb-bp1364k407p37qn7.supabase.opentrust.net`
+- production：App → `api.sanju.cc` → `spb-bp103246ivn7q0nl.supabase.opentrust.net`
+
+Auth、REST、Storage、Edge Functions 和云端朗读均使用对应环境的 API 中转入口。此次只恢复客户端入口，不修改在线 Nginx、Web/数据库白名单或业务逻辑；无需部署云函数或新增数据库迁移。此前已发布的直连客户端需要安装新构建才会切回中转。
+
+保留 `SupabaseEnvironment.persistenceNamespace` 的地址别名兼容，翻卡历史、AI 解析及语音缓存沿用相同的本地存储标识。它只决定缓存键，不会把请求切回直连。
+
+恢复中转后的验证：两个环境的 `/auth/v1/settings` 使用原有公开密钥均返回 HTTP 200；Debug 模拟器构建与 Release arm64 模拟器构建通过，逐一检查两个构建内的正式/测试 plist，均为上述中转地址。配置文件除 `SupabaseURL` 外的字段保持一致。
+
+## 历史记录：Supabase 直连试验（2026-10-20，已恢复中转）
+
+当时客户端直接通过 HTTPS 请求对应项目的 Auth、REST、Storage 和 Edge Functions，不经过 ECS/Nginx API 中转。图片上传和下载使用相对 Storage 路径，也随配置切换。AI 调用、购买校验和额度处理仍由原有云函数负责。以下记录仅说明当时排查和验证过程，不代表当前客户端入口。
 
 本地翻卡历史、AI 解析缓存和语音缓存继续使用切换前的环境标识，避免仅因网络地址变化而丢失缓存或未同步反馈。这个标识只用于本地存储，不用于请求地址；正式和测试环境仍然隔离。
 
@@ -32,6 +45,6 @@ staging 使用新建临时匿名账号，实际验证通过：登录、获取当
 
 正式环境已验证 Web 白名单、数据库白名单保持不变及认证接口直连；没有对真实用户数据执行写入，也没有执行付费图片生成。发布前仍应在真机 Wi-Fi/蜂窝网络完成日常流程验收。
 
-## 旧版兼容
+## 中转入口兼容
 
-保留 `https://api-staging.sanju.cc` 和 `https://api.sanju.cc` 的既有代理入口，供旧版客户端使用。此次变更不删除服务器或修改 Nginx；官网、部署任务及服务器其他用途不受影响。旧反向代理结构见 `deploy/nginx/sanju-api-proxy.conf.example`。
+`https://api-staging.sanju.cc` 和 `https://api.sanju.cc` 的既有代理入口继续供旧版与恢复中转后的新构建使用。此次变更不删除服务器或修改 Nginx；官网、部署任务及服务器其他用途不受影响。反向代理结构见 `deploy/nginx/sanju-api-proxy.conf.example`。已上线的旧客户端字段兼容迁移继续保留，不回滚。
