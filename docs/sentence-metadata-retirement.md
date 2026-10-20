@@ -21,6 +21,18 @@
 
 分类/用途/向量属于本次有意删除的派生数据，迁移后不会自动恢复。正常数据库备份仍应在发布前完成。
 
+### 2026-10-20 旧版兼容修复已上线
+
+经用户授权，修复提交 `c9cb81b` 的兼容迁移已先在 staging、验证后再在 production 执行。staging 状态检查确认仅此一条迁移待执行，两次 apply 日志也都仅应用 `20261020000000_restore_legacy_sentence_topic_column.sql`。
+
+- [staging 发布 #235](https://github.com/lvyoungyoung/Sanju/actions/runs/39364427001)：检查与迁移均成功。
+- [production 发布 #236](https://github.com/lvyoungyoung/Sanju/actions/runs/39365015845)：检查与迁移均成功。
+- 两个环境均用公开密钥、新建临时普通会话，分别通过原 API 中转和 Supabase 直连执行已发布旧客户端的完整回忆 select（含 `learning_topic_ids`）及收藏关联查询，均返回 HTTP 200。先前的 HTTP 400 / PostgreSQL `42703` 已消失。
+- 新版 `list_memories_v2` 对匿名测试会话仍返回预期的 `403 / Sign in required`。线上查询验证使用的是空临时账号，没有读取真实用户内容；临时账号均已通过现有删除账号函数清理。
+- 本地 PostgreSQL/PGlite 测试覆盖有历史句子/收藏时的字段恢复、新行默认空数组、重复应用、普通用户收藏修改、账号隔离，以及不恢复分类/向量任务；另有退役回归 5 个步骤通过。发布前 CI 同样通过新增兼容回归。
+
+此修复无需更新旧客户端、重新部署 Edge Functions、修改 Nginx 或调整白名单。旧版点击重新加载即可重试。线上写入测试造数曾遇到既有 `valid_generation_spec_v3` 执行权限问题，本次未扩展数据库权限；线上验证范围为旧版读取恢复，带数据的收藏写入与隔离由本地数据库回归覆盖。
+
 ## 部署
 
 仅推送代码不等于已部署。发布窗口内先停止新的生成测试，完成数据库迁移，再部署函数并更新客户端，然后恢复测试；不要长时间保留新旧契约混用。

@@ -17,6 +17,8 @@
 
 先在 staging 应用并验证旧版完整 select，再处理 production。通过旧中转与直连都应得到正常响应；验证新旧列表、收藏读写及内容 RPC。兼容脚本已对齐旧版实际完整字段列表，CI 增加退役后旧版读取回归。
 
+本次已获用户授权并完成：staging [#235](https://github.com/lvyoungyoung/Sanju/actions/runs/39364427001) 与 production [#236](https://github.com/lvyoungyoung/Sanju/actions/runs/39365015845) 均成功应用此迁移。两个环境、两个入口的旧版完整回忆及收藏查询均已复测 HTTP 200；验证范围、临时账号清理和写入测试限制见 `docs/sentence-metadata-retirement.md`。
+
 ### 2026-10-15 国内多语言朗读
 
 英语继续使用 MiMo，日语、法语、西语改为百炼 `qwen3-tts-flash` 的 HTTP SSE 朗读。
