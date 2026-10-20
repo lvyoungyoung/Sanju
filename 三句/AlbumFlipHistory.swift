@@ -83,7 +83,7 @@ struct AlbumFlipHistory: Codable {
 struct AlbumFlipHistoryStore {
     let defaults: UserDefaults
     let ownerID: String
-    var namespace: String = Bundle.main.supabaseURL ?? "local"
+    var namespace: String = Bundle.main.supabasePersistenceNamespace ?? "local"
 
     private var key: String { "sanju.albumFlip.history.\(namespace).\(ownerID)" }
     private var legacyKey: String { "sanju.albumFlip.feedback.\(ownerID)" }

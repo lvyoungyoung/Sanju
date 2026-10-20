@@ -7,7 +7,7 @@
     <key>SupabasePublishableKey</key>
     <string>eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1icDEwMzI0Nml2bjdxMG5sIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3NzY2ODk5MzgsImV4cCI6MjA5MjI2NTkzOH0.7TISmShJKDHbvfOEom0pELGvSdBt5NdPzuHnwqbsNB0</string>
     <key>SupabaseURL</key>
-    <string>https://api.sanju.cc</string>
+	<string>https://spb-bp103246ivn7q0nl.supabase.opentrust.net</string>
     <key>StoreKitProducts</key>
     <array>
         <dict>

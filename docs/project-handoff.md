@@ -99,11 +99,11 @@
 当前配置：
 
 - staging API：`https://spb-bp1364k407p37qn7.supabase.opentrust.net`
-- production API：`https://api.sanju.cc`
+- production API：`https://spb-bp103246ivn7q0nl.supabase.opentrust.net`
 
 注意：
 
-- `https://api.sanju.cc` 是 ECS Nginx 反向代理到阿里云 Supabase 的入口，用于规避部分网络下直接访问 Supabase 域名不稳定的问题。
+- 2026-10-20 起新客户端直连对应的阿里云 Supabase 项目，环境选择和验证要求见 `docs/client-environments.md`。保留 ECS 的 `api.sanju.cc` / `api-staging.sanju.cc` 代理供旧版客户端使用；历史网络问题需在直连测试中复核。
 - 客户端只能放 Supabase publishable/anon key，绝不能放 service_role key。
 - TestFlight 当前连 production，而不是 staging。
 
@@ -421,7 +421,7 @@ ECS 当前承担：
 Nginx 反向代理：
 
 - 示例文件：`deploy/nginx/sanju-api-proxy.conf.example`
-- production 客户端访问 `https://api.sanju.cc`
+- 旧版 production 客户端访问 `https://api.sanju.cc`；2026-10-20 起新客户端使用 Supabase 直连地址。
 - Nginx 转发到 production Supabase：`spb-bp103246ivn7q0nl.supabase.opentrust.net`
 
 证书：

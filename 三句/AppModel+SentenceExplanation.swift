@@ -16,7 +16,7 @@ extension AppModel {
         )
         guard input.supportsExplanation else { throw SentenceExplanationError.unsupportedLanguage }
         guard input.isValid else { throw URLError(.cannotParseResponse) }
-        let environment = Bundle.main.supabaseURL ?? "unconfigured"
+        let environment = Bundle.main.supabasePersistenceNamespace ?? "unconfigured"
         func cached(owner: String) async -> SentenceExplanation? {
             if let saved = await SentenceExplanationCache.shared.load(key: input.cacheKey(owner: owner, environment: environment)),
                input.accepts(saved) { return saved }

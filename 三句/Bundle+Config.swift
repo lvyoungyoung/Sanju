@@ -1,5 +1,19 @@
 import Foundation
 
+nonisolated enum SupabaseEnvironment {
+    // Keep the existing on-device keys when changing only the network route.
+    static func persistenceNamespace(for url: String) -> String {
+        switch url {
+        case "https://spb-bp103246ivn7q0nl.supabase.opentrust.net":
+            "https://api.sanju.cc"
+        case "https://spb-bp1364k407p37qn7.supabase.opentrust.net":
+            "https://api-staging.sanju.cc"
+        default:
+            url
+        }
+    }
+}
+
 extension Bundle {
     private var configResourceName: String {
         #if STAGING
@@ -11,6 +25,10 @@ extension Bundle {
 
     var supabaseURL: String? {
         configValue(forKey: "SupabaseURL")
+    }
+
+    var supabasePersistenceNamespace: String? {
+        supabaseURL.map { SupabaseEnvironment.persistenceNamespace(for: $0) }
     }
 
     var supabasePublishableKey: String? {

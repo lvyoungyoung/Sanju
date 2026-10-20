@@ -97,7 +97,7 @@ struct CloudSpeechClient {
     private let baseURL = Bundle.main.supabaseURL.flatMap(URL.init(string:))
     private let publishableKey = Bundle.main.supabasePublishableKey
 
-    var cacheNamespace: String { baseURL?.absoluteString ?? "unconfigured" }
+    var cacheNamespace: String { Bundle.main.supabasePersistenceNamespace ?? "unconfigured" }
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
