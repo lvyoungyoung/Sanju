@@ -223,7 +223,8 @@ async function testAnonymousStarterCreditPatch() {
 }
 
 async function testMemoryList() {
-  const select = encodeURIComponent("id,image_url,created_at,memory_sentences(id,sort_order,english,chinese,is_favorite)")
+  // Match the shipped client's explicit field list, including retired fields it still selects.
+  const select = encodeURIComponent("id,image_url,created_at,tags,memory_sentences(id,sort_order,english,chinese,learning_topic_ids,presentation_group,is_favorite)")
   const response = await requestJSON(`/rest/v1/memories?select=${select}&order=created_at.desc`, {
     method: "GET",
     bearerToken: state.accessToken,

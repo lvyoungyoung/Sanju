@@ -80,6 +80,9 @@ jobs:
       - name: Test named scenario persistence and generation
         run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/scenario-*.test.ts
 
+      - name: Test shipped client memory reads after metadata retirement
+        run: deno test --no-lock --allow-read --allow-env --allow-sys scripts/tests/legacy-memory-list-compatibility.test.ts
+
   migrate:
     name: SQL Migrations
     runs-on: [self-hosted, linux, x64, aliyun-ecs]

@@ -11,6 +11,12 @@
 
 ## Edge Function 发布
 
+### 2026-10-20 旧版回忆与收藏加载兼容修复
+
+旧客户端仍显式查询 `memory_sentences.learning_topic_ids`，退役迁移删除该列后接口返回 HTTP 400 / PostgreSQL `42703`。新增迁移 `20261020000000_restore_legacy_sentence_topic_column.sql` 补回默认空数组的兼容字段，并通知 PostgREST 刷新 schema cache。仅需应用此数据库迁移，无需重新部署 Edge Functions、更新客户端或修改 Nginx / 白名单。
+
+先在 staging 应用并验证旧版完整 select，再处理 production。通过旧中转与直连都应得到正常响应；验证新旧列表、收藏读写及内容 RPC。兼容脚本已对齐旧版实际完整字段列表，CI 增加退役后旧版读取回归。
+
 ### 2026-10-15 国内多语言朗读
 
 英语继续使用 MiMo，日语、法语、西语改为百炼 `qwen3-tts-flash` 的 HTTP SSE 朗读。

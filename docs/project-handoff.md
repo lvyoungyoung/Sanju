@@ -107,6 +107,8 @@
 - 客户端只能放 Supabase publishable/anon key，绝不能放 service_role key。
 - TestFlight 当前连 production，而不是 staging。
 
+旧客户端兼容：`20261020000000_restore_legacy_sentence_topic_column.sql` 用默认空数组补回 `memory_sentences.learning_topic_ids`。已发布旧版的回忆列表仍显式请求此字段，删除它会导致 HTTP 400 / `42703`，连带收藏页加载失败。该字段只作兼容占位，不恢复句子分类或向量任务；详见 `docs/sentence-metadata-retirement.md`。
+
 ## 5. 核心数据模型
 
 客户端核心模型在 `AppModel.swift`：
