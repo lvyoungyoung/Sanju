@@ -1,5 +1,16 @@
 # Staging 实例切换（2026-11-02）
 
+## 最新目标：PG15 替代实例
+
+用户已改选 `spb-bp112jga6hk29sgb`（杭州、PG15、2C2G），不再迁入下文的 PG17 实例。
+新实例的 API 密钥和 postgres 密码保存在独立忽略文件 `.env.staging-switch.next.local`，没有复用前一目标的密码。
+已在获批单个 `/32` 临时数据库白名单下完成事务性试导入及回滚，验证 30 张业务表、95 个业务函数（包括 SECURITY DEFINER）、7 条 Storage 策略、10 条语言配置及 2 个空私有 bucket。
+额外检查购买 RPC 的 anon/authenticated 禁止调用、service_role 可调用、RLS 及合成 SQL 交易的加次数和重复幂等，合成账号与流水全部回滚，没有真实购买。各次临时白名单均恢复原值并回读确认，Web 白名单不变。
+
+准备的可复现基线位于 `supabase/bootstrap/staging-20261102/`，只允许这个新空 staging 使用，不在自动 migrations 目录下。清理了 PG18 pg_dump 的 PG15 不兼容设置；排除平台定义；重置业务对象 API 角色的默认 ACL 后重放源 ACL，避免目标默认权限扩大服务端 RPC 暴露范围；Storage helper 使用 public 显式引用。manifest 固定 SQL 和 88 个现有迁移文件的 SHA-256。基线结构通过校验后才登记对应迁移版本，不能直接在空库 baseline。
+
+此处尚未记为正式初始化完成：正式执行结果将另行追加。GitHub staging Secrets、客户端 key/独立持久化空间、Auth 配置、函数及运行密钥、代理上游仍需切换，旧 staging 与 production 保持原样。
+
 ## 目标与状态
 
 - 新实例：`spb-kjnhpxun1ahyip6o`，杭州，名称 `Sanju_testing`。

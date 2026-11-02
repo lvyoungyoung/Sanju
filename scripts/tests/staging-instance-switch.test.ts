@@ -1,7 +1,7 @@
 import { strictEqual, match } from "node:assert/strict";
 
 const root = new URL("../../", import.meta.url);
-const target = "spb-kjnhpxun1ahyip6o";
+const target = "spb-bp112jga6hk29sgb";
 const production = "spb-bp103246ivn7q0nl";
 
 Deno.test("both deployment workflows pin the new staging project without changing production", async () => {
@@ -13,7 +13,7 @@ Deno.test("both deployment workflows pin the new staging project without changin
 });
 
 Deno.test("staging deployment guards reject old staging and production before calling any CLI", async (t) => {
-  for (const project of ["spb-bp1364k407p37qn7", production]) {
+  for (const project of ["spb-bp1364k407p37qn7", "spb-kjnhpxun1ahyip6o", production]) {
     for (const script of ["deploy-edge-functions.sh", "supabase-db-migrations.sh"]) {
       await t.step(`${script}: ${project}`, async () => {
         const result = await new Deno.Command("/bin/bash", {

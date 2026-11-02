@@ -12,7 +12,7 @@ final class GenerationEnrichmentTimingTests: XCTestCase {
     }
 
     func testOnlyTrustedStagingURLsAreEnabled() {
-        for url in ["https://api-staging.sanju.cc", "https://spb-kjnhpxun1ahyip6o.supabase.opentrust.net",
+        for url in ["https://api-staging.sanju.cc", "https://spb-bp112jga6hk29sgb.supabase.opentrust.net",
                     "https://spb-bp1364k407p37qn7.supabase.opentrust.net"] {
             XCTAssertTrue(GenerationEnrichmentTiming.isStagingURL(url))
         }
