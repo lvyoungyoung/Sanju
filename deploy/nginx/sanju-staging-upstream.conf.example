@@ -1,0 +1,20 @@
+# Reference snippets only; do not replace the whole Nginx configuration.
+# Keep production's upstream and api.sanju.cc server block unchanged.
+
+# In the http context, use a staging-only upstream name.
+upstream sanju_staging_supabase_backend {
+    server spb-bp112jga6hk29sgb.supabase.opentrust.net:443;
+    keepalive 32;
+}
+
+# Inside the EXISTING api-staging.sanju.cc server block only:
+# proxy_set_header Host spb-bp112jga6hk29sgb.supabase.opentrust.net;
+# proxy_ssl_server_name on;
+# proxy_ssl_name spb-bp112jga6hk29sgb.supabase.opentrust.net;
+#
+# Update its existing proxy_pass locations, retaining their other directives:
+# proxy_pass https://sanju_staging_supabase_backend;
+#
+# Check every location for an overriding Host, SNI or old proxy_pass.
+# Preserve certificate paths, upload limits, timeout and streaming settings.
+# Speech SSE routes must keep proxy_buffering off and proxy_cache off.

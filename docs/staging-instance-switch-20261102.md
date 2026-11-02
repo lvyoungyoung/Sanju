@@ -9,7 +9,10 @@
 
 准备的可复现基线位于 `supabase/bootstrap/staging-20261102/`，只允许这个新空 staging 使用，不在自动 migrations 目录下。清理了 PG18 pg_dump 的 PG15 不兼容设置；排除平台定义；重置业务对象 API 角色的默认 ACL 后重放源 ACL，避免目标默认权限扩大服务端 RPC 暴露范围；Storage helper 使用 public 显式引用。manifest 固定 SQL 和 88 个现有迁移文件的 SHA-256。基线结构通过校验后才登记对应迁移版本，不能直接在空库 baseline。
 
-此处尚未记为正式初始化完成：正式执行结果将另行追加。GitHub staging Secrets、客户端 key/独立持久化空间、Auth 配置、函数及运行密钥、代理上游仍需切换，旧 staging 与 production 保持原样。
+此处尚未记为正式初始化完成：正式执行时在加入临时白名单的阿里云 API 请求处出现连接超时，尚未进入 SQL。重试仍未成功，未把预演当成已初始化。GitHub 提交 `334c8a8` 已推送；26 项本地测试、25 个步骤及完整数据库事务回滚预演均通过。GitHub staging Secrets、客户端 key/独立持久化空间、Auth 配置、函数及运行密钥、代理上游仍需切换，旧 staging 与 production 保持原样。
+
+用户选择自行操作服务器。仅针对 staging 的中转配置和安全切换步骤见 `docs/staging-proxy-cutover-20261102.md` 与 `deploy/nginx/sanju-staging-upstream.conf.example`；后端未就绪前不要按该文档切流。
+正式执行失败后已再次通过控制面只读回读：新实例 DB 白名单为 `127.0.0.1,100.64.0.0/10`、Web 白名单为 `127.0.0.1`，均与操作前一致，没有遗留临时开放项。
 
 ## 目标与状态
 

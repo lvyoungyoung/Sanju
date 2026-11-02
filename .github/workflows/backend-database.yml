@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/**"
+      - "supabase/bootstrap/**"
       - "supabase/config.toml"
       - "scripts/supabase-db-migrations.sh"
       - "scripts/tests/**"
@@ -13,6 +14,7 @@ on:
       - main
     paths:
       - "supabase/migrations/**"
+      - "supabase/bootstrap/**"
       - "supabase/config.toml"
       - "scripts/supabase-db-migrations.sh"
       - "scripts/tests/**"
@@ -55,6 +57,9 @@ jobs:
 
       - name: Test custom study theme matching locally
         run: deno test --no-lock --allow-read --allow-env scripts/tests/semantic-study-scene-matching.test.ts
+
+      - name: Check replacement staging bootstrap and deployment isolation
+        run: deno test --no-lock --allow-read --allow-run=/bin/bash scripts/tests/staging-bootstrap.test.ts scripts/tests/staging-instance-switch.test.ts
 
       - name: Test device-local study days
         run: deno test --no-lock --allow-read --allow-env scripts/tests/study-time-zone.test.ts
