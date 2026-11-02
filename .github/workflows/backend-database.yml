@@ -104,7 +104,7 @@ jobs:
       - name: Run SQL migrations
         env:
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
-          EXPECTED_SUPABASE_PROJECT_ID: ${{ inputs.target_environment == 'staging' && 'spb-bp1364k407p37qn7' || 'spb-bp103246ivn7q0nl' }}
+          EXPECTED_SUPABASE_PROJECT_ID: ${{ inputs.target_environment == 'staging' && 'spb-kjnhpxun1ahyip6o' || 'spb-bp103246ivn7q0nl' }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
           SUPABASE_PLATFORM: aliyun

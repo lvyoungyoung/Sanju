@@ -22,7 +22,8 @@ enum GenerationEnrichmentTiming {
     static func isStagingURL(_ value: String?) -> Bool {
         guard let value, let url = URL(string: value), url.scheme == "https",
               let host = url.host else { return false }
-        return ["api-staging.sanju.cc", "spb-bp1364k407p37qn7.supabase.opentrust.net"].contains(host)
+        return ["api-staging.sanju.cc", "spb-kjnhpxun1ahyip6o.supabase.opentrust.net",
+                "spb-bp1364k407p37qn7.supabase.opentrust.net"].contains(host)
     }
 
     static func lines(for snapshot: GenerationEnrichmentSnapshot) -> [String] {

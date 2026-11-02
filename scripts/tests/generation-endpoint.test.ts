@@ -623,13 +623,14 @@ Deno.test("a stalled MiMo body falls back to Kimi; two stalled bodies never debi
   strictEqual(state.jobs.get(id).status, "failed");
 });
 
-const stagingURL = "https://spb-bp1364k407p37qn7.supabase.opentrust.net";
+const stagingURL = "https://spb-kjnhpxun1ahyip6o.supabase.opentrust.net";
 const productionURL = "https://spb-bp103246ivn7q0nl.supabase.opentrust.net";
 
 Deno.test("trusted staging and production projects use DeepSeek, independent of local gateway and request URL", async () => {
   for (
     const projectURL of [
       stagingURL,
+      "https://spb-bp1364k407p37qn7.supabase.opentrust.net",
       "https://api-staging.sanju.cc",
       productionURL,
       "https://api.sanju.cc",
@@ -679,6 +680,8 @@ Deno.test("trusted staging and production projects use DeepSeek, independent of 
   for (
     const projectURL of [
       "https://api-staging.sanju.cc.attacker.invalid",
+      "https://spb-kjnhpxun1ahyip6o.supabase.opentrust.net.attacker.invalid",
+      "http://spb-kjnhpxun1ahyip6o.supabase.opentrust.net",
       "http://api-staging.sanju.cc",
       "https://api.sanju.cc.attacker.invalid",
       "http://api.sanju.cc",
