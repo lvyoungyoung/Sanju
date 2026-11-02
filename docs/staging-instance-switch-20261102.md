@@ -9,6 +9,15 @@
 - 已自动取得新实例 anon/service_role key 并存入被忽略的本地文件；Dashboard 密码、新库 postgres 密码和旧库 postgres 密码分字段保管，不在日志、文档或 Git 中记录。新实例 `/auth/v1/settings` 只读检查 HTTP 200。
 - 新旧数据库 TCP 连接均超时，尚未进入密码校验。本机公网 IP 不在对应数据库白名单中；只准备临时加入单个 `/32` 的方案，待用户确认后执行并在操作结束时恢复。没有开放整个公网、修改 production 或尝试猜测其他密码。现有 ECS 的 SSH 密钥访问未通过，未更改服务器登录设置。
 
+### 已完成只读导出，初始化因平台能力阻塞
+
+- 用户随后明确批准将 `153.34.233.231/32` 临时加入新旧数据库白名单。已连接并验证两个数据库密码；旧库 PostgreSQL 15.8，新库 PostgreSQL 17.5。
+- 旧库有 30 张业务表，迁移历史 88 项与仓库文件完全一致；已导出纯 public 结构（包含此前缺失的购买事务定义）、7 条 Storage policy、10 条公共语言能力配置和 memories/avatars 两个 bucket 的配置元数据。没有导出用户行、账号、照片、流水或 Storage 对象。
+- 原始结构包含平台 extensions 定义；准备的导入包已排除平台扩展函数/角色、public schema 创建及全体用户 CREATE 权限授予，不覆盖新实例自带扩展。原始快照及尚未验收的导入包仅保存在被 Git 忽略的 `.temp/staging-switch-20261102/`，未作为可发布基线提交。
+- 对新库进行了 `--single-transaction` 的试导入，遇到 `SECURITY DEFINER functions are not allowed`，详情为 `adbpg_enable_security_definer is disabled`。现有 66 个函数需要该语义，不能通过去掉 SECURITY DEFINER 来迁移，否则会改变权限及事务行为。
+- 试导入失败时事务已回滚，没有正式初始化业务结构。新实例 postgres 不是超级用户，对该参数的 SET 权限检查为 false；pg_settings 未返回可管理的该参数条目。当前 CLI 没有找到 Supabase 项目的对应参数接口。需要阿里云确认该实例是否可开启此能力及官方操作方式，不能自行绕过。
+- 所有临时白名单窗口均已关闭，并使用 `GetSupabaseProject` 回读验证新旧两个项目的 DBSecurityIpList 和 Web SecurityIpList 与操作前一致。production 没有查询、部署或修改。当前未部署 Edge Functions、未切代理、未变更客户端 key 或 GitHub Secrets，不能开始新环境功能测试。
+
 ## 凭据准备
 
 填写 git 忽略且权限为 600 的 `.env.staging-switch.local`，不要通过聊天或命令行参数传递秘密：新实例 anon key、service_role key、数据库密码及连接串；旧 staging 仅提供数据库连接用于纯结构导出。不要使用 production 数据库地址。阿里云控制面凭据使用本机已有配置，无需复制到文档。
