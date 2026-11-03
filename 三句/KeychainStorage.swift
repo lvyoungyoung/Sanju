@@ -12,7 +12,7 @@ enum KeychainStorage {
     static func set(_ data: Data, for key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: SupabaseEnvironment.storageKey(key, isolationID: Bundle.main.supabaseDataIsolationID)
         ]
         let attributes: [String: Any] = query.merging([
             kSecValueData as String: data,
@@ -26,7 +26,7 @@ enum KeychainStorage {
     static func get(for key: String) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: SupabaseEnvironment.storageKey(key, isolationID: Bundle.main.supabaseDataIsolationID),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -40,7 +40,7 @@ enum KeychainStorage {
     static func remove(for key: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: SupabaseEnvironment.storageKey(key, isolationID: Bundle.main.supabaseDataIsolationID)
         ]
 
         SecItemDelete(query as CFDictionary)

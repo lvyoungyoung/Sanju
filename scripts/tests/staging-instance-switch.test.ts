@@ -4,6 +4,28 @@ const root = new URL("../../", import.meta.url);
 const target = "spb-bp112jga6hk29sgb";
 const production = "spb-bp103246ivn7q0nl";
 
+Deno.test("replacement staging client has an anon key and isolated storage, production stays unscoped", async () => {
+  const staging = await Deno.readTextFile(new URL("三句/Config.staging.plist", root));
+  const release = await Deno.readTextFile(new URL("三句/Config.plist", root));
+  const value = (plist: string, key: string) =>
+    plist.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`))?.[1];
+  strictEqual(value(staging, "SupabaseURL"), "https://api-staging.sanju.cc");
+  strictEqual(value(staging, "SupabaseDataIsolationID"), target);
+  strictEqual(value(release, "SupabaseURL"), "https://api.sanju.cc");
+  strictEqual(value(release, "SupabaseDataIsolationID"), undefined);
+  const token = value(staging, "SupabasePublishableKey")!;
+  const payload = JSON.parse(atob(token.split(".")[1].replaceAll("-", "+").replaceAll("_", "/")));
+  strictEqual(payload.role, "anon");
+  strictEqual(token === value(release, "SupabasePublishableKey"), false);
+
+  const model = await Deno.readTextFile(new URL("三句/AppModel.swift", root));
+  match(model, /let defaults = Bundle.main.supabaseDefaults/);
+  const keychain = await Deno.readTextFile(new URL("三句/KeychainStorage.swift", root));
+  strictEqual(keychain.match(/SupabaseEnvironment.storageKey\(key, isolationID: Bundle.main.supabaseDataIsolationID\)/g)?.length, 3);
+  const files = await Deno.readTextFile(new URL("三句/AppModel+Persistence.swift", root));
+  strictEqual(files.match(/if Bundle.main.supabaseDataIsolationID != nil \{ return targetURL \}/g)?.length, 2);
+});
+
 Deno.test("both deployment workflows pin the new staging project without changing production", async () => {
   for (const name of ["backend-database.yml", "backend-functions.yml"]) {
     const yaml = await Deno.readTextFile(new URL(`.github/workflows/${name}`, root));

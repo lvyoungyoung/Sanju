@@ -20,7 +20,9 @@
         </dict>
     </array>
     <key>SupabasePublishableKey</key>
-    <string>eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1icDEzNjRrNDA3cDM3cW43IiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3Nzc3ODM4NjMsImV4cCI6MjA5MzM1OTg2M30.8v5eVFbxodBp-NBDgzYCBP7Q3uhdkujkjxeRijLery0</string>
+	<string>eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiIsInJlZiI6InNwYi1icDExMmpnYTZoazI5c2diIiwiaXNzIjoic3VwYWJhc2UiLCJpYXQiOjE3OTM2MDI2MjIsImV4cCI6MjEwOTE3ODYyMn0.7WTg-vkL0roUrw6hTsZn80XXD2anK05PYY9IU2ZRyQI</string>
+	<key>SupabaseDataIsolationID</key>
+	<string>spb-bp112jga6hk29sgb</string>
     <key>SupabaseURL</key>
 	<string>https://api-staging.sanju.cc</string>
 </dict>

@@ -49,6 +49,8 @@ enum MemoryWidgetSnapshotStore {
     }
 
     private static func writeSnapshot(with memories: [MemoryEntry]) {
+        // The shared widget still belongs to the released app, not the replacement staging project.
+        guard Bundle.main.supabaseDataIsolationID == nil else { return }
         guard let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: appGroupID
         ) else {

@@ -33,4 +33,34 @@ final class SupabaseEnvironmentTests: XCTestCase {
             XCTAssertEqual(SupabaseEnvironment.persistenceNamespace(for: url), url)
         }
     }
+
+    func testReplacementProjectDoesNotReuseOldSessionsOrQueues() throws {
+        let isolationID = "spb-bp112jga6hk29sgb"
+        let proxy = "https://api-staging.sanju.cc"
+        let replacement = SupabaseEnvironment.persistenceNamespace(for: proxy, isolationID: isolationID)
+        XCTAssertEqual(replacement, isolationID)
+        XCTAssertEqual(replacement, SupabaseEnvironment.persistenceNamespace(
+            for: "https://\(isolationID).supabase.opentrust.net", isolationID: isolationID))
+        XCTAssertNotEqual(replacement, SupabaseEnvironment.persistenceNamespace(for: proxy))
+        for key in [AppStorageKey.supabaseSession, AppStorageKey.pendingGuestCreditMigration,
+                    AppStorageKey.initialCreditsGrantMarker] {
+            XCTAssertEqual(SupabaseEnvironment.storageKey(key, isolationID: nil), key)
+            XCTAssertEqual(SupabaseEnvironment.storageKey(key, isolationID: isolationID), "\(isolationID).\(key)")
+        }
+        let root = URL(fileURLWithPath: "/tmp/sanju-isolation-tests")
+        XCTAssertEqual(SupabaseEnvironment.dataDirectory(in: root, isolationID: nil).path,
+                       root.appendingPathComponent("Sanju").path)
+        XCTAssertEqual(SupabaseEnvironment.dataDirectory(in: root, isolationID: isolationID).path,
+                       root.appendingPathComponent("Sanju/environments/\(isolationID)").path)
+        let suite = "SupabaseEnvironmentTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let event = AlbumFlipEvent(id: UUID(), memoryID: UUID(), sentenceID: UUID(),
+                                  feedback: .familiar, occurredAt: Date(), timeZoneID: "UTC")
+        let old = AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest", namespace: proxy)
+        old.record(event)
+        XCTAssertTrue(AlbumFlipHistoryStore(defaults: defaults, ownerID: "guest", namespace: replacement)
+            .read().pending.isEmpty)
+        XCTAssertEqual(old.read().pending, [event])
+    }
 }

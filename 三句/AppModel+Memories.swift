@@ -723,9 +723,8 @@ extension AppModel {
         if let existing = studyActivationStore {
             store = existing
         } else {
-            let directory = try FileManager.default.url(for: .applicationSupportDirectory,
-                in: .userDomainMask, appropriateFor: nil, create: true)
-            store = try StudyActivationStore(fileURL: directory.appendingPathComponent("Sanju/study-activations-v1.json"))
+            let directory = Bundle.main.supabaseDataDirectory
+            store = try StudyActivationStore(fileURL: directory.appendingPathComponent("study-activations-v1.json"))
             studyActivationStore = store
         }
         return store

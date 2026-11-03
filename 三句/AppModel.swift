@@ -692,7 +692,7 @@ final class AppModel: ObservableObject {
     let cloudSyncManager = CloudSyncManager()
     var memorySyncState = MemorySyncState()
     let favoriteChangeSync = FavoriteChangeSync()
-    let defaults = UserDefaults.standard
+    let defaults = Bundle.main.supabaseDefaults
     let localRateLimiter = LocalRateLimiter()
     let networkStatusMonitor = NetworkStatusMonitor()
     var supabaseSession: SupabaseSession? {

@@ -2,6 +2,18 @@
 
 ## 最新目标：PG15 替代实例
 
+### 2026-11-03 联调准备进度
+
+- 用户已更新 GitHub staging 项目 ID、API URL、service_role key 和数据库密码，并反馈全部 19 个 Edge Functions 部署成功。此前部署的 HTTP 504 在实例出公网配置完成后消失；部署成功不等于生成与朗读实际调用通过。
+- 已配置模型、朗读、图片审核的非秘密运行参数；图片审核使用独立 RAM 用户及仅含 DescribeUploadToken / ImageModeration 的最小权限策略。秘密值由用户填写，不记录在本文。
+- 新实例 HTTPS 只读检查：Auth settings 与 REST 根接口均 HTTP 200。再次回读确认邮箱登录和匿名会话开启、允许注册、Apple 登录关闭。匿名会话用于未登录生成，不是新增第三方登录入口。尚未创建测试账号或进行生成、朗读、Storage 写入验收；未配置自定义 SMTP 的邮件投递能力仍待验证。
+- 客户端 staging plist 已替换为新实例的公开 anon key，继续使用 `api-staging.sanju.cc`，新增实例级隔离 ID。隔离 UserDefaults（含内容和待同步队列）、Keychain 会话/匿名迁移标记、照片目录、学习会话以及已按环境分区的朗读/解析/翻阅记录；不搬运或删除旧数据。production plist 和原持久化位置不变。staging 暂不写共享小组件快照，避免覆盖正式环境的小组件内容。
+- 本地验证：28 项 Deno 测试、25 个步骤通过；Xcode Debug 模拟器构建及 `SupabaseEnvironmentTests` 三项测试通过，覆盖旧路径保持不变、新实例会话键/文件目录/历史队列隔离。证据：`/private/tmp/sanju-staging-switch-tests-20261103.log`，对应 xcresult 位于本地 DerivedData，不提交构建缓存。当前工作区构建包含用户已有界面改动，这些改动不包含在本次切换提交中。
+- **中转仍由用户修改，尚未切流。** 新测试包必须在 staging 代理上游、Host 和 SNI 一并切到新实例后联调，不能将新 key 与旧代理混用。只修改 staging，不修改 production，不删除旧实例。
+- 用户排障时另行加入了 Web `0.0.0.0/0`；这覆盖下文较早的白名单收尾状态。切流联调后应由用户收紧到实际 ECS 固定出口和必要管理 IP，不能长期全网开放，也不因此放宽数据库白名单。
+
+本次客户端切换不需要新增数据库迁移，也不需要为这些客户端改动重新部署 Edge Functions。
+
 用户已改选 `spb-bp112jga6hk29sgb`（杭州、PG15、2C2G），不再迁入下文的 PG17 实例。
 新实例的 API 密钥和 postgres 密码保存在独立忽略文件 `.env.staging-switch.next.local`，没有复用前一目标的密码。
 已在获批单个 `/32` 临时数据库白名单下完成事务性试导入及回滚，验证 30 张业务表、95 个业务函数（包括 SECURITY DEFINER）、7 条 Storage 策略、10 条语言配置及 2 个空私有 bucket。
@@ -53,7 +65,7 @@ GitHub 提交 `334c8a8` 和 `e78f02e` 已推送；本地 27 项测试、25 个�
 ## 安全切换顺序
 
 1. 只读核对新库和旧 staging 的结构，补齐基线并本地验证。
-2. 初始化新库，配置 bucket、Auth（匿名、邮箱、Apple 登录及重定向）和 Edge Function 环境变量。新实例自带的 Supabase key/URL 必须使用新实例值，不能照搬旧实例的内置变量。
+2. 初始化新库，配置 bucket、Auth（匿名会话、邮箱登录及必要重定向，Apple 登录保持关闭）和 Edge Function 环境变量。新实例自带的 Supabase key/URL 必须使用新实例值，不能照搬旧实例的内置变量。
 3. 更新 GitHub **staging** environment 的项目 ID、API URL、service_role key、数据库密码；production Secrets 不变。代码中的两个 workflow 已将 staging 校验目标更新为新 ID，在旧 Secrets 未更新前应拒绝部署而不是落到旧实例。
 4. 初始化验证通过后部署 `scripts/edge-functions.txt` 内全部函数；保留 DeepSeek → MiMo → Kimi 和现有朗读、图片审核配置。检查出公网与访问白名单，不自动扩大数据库访问范围。
 5. 新实例直连验收 Auth、REST/RLS、Storage、匿名/登录生成及恢复、朗读、收藏和删除。购买只验证接口/事务，不触发真实购买。

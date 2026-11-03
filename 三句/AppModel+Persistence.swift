@@ -63,13 +63,15 @@ private enum MemoryImagePersistenceStore {
 
     private static func persistentImageDirectoryURL(named directoryName: String) -> URL {
         let fileManager = FileManager.default
-        let supportRootURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sanju", isDirectory: true)
+        let supportRootURL = Bundle.main.supabaseDataDirectory
         let targetURL = supportRootURL.appendingPathComponent(directoryName, isDirectory: true)
         let legacyURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(directoryName, isDirectory: true)
 
         PersistenceDiagnostics.createDirectory(at: supportRootURL, operation: "Create support root directory")
+
+        // A replacement project starts empty; never migrate or remove the old project's files.
+        if Bundle.main.supabaseDataIsolationID != nil { return targetURL }
 
         guard fileManager.fileExists(atPath: legacyURL.path) else {
             return targetURL
@@ -1045,13 +1047,14 @@ extension AppModel {
 
     private func persistentImageDirectoryURL(named directoryName: String) -> URL {
         let fileManager = FileManager.default
-        let supportRootURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Sanju", isDirectory: true)
+        let supportRootURL = Bundle.main.supabaseDataDirectory
         let targetURL = supportRootURL.appendingPathComponent(directoryName, isDirectory: true)
         let legacyURL = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(directoryName, isDirectory: true)
 
         PersistenceDiagnostics.createDirectory(at: supportRootURL, operation: "Create support root directory")
+
+        if Bundle.main.supabaseDataIsolationID != nil { return targetURL }
 
         guard fileManager.fileExists(atPath: legacyURL.path) else {
             return targetURL
