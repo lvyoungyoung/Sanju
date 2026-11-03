@@ -9,7 +9,7 @@
 - 新实例 HTTPS 只读检查：Auth settings 与 REST 根接口均 HTTP 200。再次回读确认邮箱登录和匿名会话开启、允许注册、Apple 登录关闭。匿名会话用于未登录生成，不是新增第三方登录入口。尚未创建测试账号或进行生成、朗读、Storage 写入验收；未配置自定义 SMTP 的邮件投递能力仍待验证。
 - 客户端 staging plist 已替换为新实例的公开 anon key，继续使用 `api-staging.sanju.cc`，新增实例级隔离 ID。隔离 UserDefaults（含内容和待同步队列）、Keychain 会话/匿名迁移标记、照片目录、学习会话以及已按环境分区的朗读/解析/翻阅记录；不搬运或删除旧数据。production plist 和原持久化位置不变。staging 暂不写共享小组件快照，避免覆盖正式环境的小组件内容。
 - 本地验证：28 项 Deno 测试、25 个步骤通过；Xcode Debug 模拟器构建及 `SupabaseEnvironmentTests` 三项测试通过，覆盖旧路径保持不变、新实例会话键/文件目录/历史队列隔离。证据：`/private/tmp/sanju-staging-switch-tests-20261103.log`，对应 xcresult 位于本地 DerivedData，不提交构建缓存。当前工作区构建包含用户已有界面改动，这些改动不包含在本次切换提交中。
-- **中转仍由用户修改，尚未切流。** 新测试包必须在 staging 代理上游、Host 和 SNI 一并切到新实例后联调，不能将新 key 与旧代理混用。只修改 staging，不修改 production，不删除旧实例。
+- **中转已在用户后续授权下代为切换。** 已备份 ECS Nginx 配置，只替换 staging 的 5 处 Host、SNI、proxy_pass 地址；diff 确认 production 和其他配置未变。`nginx -t` 和平滑重载成功，服务 active/running。ECS 通过代理检查：Auth/REST 无凭据为 401、Storage 健康为 200、生成/朗读 OPTIONS 为 405，与鉴权/方法限制相符；未提交真实生成或朗读请求。本机联调请求遇到连接超时，不能声称公网客户端全链路已通过。备份路径及证据见 `docs/staging-proxy-cutover-20261102.md`。现在可使用包含 `e542a73` 的新 Debug 包进行功能验收；旧测试包的 key 不再匹配当前代理。
 - 用户排障时另行加入了 Web `0.0.0.0/0`；这覆盖下文较早的白名单收尾状态。切流联调后应由用户收紧到实际 ECS 固定出口和必要管理 IP，不能长期全网开放，也不因此放宽数据库白名单。
 
 本次客户端切换不需要新增数据库迁移，也不需要为这些客户端改动重新部署 Edge Functions。

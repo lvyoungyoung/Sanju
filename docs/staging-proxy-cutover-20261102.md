@@ -7,7 +7,13 @@ production 的域名、upstream、证书、部署 Secrets 一律不改。
 
 数据库已通过 HTTPS 管理通道正式初始化并回读验证：30 张业务表、95 个函数、88 个迁移版本，账号和照片数据为空。基线和中转模板已随 GitHub 提交 `334c8a8`、`e78f02e` 推送。
 2026-11-03：用户已反馈全部 19 个云函数部署成功；GitHub staging Secrets 已更新，模型/朗读/审核参数已配置；新实例邮箱登录和后台匿名会话已开启，Apple 登录保持关闭。Auth settings 和 REST 根接口只读检查 HTTP 200。客户端已更新新 anon key 并隔离新实例的本地数据，Xcode 专项测试通过。
-代理尚未改动，生成、朗读、Storage 写入等端到端验收尚未执行，不能把部署成功视为全部功能正常。以下切换由用户在备份后执行，成功后立即使用新 Debug 测试包联调，失败则按文末回退。不要在切换前启动新 key 的测试包连接旧上游。
+**代理已切换。** 用户随后授权代为操作已登录的 ECS Workbench。已在实例 `i-0jl9976brhpqjey0dqkx` 的 `/etc/nginx/sites-enabled/default` 内，只替换 staging HTTPS server 的 5 处旧实例地址（Host、SNI、3 个 proxy_pass）；保留证书、超时及缓冲配置。production 和其他配置逐字节未变，完整 diff 已核对。执行 `nginx -t` 通过后，`systemctl reload nginx` 成功，服务状态为 `Result=success / active / running`，没有重启服务器。
+
+切换前备份：ECS 上 `/root/sanju-nginx-before-staging-20261103-155002.conf`，权限 600。staging 块之外内容的 SHA-256 为 `f7459296e361e8b0bf7a08aebdfac596972e633d24e8cf1db8a8225f4df0006b`。因为该文件也含 production，未来回退前必须比较备份与当前文件，不能用过期整份备份覆盖后来独立修改的 production 配置。
+
+通过 ECS 发起的无凭据、无写入检查：新实例直连和 staging 代理 `/auth/v1/health` 均 HTTP 401，TLS 校验结果为 0；代理 `/rest/v1/` 为 401（未提供 API key），`/storage/v1/status` 为 200，两个生成/朗读函数的 OPTIONS 为 405（处理器仅接受 POST）。这些只证明路由及服务响应，**不证明登录、生成或朗读业务成功**。本机随后访问直连和 staging 域名出现连接超时，原因未确定，不能据此归因于新实例或将公网客户端验收标为通过。证据截图：本机 `/private/tmp/sanju-staging-ecs-cutover-20261103.png`。
+
+下一步使用包含客户端提交 `e542a73` 的 Debug 测试包验证匿名生成、邮箱注册/登录、照片、收藏、翻阅和朗读。此次切换不需要新增 migration 或再次部署函数。以下步骤保留为操作参考，不必重复执行切流。
 不要再次执行专用空库初始化包，也不要用日常 migration 的 `baseline` 掩盖未部署步骤；后续新迁移正常执行。
 
 ## 1. 确认并备份现有 staging 配置
